@@ -360,8 +360,18 @@ p code, li code, td code, h3 code, h4 code {
 /* Diagrama de arquitectura */
 .arch-section { background: linear-gradient(180deg, transparent, rgba(255, 90, 31, .025) 30%, transparent); }
 .arch-grid { display: grid; grid-template-columns: 1.35fr .65fr; gap: 40px; align-items: center; }
-.arch-diagram { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-.arch-diagram svg { width: 100%; height: auto; }
+.arch-diagram { min-width: 0; align-self: start; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.arch-diagram svg { display: block; width: 100%; height: auto; overflow: visible; }
+.arch-workspace-diagram .arch-node rect {
+  fill: var(--surface); stroke: var(--border-strong); stroke-width: 2;
+}
+.arch-workspace-diagram .arch-node text {
+  fill: var(--text); font-family: var(--font-mono); font-size: 15px; font-weight: 600;
+}
+.arch-workspace-diagram .arch-node-secondary rect { fill: var(--overlay); }
+.arch-workspace-diagram .arch-node-secondary text { fill: var(--muted); font-size: 12px; }
+.arch-workspace-diagram .arch-node-app rect { fill: rgba(255, 90, 31, .12); stroke: var(--rust-500); }
+.arch-workspace-diagram .arch-node-app text { fill: var(--text); font-size: 15px; }
 .arch-node { cursor: pointer; }
 .arch-node rect { fill: var(--overlay); stroke: var(--border-strong); stroke-width: 1.2; transition: all .25s; rx: 9; }
 .arch-node text { fill: var(--muted); font-family: var(--font-mono); font-size: 12.5px; transition: fill .25s; }

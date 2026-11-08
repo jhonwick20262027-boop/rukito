@@ -1,0 +1,35 @@
+[package]
+name = "rdd-core"
+description = "Nucleo de rdd: App, middlewares, errores, Repo<T>, HttpApp y el trait Platform."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bytes.workspace = true
+futures.workspace = true
+http.workspace = true
+matchit.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+# RA-014: aquí no entra ningún driver de BD. El puerto `DbAdapter` (§12) vive en
+# este crate; `sqlx`, `mongodb`, `redis` y `tiberius` viven en el crate de su motor.
+
+[features]
+default  = []
+# RP-012: la fachada declara esta marca cuando tiene una plataforma por defecto
+# instalada, y es la única condición de `App::run`. No añade dependencias: el
+# núcleo sigue sin conocer ninguna plataforma (RA-011).
+default-platform = []

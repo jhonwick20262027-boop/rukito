@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rdd — Referencia de la CLI</title>
+  <link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+  <div id="site-header-root"></div>
+
+  <script src="assets/js/highlight.js"></script>
+  <script src="assets/js/site.js"></script>
+  <script>
+    window.RDD = window.RDD || {};
+    RDD.config = {
+      repo: "https://github.com/jhonwick20262027-boop/rdd",
+      version: "v0.1.0",
+      specVersion: "0.4.4",
+    };
+    RDD.searchIndex = [];
+  </script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="index.html">Inicio</a>
+        <a href="arquitectura.html">Arquitectura</a>
+        <a href="cli.html" class="active">CLI</a>
+        <a href="especificacion.html">Especificación</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Inicio</a><span class="sep">/</span><span class="here">CLI</span>
+      </nav>
+
+      <h1>Referencia de la CLI rdd</h1>
+
+      <section class="section">
+        <h2>Comandos disponibles</h2>
+
+        <h3>New</h3>
+        <pre><code class="language-text">rdd new <nombre> [--no-example]</code></pre>
+        <p>Crea un proyecto nuevo con el árbol completo de secciones (§5).</p>
+        <ul>
+          <li>Genera: <code>Cargo.toml</code>, <code>rdd.toml</code>, <code>rust-toolchain.toml</code>, <code>rustfmt.toml</code>, <code>clippy.toml</code></li>
+          <li>Estructura de carpetas completa (§5)</li>
+          <li>Módulo <code>tasks</code> de ejemplo</li>
+          <li>Archivos de configuración <code>.env</code> y <code>.gitignore</code></li>
+          <li>Opcional: <code>--no-example</code> para omitir el módulo de ejemplo</li>
+        </ul>
+        <p><strong>RF-002:</rf-002> `rdd new` DEBE generar el árbol completo de §5, incluido el módulo de ejemplo <code>tasks</code>, salvo <code>--no-example</code>.</p>
+      </section>
+
+      <section class="section">
+        <h3>G (Generate)</h3>
+        <pre><code class="language-text">rdd g module <nombre></code></pre>
+        <p>Genera un módulo con la convención NestJS (§5) y lo registra (§14.3).</p>
+        <ul>
+          <li>Crea nueve carpetas con su <code>mod.rs</code> y los archivos nombrados en §5</li>
+          <li>Registra el módulo en <code>src/modules/mod.rs</code> y <code>src/main.rs</code></li>
+          <li>Los nombres se singularizan: <code>task-items</code> → <code>task_item</code> para entities/dto/services/repositories, plural para controllers/constants</li>
+          <li>RF-001: El CLI DEBE generar el árbol de módulo y registrarlo</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h3>Run</h3>
+        <pre><code class="language-text">rdd run</code></pre>
+        <p>Ejecuta la aplicación del proyecto actual.</p>
+        <ul>
+          <li>Carga la configuración <code>rdd.toml</code></li>
+          <li>Inicializa <code>tracing</code> con <code>RUST_LOG</code></li>
+          <li>Crea el runtime Tokio</li>
+          <li>Compone routes y middlewares en <code>HttpApp</code></li>
+          <li>Abre el <code>TcpListener</code> y entrega a la plataforma</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>Scaffold y Generación de Código</h2>
+
+        <h3>Estructura generada por `rdd new`</h3>
+        <pre>
+todo-app-ddd/
+├── Cargo.toml                    # ≈ package.json + tsconfig.json
+├── rdd.toml                      # configuración (§15)
+├── rust-toolchain.toml           # perfil y componentes
+├── rustfmt.toml                  # ≈ .prettierrc
+├── clippy.toml                   # ≈ .eslintrc.json
+├── Dockerfile
+├── .env                          # NO versionado (RF-063)
+├── .env.example
+├── .gitignore                    # incluye .env y target/ (RF-063)
+├── docs/
+├── prisma/
+│   ├── schema.prisma             # fuente de verdad del esquema de datos
+│   └── migrations/               # generadas por Prisma, versionadas en git
+├── tests/
+│   ├── acceptance.rs             # recorre §10.3; aceptación de 0.1
+│   ├── e2e/
+│   └── fixtures/
+└── src/
+    ├── main.rs                   # ≈ main.ts
+    ├── app_module.rs             # ≈ app.module.ts
+    ├── app_controller.rs         # ≈ app.controller.ts
+    ├── app_service.rs            # ≈ app.service.ts
+    ├── config/
+    │   ├── mod.rs                # ≈ configuration.ts
+    │   ├── app_config.rs
+    │   ├── database_config.rs
+    │   ├── jwt_config.rs
+    │   └── redis_config.rs
+    ├── common/
+    │   ├── mod.rs
+    │   ├── decorators/mod.rs
+    │   ├── filters/mod.rs
+    │   ├── guards/mod.rs
+    │   ├── interceptors/mod.rs
+    │   ├── middleware/mod.rs
+    │   ├── pipes/mod.rs
+    │   ├── constants/mod.rs
+    │   ├── enums/mod.rs
+    │   ├── interfaces/mod.rs
+    │   ├── exceptions/mod.rs
+    │   └── utils/mod.rs
+    ├── modules/
+    │   ├── mod.rs                # marcador // rdd:mods (§14.3)
+    │   └── tasks/                # módulo de ejemplo; nombre fijo (§14.1)
+    │       ├── mod.rs            # ≈ tasks.module.ts
+    │       ├── controllers/
+    │       │   ├── mod.rs
+    │       │   └── tasks_controller.rs
+    │       ├── services/
+    │       │   ├── mod.rs
+    │       │   └── tasks_service.rs
+    │       ├── repositories/
+    │       │   ├── mod.rs
+    │       │   └── tasks_repository.rs
+    │       ├── dto/
+    │       │   ├── mod.rs
+    │       │   ├── create_task_dto.rs
+    │       │   ├── update_task_dto.rs
+    │       │   └── query_task_dto.rs
+    │       ├── entities/
+    │       │   ├── mod.rs
+    │       │   └── task_entity.rs
+    │       ├── interfaces/
+    │       │   ├── mod.rs
+    │       │   └── task_interface.rs
+    │       ├── mappers/
+    │       │   ├── mod.rs
+    │       │   └── task_mapper.rs
+    │       ├── constants/
+    │       │   ├── mod.rs
+    │       │   └── tasks_constants.rs
+    │       └── tests/
+    │           ├── mod.rs
+    │           ├── tasks_service_test.rs
+    │           └── tasks_controller_test.rs
+    ├── infrastructure/
+    │   ├── mod.rs
+    │   ├── database/mod.rs
+    │   ├── cache/mod.rs
+    │   ├── queue/mod.rs
+    │   ├── storage/mod.rs
+    │   ├── messaging/mod.rs
+    │   └── external_services/mod.rs
+    ├── integrations/
+    │   ├── mod.rs
+    │   ├── aws/mod.rs
+    │   ├── telegram/mod.rs
+    │   ├── email/mod.rs
+    │   └── payment_gateways/mod.rs
+    ├── shared/
+    │   ├── mod.rs
+    │   ├── types/mod.rs
+    │   ├── interfaces/mod.rs
+    │   └── contracts/mod.rs
+    └── generated/                # generado por `rdd db generate`; NO se edita
+        └── mod.rs
+        </pre>
+
+        <h3>Scaffold y requisitos (RF-001 a RF-007)</h3>
+        <table>
+          <tr><th>ID</th><th>Requisito</th></tr>
+          <tr><td>RF-001</td><td>`rdd g module <name>` DEBE generar el árbol de módulo de §5 y registrarlo en <code>src/modules/mod.rs</code> y <code>src/main.rs</code> (§14.3)</td></tr>
+          <tr><td>RF-002</td><td>`rdd new <name>` DEBE generar el árbol completo de §5, incluido el módulo de ejemplo <code>tasks</code>, salvo <code>--no-example</code></td></tr>
+          <tr><td>RF-003</td><td>Cada carpeta scaffold que sea un módulo Rust DEBE llevar un <code>mod.rs</code>; las que no lo son (<code>docs/</code>, <code>prisma/migrations/</code>, etc.) DEBEN llevar <code>.gitkeep</code>. Ninguna carpeta queda vacía.</td></tr>
+          <tr><td>RF-004</td><code>Cada `mod.rs` generado DEBE documentar en su cabecera qué va ahí y qué API de `rdd` lo cubre. Las carpetas cuyo soporte llega en una fase posterior se generan como placeholder compilable, nunca como código que no compila.</td></tr>
+          <tr><td>RF-005</td><td>El singular de los nombres de archivo se calcula con regla fija: <code>ies</code>→<code>y</code>; <code>ses</code>/<code>xes</code>/<code>zes</code>/<code>ches</code>/<code>shes</code>→quita <code>es</code>; <code>s</code> final (salvo <code>ss</code>)→quita <code>s</code>; en otro caso, igual.</td></tr>
+          <tr><td>RF-006</td><td>El scaffold NO DEBE generar código que dependa de macros o APIs aún no implementadas. En 0.1 <code>services/</code> y <code>entities/</code> son Rust plano; <code>#[service]</code> y <code>#[aggregate]</code> llegan en 0.2.</td></tr>
+          <tr><td>RF-007</td><td>`rdd new` y `rdd g module` DEBEN producir un proyecto que pasa <code>cargo check</code> sin edits manuales, y <code>tests/acceptance.rs</code> DEBE pasar. Además <code>cargo clippy --all-targets -- -D warnings</code> y <code>cargo fmt --all -- --check</code> sin diffs.</td></tr>
+        </table>
+      </section>
+    </main>
+
+    <aside class="doc-pager">
+      <a class="pager-link prev"><span class="dir">← Anterior</span><span class="title">Arquitectura</span></a>
+      <a class="pager-link next disabled"><span class="dir">Siguiente →</span><span class="title">N/A</span></a>
+    </aside>
+  </article>
+</body>
+</html>

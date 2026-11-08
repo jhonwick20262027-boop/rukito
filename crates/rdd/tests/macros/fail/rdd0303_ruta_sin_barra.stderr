@@ -1,0 +1,6 @@
+error: RDD0303: la ruta debe empezar por `/`, no `recursos` (§8.2)
+         help: `#[get("/")]` para la raíz del prefijo
+  --> tests/macros/fail/rdd0303_ruta_sin_barra.rs:11:11
+   |
+11 |     #[get("recursos")]
+   |           ^^^^^^^^^^

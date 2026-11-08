@@ -1,0 +1,7 @@
+/target
+**/target
+
+# Credenciales locales: la URL de la BD nunca se versiona (RF-063).
+.env
+.env.*
+*.env

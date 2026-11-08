@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rdd — Especificación Técnica del Framework REST DDD</title>
+  <link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+  <div id="site-header-root"></div>
+
+  <script src="assets/js/highlight.js"></script>
+  <script src="assets/js/site.js"></script>
+  <script>
+    window.RDD = window.RDD || {};
+    RDD.config = {
+      repo: "https://github.com/jhonwick20262027-boop/rdd",
+      version: "v0.1.0",
+      specVersion: "0.4.4",
+    };
+    // Build search index from the RDD-SPEC content
+    RDD.searchIndex = [
+      { title: "0. Cómo usar este documento", section: "Introducción", keywords: "rdd, spec, documento, verdad", url: "#0-_-cómo-usar-este-documento" },
+      { title: "1. Visión y principios", section: "Principios", keywords: "rdd, vision, principios, diseño", url: "#1-_-visión-y-principios" },
+      { title: "2. Alcance", section: "Alcance", keywords: "rdd, alcance, fases, fuera-alcance", url: "#2-_-alcance" },
+      { title: "3. Glosario DDD", section: "Glosario", keywords: "rdd, ddd, aggregate, service, repository", url: "#3-_-glosario-ddd-aplicado" },
+      { title: "4. Arquitectura general", section: "Arquitectura", keywords: "rdd, arquitectura, workspace, crate, platform", url: "#4-_-arquitectura-general" },
+      { title: "5. Estructura de proyecto de usuario", section: "Usuario", keywords: "rdd, proyecto, scaffold, convention, nestjs", url: "#5-_-estructura-de-proyecto-de-usuario" },
+      { title: "6. Núcleo: App, Module, contenedor", section: "Núcleo", keywords: "rdd, app, module, di, container", url: "#6-_-núcleo-app-module-contenedor" },
+      { title: "7. Building blocks DDD", section: "Bloques DDD", keywords: "rdd, aggregate, value-object, error, result", url: "#7-_-building-blocks-ddd" },
+      { title: "8. Macros", section: "Macros", keywords: "rdd, macro, controller, service, aggregate", url: "#8-_-macros" },
+      { title: "9. Configuración tipada", section: "Config", keywords: "rdd, config, rdd.toml, entorno, variables", url: "#9-_-configuración-tipada" },
+      { title: "10. Capa HTTP", section: "HTTP", keywords: "rdd, http, error, problem details, rfcs", url: "#10-_-capa-http" },
+      { title: "11. Sistema de middlewares", section: "Middlewares", keywords: "rdd, middleware, cors, logger, rf-080", url: "#11-_-sistema-de-middlewares" },
+      { title: "12. Reglas de dependencias", section: "Dependencias", keywords: "rdd, crate, dependency, RA-011", url: "#12-_-reglas-de-dependencias" },
+      { title: "13. Criterios transversales", section: "Criterios", keywords: "rdd, test, fmt, clippy, verde", url: "#13-_-criterios-transversales" },
+      { title: "14. Verificaciones pendientes", section: "Verificaciones", keywords: "rdd, V11, V12, V13, V14, V15", url: "#14-_-verificaciones-pendientes" },
+    ];
+  </script>
+</head>
+<body>
+  <article class="spec-layout">
+    <div class="spec-tabs">
+      <div class="spec-tab active" data-tab="0">0. Cómo usar</div>
+      <div class="spec-tab" data-tab="1">1. Visión y principios</div>
+      <div class="spec-tab" data-tab="2">2. Alcance</div>
+      <div class="spec-tab" data-tab="3">3. Glosario DDD</div>
+      <div class="spec-tab" data-tab="4">4. Arquitectura</div>
+      <div class="spec-tab" data-tab="5">5. Estructura usuario</div>
+      <div class="spec-tab" data-tab="6">6. Núcleo</div>
+      <div class="spec-tab" data-tab="7">7. Building blocks</div>
+      <div class="spec-tab" data-tab="8">8. Macros</div>
+      <div class="spec-tab" data-tab="9">9. Configuración</div>
+      <div class="spec-tab" data-tab="10">10. Capa HTTP</div>
+      <div class="spec-tab" data-tab="11">11. Middlewares</div>
+      <div class="spec-tab" data-tab="12">12. Dependencias</div>
+      <div class="spec-tab" data-tab="13">13. Criterios</div>
+      <div class="spec-tab" data-tab="14">14. Verificaciones</div>
+    </div>
+
+    <div class="spec-meta">
+      <div>
+        <span>Documento: <strong>RDD-SPEC.md</strong></span>
+        <span>Versión: <strong>0.4.4-draft</strong></span>
+        <span>Fecha: <strong>2026-11-07</strong></span>
+        <span>Estado: <strong>Borrador para aprobación</strong></span>
+      </div>
+      <div class="spec-tabs-mobile">
+        <select id="specVersionSelect">
+          <option value="0.3.0">Addendum 0.3.0</option>
+          <option value="0.4.4" selected>0.4.4-draft</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="spec-body" id="spec-body">
+      <!-- Contenido cargado por JS -->
+      <div class="spec-loading">
+        <div class="spin"></div>
+        <p>Cargando especificación...</p>
+      </div>
+    </div>
+  </article>
+
+  <script>
+    // Cargar el contenido de la especificación y pobular los tabs
+    document.addEventListener("DOMContentLoaded", () => {
+      const specContent = `#!/ RDD — Especificación técnica del framework REST DDD en Rust
+
+| Campo | Valor |
+|---|---|
+| Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
+| Versión del documento | 0.4.4-draft |
+| Fecha | 2026-11-07 |
+| Estado | Borrador para aprobación |
+| Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
+
+---
+
+## 0. Cómo usar este documento
+
+1. **Este documento manda.** Si el código y el documento discrepan, se corrige el código, o se cambia primero el documento mediante un cambio explícito (ver §24).
+2. **Palabras normativas:** **DEBE** = obligatorio. **NO DEBE** = prohibido. **DEBERÍA** = recomendado, con excepción justificada. **PUEDE** = opcional.
+3. **Cada requisito tiene un ID** (`RF-xxx` funcional, `RN-xxx` no funcional, `RA-xxx` regla de arquitectura, `RP-xxx` requisito de plataforma HTTP). Los commits y PRs referencian los IDs.
+4. **No se fijan versiones de dependencias aquí.** Al iniciar cada fase se usan las últimas versiones estables compatibles y se fijan en `Cargo.lock`. Las dependencias cuyo comportamiento cambia entre versiones mayores (Axum, Prisma CLI) están marcadas con ⚠️ en la lista de verificaciones (§22).
+5. **MSRV propuesto:** Rust 1.85 (edición 2024). Revisar al iniciar la fase 0.1.
+
+---
+
+## 1. Visión y principios
+
+### Visión.
+
+Un framework REST para Rust con la ergonomía de NestJS y el minimalismo de las Minimal APIs de .NET, que guía al desarrollador hacia una organización DDD sin obligarlo a usar patrones avanzados.
+
+### Principios de diseño
+
+| # | Principio | Consecuencia |
+|---|---|---|
+| P1 | **Simple primero** | Un crate, un binario, sin buses ni microservicios en el alcance actual. |
+| P2 | **El dominio no conoce HTTP ni SQL** | `domain.rs` no importa `axum`, `sqlx` ni nada de `rdd::http`. |
+| P3 | **Núcleo mínimo, extras como paquetes** | CORS, logging, Prisma son crates separados que se añaden con `cargo add`. |
+| P4 | **El núcleo no depende de ningún servidor HTTP** | Axum es una *plataforma* intercambiable detrás de la interfaz `Platform` (§4.4), igual que `platform-express`/`platform-fastify` en NestJS. |
+| P5 | **Errores claros** | Las macros producen diagnósticos accionables con código (§8.7). |
+| P6 | **Magia acotada** | Las macros generan código predecible y documentado (§8); no hay reflexión ni comportamiento oculto en tiempo de ejecución. |
+| P7 | **Honestidad técnica** | Lo que Rust no permite (reflexión, DI resuelta por tipos en tiempo de ejecución) se documenta, no se simula. |
+
+---
+
+## 2. Alcance
+
+### 2.1 Dentro del alcance (fases 0.1 a 0.4)
+
+- Servidor REST con controladores declarativos por macros, sobre una interfaz de plataforma (§4.4). **Axum es la plataforma por defecto** (`rdd-axum`).
+- Building blocks DDD mínimos: `Aggregate`, `Service`, `Repo<T>`, `Error` de dominio.
+- Inyección de dependencias (singleton) por contenedor.
+- Sistema de middlewares propio del núcleo: globales, por módulo, por controlador y por ruta. Las capas Tower se admiten como opción de la plataforma Axum (RF-089).
+- Suite de conformidad de plataformas (§4.5) y, en la fase 0.5, una segunda plataforma (`rdd-hyper`) que valide la abstracción.
+- Crates externos `rdd-cors` y `rdd-logger`.
+- Persistencia multi-motor **vía adaptadores**: el núcleo define el puerto `DbAdapter` y cada motor vive en su propio crate (§12). Entran primero memoria, PostgreSQL y MySQL; después MongoDB, Redis y MSSQL.
+- Migraciones y esquema con **Prisma CLI** y generación de código Rust a partir de `schema.prisma`.
+- CLI `rdd` para scaffolding y ejecución.
+
+### 2.2 Fuera del alcance (explícito)
+
+| Fuera de alcance | Nota |
+|---|---|
+| Microservicios, bus de eventos, NATS/Kafka, clientes remotos | Eliminado a petición; el diseño no lo impide en el futuro. |
+| Event Sourcing, CQRS formal, sagas | Reservado, no implementar en 0.x. |
+| **Cliente Prisma para Rust** | El proyecto `prisma-client-rust` está sin mantenimiento; se usa Prisma **solo** para esquema y migraciones (§13). |
+| GraphQL, WebSockets, gRPC | No. |
+| Streaming de cuerpos de petición/respuesta | Cuerpos en memoria con límite en 0.x (ADR-12). |
+| Capas Tower por ruta, o dentro de `App` | Solo como opción de `AxumPlatform` (RF-089). |
+| Runtimes distintos de Tokio | El núcleo y las plataformas asumen Tokio (ADR-11). |
+| OpenAPI automático | Candidato post-0.4. |
+| Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. |
+| Motores sin adaptador publicado | El puerto `DbAdapter` (§12.1) es la vía de extensión. SQLite es candidato barato (lo cubre `sqlx`); Oracle, Cassandra y DynamoDB no están previstos. |
+| Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
+| Transacciones declarativas (`#[transactional]`) | Candidato post-0.4. |
+
+---
+
+## 3. Glosario DDD aplicado
+
+| Concepto | Definición en `rdd` | Dónde vive |
+|---|---|---|
+| **Aggregate** | Entidad raíz que protege invariantes. Se modifica solo mediante sus métodos. | `domain.rs` |
+| **Value Object** | Tipo inmutable validado al construirse (ej. `Title`). Sin identidad. | `domain.rs` |
+| **Service** | Caso de uso (application service): carga, ejecuta reglas del aggregate, guarda. No contiene reglas de negocio. | `service.rs` |
+| **Repository** | Abstracción de persistencia de aggregates. En `rdd` es `Repo<T>`. | Framework / `repository.rs` |
+| **Controller** | Adaptador HTTP: traduce petición a llamada de servicio y resultado a respuesta. No decide nada. | `routes.rs` |
+| **Module** | Carpeta que agrupa un contexto (`tasks/`) y se registra con `.module(...)`. | `<modulo>/mod.rs` |
+| **Middleware** | Lógica transversal (CORS, logging, auth) que envuelve el procesamiento de la petición. | Crates / `middleware.rs` |
+| **Platform** | Adaptador que conecta el `HttpApp` del núcleo con un servidor HTTP concreto (Axum, hyper). No contiene lógica de aplicación. | Crates `rdd-axum`, `rdd-hyper` |
+
+### Regla de oro (RA-001):
+las reglas de negocio viven en el aggregate. El controller nunca decide.
+
+---
+
+## 4. Arquitectura general
+
+### 4.1 Workspace del framework
+
+```
+rdd/                              # repositorio del framework
+├── Cargo.toml                    # [workspace]
+├── RDD-SPEC.md                   # este documento
+├── crates/
+│   ├── rdd/                      # FACHADA: re-exporta rdd-core + rdd-macros + plataformas por feature
+│   ├── rdd-core/                 # núcleo: App, DI, middlewares, errores, Repo<T>, puerto DbAdapter, HttpApp, trait Platform
+│   ├── rdd-macros/               # proc-macros
+│   ├── rdd-axum/                 # plataforma por defecto
+│   ├── rdd-hyper/                # plataforma propia (fase 0.5)
+│   ├── rdd-platform-tests/       # suite de conformidad de plataformas (§4.5)
+│   ├── rdd-db-tests/             # suite de conformidad de adaptadores (§12.4)
+│   ├── rdd-postgres/             # adaptador PostgreSQL (sqlx)
+│   ├── rdd-mysql/                # adaptador MySQL/MariaDB (sqlx)
+│   ├── rdd-mongodb/              # adaptador MongoDB (fase 0.6)
+│   ├── rdd-redis/                # adaptador Redis: KV + caché (fase 0.6)
+│   ├── rdd-mssql/                # adaptador SQL Server (tiberius-ng, fase 0.6)
+│   ├── rdd-cors/                 # middleware CORS
+│   ├── rdd-logger/               # middleware de logging / request-id
+│   ├── rdd-prisma/               # parser de schema.prisma + generador
+│   └── rdd-cli/                  # binario `rdd`
+└── todo-app-ddd/                 # app de ejemplo (§25): la genera `rdd new`, miembro del workspace
+```
+
+### Por qué hay un crate `rdd-core` y otro `rdd`
+
+Si el núcleo se llamara `rdd` y además incluyera `rdd-axum` como feature, habría una dependencia circular (`rdd-axum` necesita el núcleo). Por eso el núcleo es `rdd-core` y `rdd` es una **fachada** que lo re-exporta junto con las macros y activa la plataforma por feature. El usuario solo declara `rdd` (y los paquetes opcionales como `rdd-cors`).
+
+```toml
+# Cargo.toml del usuario
+rdd      = "..."                          # incluye la plataforma axum por defecto
+rdd-cors = "..."
+# o, sin Axum:
+# rdd = { version = "...", default-features = false, features = ["hyper"] }
+```
+
+### 4.2 Dependencias entre crates (RA-010)
+
+```
+rdd-macros ──┐
+rdd-core ◄───┼── rdd (fachada) ──► [feature axum]  rdd-axum
+      ▲       │                 └─► [feature hyper] rdd-hyper
+      ├── rdd-axum, rdd-hyper
+      ├── rdd-cors, rdd-logger
+      ├── rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
+      ├── rdd-platform-tests ──► (dev) cada plataforma
+      └── rdd-db-tests ────────► (dev) cada adaptador
+rdd-prisma ──► rdd-cli
+```
+
+| Crate | Puede depender de | NO DEBE depender de |
+|---|---|---|
+| `rdd-core` | `http`, `bytes`, `futures`, `tokio`, `serde`, `serde_json`, `tracing`, `uuid`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower-http`, cualquier plataforma, **cualquier driver de BD** (`sqlx`, `mongodb`, `redis`, `tiberius`), Prisma, Node |
+| `rdd-macros` | `syn`, `quote`, `proc-macro2`, crate de diagnósticos | `rdd-core` |
+| `rdd` | `rdd-core`, `rdd-macros`, plataformas y adaptadores (opcionales por feature) | — |
+| `rdd-axum` | `rdd-core`, `axum`, `tower`, `tower-http` | `rdd-hyper` |
+| `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
+| `rdd-cors`, `rdd-logger` | `rdd-core` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
+| `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
+| `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
+| `rdd-redis` | `rdd-core`, cliente Redis, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
+| `rdd-mssql` | `rdd-core`, `tiberius-ng`, `bb8`, `tokio-util`, `anyhow` | `sqlx`, cualquier otro adaptador |
+| `rdd-platform-tests` | `rdd-core`; las plataformas como `dev-dependencies` | — |
+| `rdd-db-tests` | `rdd-core`, `uuid`, `serde_json`; `tokio` como `dev-dependency` | cualquier adaptador, cualquier driver |
+| `rdd-prisma` | `serde`, `thiserror` | `axum`, `sqlx`, `rdd-core` |
+| `rdd-cli` | `rdd-prisma`, `clap` | `rdd-core` (el CLI no enlaza el framework) |
+
+`anyhow` entra en los adaptadores porque `Error::internal` recibe un `anyhow::Error` (RF-042): así el error del driver se conserva como fuente en vez de aplanarse a texto. La suite de conformidad va en la dirección contraria a la que sugería su nombre: **cada adaptador depende de `rdd-db-tests` como `dev-dependency`**, nunca al revés, para que la suite no arrastre ningún driver.
+
+| ID | Requisito |
+|---|---|
+| RA-011 | `rdd-core`, `rdd-cors` y `rdd-logger` NO DEBEN tener a `axum` ni `hyper` en su árbol de dependencias. CI DEBE verificarlo (`cargo tree -p rdd-core` y regla `bans` de `cargo-deny`). |
+| RA-012 | Las plataformas NO DEBEN depender entre sí. |
+| RA-013 | Las macros generan rutas absolutas `::rdd::...` (RN-012); por tanto todo proyecto de usuario depende de `rdd` (la fachada), nunca solo de `rdd-core`. |
+| RA-014 | `rdd-core` NO DEBE tener ningún driver de base de datos en su árbol de dependencias. El puerto `DbAdapter` (§12.1) es lo único que el núcleo conoce. CI DEBE verificarlo igual que RA-011. |
+| RA-015 | Los adaptadores NO DEBEN depender entre sí, ni de plataforma alguna. Cada uno depende de `rdd-core` y de su driver. |
+| RA-016 | Todo adaptador publicado DEBE pasar `rdd-db-tests` (§12.4) contra un servidor real de su motor. Un adaptador sin servidor donde verificarse NO se publica: queda como verificación pendiente en §22. |
+
+### 4.3 Stack tecnológico
+
+| Necesidad | Elección | Dónde | Razón |
+|---|---|---|---|
+| Runtime async | `tokio` | núcleo | Estándar de facto (ADR-11). |
+| Tipos HTTP | crate `http` (`Method`, `StatusCode`, `HeaderMap`, `Request`, `Response`) + `bytes` | núcleo | Neutrales: los comparten Axum, hyper y Tower. |
+| Plataforma por defecto | `axum` (⚠️ V1) | `rdd-axum` | Router y servidor maduros. |
+| Plataforma propia | `hyper` + `hyper-util` (⚠️ V9) | `rdd-hyper` | Control total, valida la abstracción. |
+| Capas Tower | `tower`, `tower-http` | solo `rdd-axum` | Opcionales vía `AxumPlatform::layer` (RF-089). |
+| Puerto de persistencia | `DbAdapter` propio (§12.1) | núcleo | Sin drivers: el núcleo no conoce ningún motor (RA-014). |
+| PostgreSQL / MySQL | `sqlx` 0.9 | `rdd-postgres`, `rdd-mysql` | Async, sin ORM pesado; un mismo cliente cubre los dos motores. |
+| MongoDB | `mongodb` 3.x (oficial) | `rdd-mongodb` | Driver oficial async. Documental: no hay SQL ni `JOIN`. |
+| Redis | cliente async (⚠️ V13) | `rdd-redis` | KV: agregados simples por clave + caché/sesiones. |
+| SQL Server | `tiberius-ng` 0.13 + `bb8` (⚠️ V12) | `rdd-mssql` | `sqlx` eliminó MSSQL en 0.7 y `tiberius` original está sin mantenimiento. |
+| Serialización | `serde`, `serde_json` | núcleo | Estándar. |
+| Errores | `thiserror` + `anyhow` (interno) | núcleo | Errores tipados en el borde, contexto interno. |
+| Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
+| IDs | `uuid` | núcleo | Estándar. |
+| Macros | `syn`, `quote`, `proc-macro2`, crate de diagnósticos (⚠️ V6) | `rdd-macros` | Diagnósticos claros. |
+| CLI | `clap` | `rdd-cli` | Estándar. |
+| Esquema/migraciones | **Prisma CLI** (Node, solo en desarrollo) | herramienta externa | Ver §13. |
+
+### 4.4 Interfaz de plataforma (modelo "adaptador sobre el router del servidor")
+
+El núcleo define **qué** es una aplicación HTTP (rutas como datos, con middlewares ya compuestos). La plataforma solo sabe **servirla**.
+
+```rust
+// rdd-core
+pub type Request   = http::Request<bytes::Bytes>;     // cuerpo ya en memoria (RP-002)
+pub type Response  = http::Response<bytes::Bytes>;
+pub type BoxHandler = Arc<dyn Fn(Request) -> BoxFuture<'static, Response> + Send + Sync>;
+
+pub struct RouteDef {
+    pub method:  Method,
+    pub path:    String,              // SIEMPRE sintaxis "/:id" (RP-003); es `String` porque la
+                                      // ruta final es `prefijo + ruta` y se calcula al montar (RF-051)
+    pub handler: BoxHandler,          // incluye su cadena completa de middlewares
+}
+
+pub struct Limits {
+    pub body_limit_bytes: usize,      // RF-017
+    pub shutdown_grace:   Duration,   // RP-009
+}
+
+pub struct HttpApp {
+    pub routes:   Vec<RouteDef>,
+    pub fallback: BoxHandler,         // decide 404 o 405 (RP-007); también envuelto por middlewares globales
+    pub limits:   Limits,
+}
+impl HttpApp {
+    /// Enrutado y ejecución sin servidor: usado por TestApp y por plataformas sin router propio (RP-014).
+    pub async fn dispatch(&self, req: Request) -> Response;
+}
+
+pub trait Platform: Send + 'static {
+    fn name(&self) -> &'static str;
+    fn serve(self, app: HttpApp, listener: tokio::net::TcpListener, shutdown: ShutdownSignal)
+        -> BoxFuture<'static, Result<()>>;
+}
+```
+
+`App::run(addr)` usa la plataforma por defecto; `App::run_on(plataforma, addr)` usa la indicada:
+
+```rust
+App::new().module(tasks::module()).run("0.0.0.0:3000").await;                          // Axum (feature por defecte)
+App::new().module(tasks::module()).run_on(HyperPlatform::new(), "0.0.0.0:3000").await; // plataforma propia
+```
+
+**Reparto de responsabilidades**
+
+| Lo hace el núcleo (idéntico en toda plataforma) | Lo hace la plataforma |
+|---|---|
+| Composición y orden de los middlewares | Registrar/ejecutar las rutas con el router del servidor |
+| Extractores (`Json`, `Path`, `Query`, servicios) | Traducir `/:id` a la sintaxis de su router y rellenar `PathParams` |
+| DI y conversión de `Error` a respuesta (Problem Details) | Aceptar conexiones y leer cuerpos con límite |
+| Respuestas 404/405/413 (cuerpos y formato) | Normalizar la barra final antes de enrutar |
+| Captura de `panic` por handler | Drenar peticiones en curso al apagar |
+| Abrir el `TcpListener` y capturar señales (`SIGTERM`, `Ctrl+C`) | Servir sobre el `TcpListener` recibido |
+
+| ID | Requisito |
+|---|---|
+| RP-001 | El núcleo NO DEBE conocer ninguna plataforma concreta (RA-011). |
+| RP-002 | `Request` y `Response` son `http::Request<Bytes>` / `http::Response<Bytes>`. El cuerpo se lee completo en memoria, respetando el límite (RP-006). El streaming queda fuera de 0.x (ADR-12). |
+| RP-003 | Las rutas se declaran con `/:nombre`. La plataforma DEBE traducir esa sintaxis a la de su router y DEBE insertar los parámetros capturados en `req.extensions()` como `PathParams`. La traducción es un detalle interno de la plataforma (esto resuelve V1 sin afectar al usuario). |
+| RP-004 | Los handlers son **infalibles** a este nivel: el núcleo ya convirtió todo `Error` en `Response`. La plataforma NO DEBE inspeccionar ni reescribir respuestas de handlers. |
+| RP-005 | La plataforma NO DEBE reordenar ni insertar middlewares *entre* los de `rdd`. Solo puede envolver el conjunto completo por fuera (RF-089). |
+| RP-006 | Si el cuerpo supera `limits.body_limit_bytes`, la plataforma DEBE responder `413` en formato Problem Details (`HttpApp::payload_too_large()`) sin leer el resto del cuerpo, antes de invocar al handler. |
+| RP-007 | Si ninguna ruta coincide, la plataforma DEBE invocar `fallback`. Si la ruta existe con otros métodos, DEBE añadir `AllowedMethods(Vec<Method>)` a las extensiones; el `fallback` decide entre 404 y 405 (con cabecera `Allow`). |
+| RP-008 | La plataforma DEBE tratar `/tasks/` y `/tasks` como la misma ruta (RF-018). |
+| RP-009 | Al completarse `ShutdownSignal`, la plataforma DEJA de aceptar conexiones nuevas y esperar a las peticiones en curso hasta `shutdown_grace` (por defecto 30 s); pasado ese plazo, DEBE cerrar. |
+| RP-010 | Un fallo de una conexión individual NO DEBE detener el servidor. |
+| RP-011 | Las capacidades específicas de un servidor (p. ej. capas Tower) DEBEN exponerse como opciones del constructor de la plataforma, nunca en `App`. |
+| RP-012 | `run()` solo existe si la feature `axum` está activa; con otra configuración, el usuario DEBE usar `run_on` (error de compilación claro si no). |
+| RP-013 | Toda plataforma DEBE implementar `name()`; el núcleo lo registra al arrancar (RN-042). |
+| RP-014 | `HttpApp::dispatch` DEBE implementarse en el núcleo con una tabla de rutas propia (⚠️ V8). Es la **plataforma de referencia** en proceso: `TestApp` la usa (RF-160) y `rdd-hyper` puede apoyarse en ella. |
+
+**Nota sobre `rdd-axum`:** registra las rutas de forma **nativa** en el router de Axum (no usa `dispatch`), para aprovechar su enrutado y el soporte de capas Tower. Como hay dos implementaciones de enrutado (Axum y `dispatch`), el riesgo de divergencia se controla con la suite de conformidad (§4.5), que se ejecuta contra ambas.
+
+### 4.5 Suite de conformidad (`rdd-platform-tests`)
+
+Una abstracción con un solo adaptador tiende a copiar la forma de ese adaptador. La suite impide eso: **toda plataforma debe pasar los mismos casos** contra el mismo `HttpApp`.
+
+```rust
+// en el crate de cada plataforma, como test de integración:
+#[tokio::test]
+async fn conformance() {
+    rdd_platform_tests::run_all(|| AxumPlatform::new()).await;
+}
+```
+
+La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales.
+
+| Caso | Verifica | Requisitos |
+|---|---|---|
+| C-01 | Orden de ejecución de tres middlewares anidados (global → módulo → controller → ruta) | RF-080 |
+| C-02 | 404 en Problem Details; 405 con cabecera `Allow` | RF-072, RP-007 |
+| C-03 | `/tasks` y `/tasks/` responden igual | RF-018, RP-008 |
+| C-04 | Parámetros de ruta (`/tasks/:id/complete` con UUID) y UUID inválido → 400 | RF-055, RP-003 |
+| C-05 | Cuerpo mayor al límite → 413 sin invocar al handler | RF-017, RP-006 |
+| C-06 | JSON inválido → 400 | RF-055 |
+| C-07 | `panic` en un handler → 500 y el servidor sigue vivo | RF-073, RP-010 |
+| C-08 | Middleware global cubre respuestas 404/405 | RF-081 |
+| C-09 | Preflight CORS responde sin ejecutar middlewares internos | RF-094, RF-096 |
+| C-10 | `x-request-id` generado y propagado | RF-101 |
+| C-11 | Apagado ordenado: una petición lenta en curso termina; una nueva es rechazada | RF-013, RP-009 |
+| C-12 | 200 peticiones concurrentes responden correctamente | RP-010 |
+
+| ID | Requisito |
+|---|---|
+| RP-020 | Una plataforma NO DEBE publicarse si no pasa el 100 % de la suite. |
+| RP-021 | La suite DEBE ejecutarse también contra `dispatch` (plataforma de referencia, sin red) para detectar divergencias del núcleo. |
+| RP-022 | Todo caso nuevo de comportamiento HTTP DEBE añadirse a la suite en la misma PR que cambia el requisito. |
+
+---
+
+### 4.6 Costos asumidos
+
+| Costo | Mitigación |
+|---|---|
+| Mínimo común denominador: lo que un servidor hace y otro no queda fuera de la interfaz | Extensiones como opciones de la plataforma (RP-011) |
+| Una conversión extra de tipos por petición | Tipos `http` compartidos; medir (⚠️ V10) |
+| Cuerpos en memoria | Límite por defecto de 2 MB (RF-017); streaming diferido |
+| Dos implementaciones de enrutado (Axum y `dispatch`) | Suite de conformidad sobre ambas (RP-021) |
+| Más código a mantener (`rdd-cors` propio, extractores propios, suite) | Alcance acotado por fases (§21) |
+
+---
+
+## 5. Estructura de un proyecto de usuario
+
+La estructura sigue la **convención NestJS**: un módulo por dominio de negocio y
+una carpeta por responsabilidad. La adaptación a Rust es mecánica y se documenta
+aquí para que el scaffold sea determinista:
+
+- `x.y.ts` → `x_y.rs`: el punto no es válido en un identificador de módulo Rust.
+- `__tests__/` → `tests/`: evita el aviso `non_snake_case` de rustc.
+- `external-services/`, `payment-gateways/` → `external_services/`, `payment_gateways/`.
+- `src/test/` y `test/` → `tests/` en la raíz: es el único directorio de tests de
+  integración que cargo reconoce.
+- `.prettierrc` → `rustfmt.toml`; `.eslintrc.json` → `clippy.toml`;
+  `tsconfig.json` → `Cargo.toml` (`edition` + `rust-version`) y
+  `rust-toolchain.toml` (perfil y componentes).
+- `rust-toolchain.toml` NO fija `channel`: un canal pinned obliga a rustup a
+  descargar otro toolchain y el proyecto dejaría de compilar sin red, lo que
+  rompería RF-143. El mínimo soportado lo declara `rust-version` en `Cargo.toml`.
+- Los nombres en singular de NestJS (`user.entity.ts` dentro de `users/`) se
+  conservan: el CLI singulariza el nombre del módulo para `entities/`, `dto/`,
+  `interfaces/` y `mappers/`, y lo deja en plural para `controllers/`,
+  `services/`, `repositories/` y `constants/`.
+
+```text
+todo-app-ddd/
+├── Cargo.toml                    # ≈ package.json + tsconfig.json
+├── rdd.toml                      # configuración (§15)
+├── rust-toolchain.toml           # perfil y componentes; el MSRV va en Cargo.toml
+├── rustfmt.toml                  # ≈ .prettierrc
+├── clippy.toml                   # ≈ .eslintrc.json
+├── Dockerfile
+├── .env                          # NO versionado (RF-063)
+├── .env.example
+├── .gitignore                    # incluye .env y target/ (RF-063)
+├── docs/
+├── prisma/
+│   ├── schema.prisma             # fuente de verdad del esquema de datos
+│   └── migrations/               # generadas por Prisma, versionadas en git
+├── tests/                        # integración (cargo)
+│   ├── acceptance.rs             # recorre §10.3; aceptación de 0.1
+│   ├── e2e/
+│   └── fixtures/
+└── src/
+    ├── main.rs                   # ≈ main.ts
+    ├── app_module.rs             # ≈ app.module.ts
+    ├── app_controller.rs         # ≈ app.controller.ts
+    ├── app_service.rs            # ≈ app.service.ts
+    ├── config/
+    │   ├── mod.rs                # ≈ configuration.ts
+    │   ├── app_config.rs
+    │   ├── database_config.rs
+    │   ├── jwt_config.rs
+    │   └── redis_config.rs
+    ├── common/
+    │   ├── mod.rs
+    │   ├── decorators/mod.rs
+    │   ├── filters/mod.rs
+    │   ├── guards/mod.rs
+    │   ├── interceptors/mod.rs
+    │   ├── middleware/mod.rs
+    │   ├── pipes/mod.rs
+    │   ├── constants/mod.rs
+    │   ├── enums/mod.rs
+    │   ├── interfaces/mod.rs
+    │   └── utils/mod.rs
+    ├── modules/
+    │   ├── mod.rs                # marcador `// rdd:mods` (§14.3)
+    │   └── tasks/                # módulo de ejemplo; nombre fijo (§14.1)
+    │       ├── mod.rs            # ≈ tasks.module.ts
+    │       ├── controllers/
+    │       │   ├── mod.rs
+    │       │   └── tasks_controller.rs
+    │       ├── services/
+    │       │   ├── mod.rs
+    │       │   └── tasks_service.rs
+    │       ├── repositories/
+    │       │   ├── mod.rs
+    │       │   └── tasks_repository.rs
+    │       ├── dto/
+    │       │   ├── mod.rs
+    │       │   ├── create_task_dto.rs
+    │       │   ├── update_task_dto.rs
+    │       │   └── query_task_dto.rs
+    │       ├── entities/
+    │       │   ├── mod.rs
+    │       │   └── task_entity.rs
+    │       ├── interfaces/
+    │       │   ├── mod.rs
+    │       │   └── task_interface.rs
+    │       ├── mappers/
+    │       │   ├── mod.rs
+    │       │   └── task_mapper.rs
+    │       ├── constants/
+    │       │   ├── mod.rs
+    │       │   └── tasks_constants.rs
+    │       └── tests/
+    │           ├── mod.rs
+    │           ├── tasks_service_test.rs
+    │           └── tasks_controller_test.rs
+    ├── infrastructure/
+    │   ├── mod.rs
+    │   ├── database/mod.rs
+    │   ├── cache/mod.rs
+    │   ├── queue/mod.rs
+    │   ├── storage/mod.rs
+    │   ├── messaging/mod.rs
+    │   └── external_services/mod.rs
+    ├── integrations/
+    │   ├── mod.rs
+    │   ├── aws/mod.rs
+    │   ├── telegram/mod.rs
+    │   ├── email/mod.rs
+    │   └── payment_gateways/mod.rs
+    ├── shared/
+    │   ├── mod.rs
+    │   ├── types/mod.rs
+    │   ├── interfaces/mod.rs
+    │   └── contracts/mod.rs
+    └── generated/                # generado por `rdd db generate`; NO se edita
+        └── mod.rs
+```
+
+### 5.1 Responsabilidad de cada carpeta
+
+| Carpeta | Responsabilidad | Equivalente NestJS |
+|---|---|---|
+| `modules/<m>/controllers/` | Adaptador HTTP: extrae, llama al service, devuelve. No decide (§3, RA-003). | `controllers/` |
+| `modules/<m>/services/` | Casos de uso y reglas de negocio. | `services/` |
+| `modules/<m>/repositories/` | Acceso a datos; envuelve `Repo<T>` (§12) o consultas especiales. | `repositories/` |
+| `modules/<m>/dto/` | Contratos de entrada/salida y validación. | `dto/` |
+| `modules/<m>/entities/` | Agregados y value objects del dominio. | `entities/` |
+| `modules/<m>/interfaces/` | Traits del dominio (p. ej. el puerto del repositorio). | `interfaces/` |
+| `modules/<m>/mappers/` | Transformación entidad ↔ DTO ↔ fila. | `mappers/` |
+| `modules/<m>/constants/` | Constantes del módulo. | `constants/` |
+| `modules/<m>/tests/` | Tests unitarios del módulo (`#[cfg(test)]`). | `__tests__/` |
+| `common/` | Componentes transversales propios del proyecto. | `common/` |
+| `infrastructure/` | Servicios técnicos: pool, caché, colas, almacenamiento. | `infrastructure/` |
+| `integrations/` | Clientes de sistemas externos. | `integrations/` |
+| `shared/` | Tipos, interfaces y contratos compartidos entre módulos. | `shared/` |
+| `config/` | Lectura de configuración por dominio, centralizada. | `config/` |
+
+**Dependencias permitidas** (misma dirección que §3): `controllers` → `services` → `entities`/`interfaces`; `repositories` implementa los `interfaces` y habla con `infrastructure`. Un módulo NO importa archivos internos de otro (RA-004).
+
+### 5.2 Requisitos de la estructura
+
+| ID | Requisito |
+|---|---|
+| RF-001 | `rdd g module <name>` DEBE generar el árbol de módulo de §5 (nueve carpetas con su `mod.rs` y los archivos nombrados arriba) y registrarlo en `src/modules/mod.rs` y `src/main.rs` (§14.3). |
+| RF-002 | `rdd new <name>` DEBE generar el árbol completo de §5, incluido el módulo de ejemplo `tasks`, salvo `--no-example`. |
+| RF-003 | Toda carpeta del scaffold que sea un módulo Rust DEBE llevar un `mod.rs`; las que no lo son (`docs/`, `prisma/migrations/`, `tests/e2e/`, `tests/fixtures/`) DEBEN llevar `.gitkeep`. Ninguna carpeta queda vacía. |
+| RF-004 | Cada `mod.rs` generado DEBE documentar en su cabecera qué va ahí y qué API de `rdd` lo cubre. Las carpetas cuya soporte llega en una fase posterior (§21) se generan como placeholder compilable, nunca como código que no compila. |
+| RF-005 | El singular de los nombres de archivo se calcula con una regla fija y documentada: `ies`→`y`; `ses`/`xes`/`zes`/`ches`/`shes`→quita `es`; `s` final (salvo `ss`)→quita `s`; en otro caso, igual. |
+| RF-006 | El scaffold NO DEBE generar código que dependa de macros o APIs aún no implementadas. En 0.1 `services/` y `entities/` son Rust plano; `#[service]` y `#[aggregate]` llegan en 0.2 y el CLI los añadirá entonces. |
+| **RF-007** `rdd new` y `rdd g module` DEBEN producir un proyecto que pasa `cargo check` sin edits manuales (RF-143), y `tests/acceptance.rs` DEBE pasar. El scaffold DEBE además nacer limpio: `cargo clippy --all-targets -- -D warnings` y `cargo fmt --all -- --check` sin diffs, porque el proyecto ya incluye `clippy.toml` y `rustfmt.toml (§5)` y sería contradictorio entregarlos con el código que los viola. El test de aceptación (§21) lo verifica también después de añadir un módulo de varias palabras (`task-items`), que es donde una plantilla se rompe por longitud de línea o por singularización. |
+
+---
+
+## 6. Núcleo: `App`, `Module`, contenedor
+
+### 6.1 `App`
+
+```rust
+App::new()
+    .database(env("DATABASE_URL"))   // opcional; sin esto, sin Repo SQL
+    .middleware(Cors::permissive())  // global (§11)
+    .module(tasks::module())
+    .run("0.0.0.0:3000")
+    .await
+```
+
+| ID | Requisito |
+|---|---|
+| RF-010 | `App::new()` DEBE crear una aplicación válida (responde 404 a todo). |
+| RF-011 | `.module(Module)` PUEDE llamarse múltiples veces; el orden de registro no afecta a la resolución de dependencias. |
+| RF-012 | `.run(addr)` DEBE: construir el contenedor, validar dependencias, crear el pool, componer rutas y middlewares en un `HttpApp`, abrir el `TcpListener` y entregar todo a la plataforma (§4.4). |
+| RF-013 | La aplicación DEBE apagarse ordenadamente ante `SIGTERM` y `Ctrl+C`, terminando las peticiones en curso. |
+| RF-014 | `env("X")` DEBE resolverse en el arranque; si falta, el proceso termina con un mensaje que nombra la variable. |
+| RF-015 | `.in_memory()` DEBE sustituir el backend de persistencia por uno en memoria (desarrollo y tests, §20). Tiene prioridad sobre una URL ya configurada. |
+| RF-016 | La app DEBERÍA exponer `GET /health` (200 con `{"status":"ok"}`), desactivable con `.without_health()`. |
+| RF-017 | Todo cuerpo de petición DEBE tener límite de tamaño por defecto de 2 MB, configurable con `.body_limit(bytes)`. |
+| RF-018 | Las rutas DEBEN normalizar la barra final: `/tasks` y `/tasks/` responden igual. La implementación es responsabilidad de cada plataforma (RP-008) y la verifica la suite de conformidad (C-03). |
+| RF-019 | `.run_on(plataforma, addr)` DEBE aceptar cualquier tipo que implemente `Platform` (§4.4). |
+
+### 6.2 `Module`
+
+```rust
+pub fn module() -> Module {
+    module! {
+        providers:   [TaskService],
+        controllers: [TaskController],
+        middlewares: [],              // opcional: aplican solo a este módulo
+    }
+}
+```
+
+Forma abreviada permitida: `module!(TaskService, TaskController)` — la macro clasifica cada tipo por el atributo con el que fue declarado (`#[service]` → provider, `#[controller]` → controller).
+
+### 6.3 Contenedor de dependencias (DI)
+
+**Limitación asumida (P7):** Rust no tiene reflexión. La DI de `rdd` **no se resuelve en compilación por completo**: las macros generan constructores tipados y el contenedor valida el grafo **al arrancar**.
+
+| ID | Requisito |
+|---|---|
+| RF-020 | Todo provider es **singleton**: una instancia creada al arrancar, compartida vía `Arc`. |
+| RF-021 | `#[service]` DEBE generar `impl FromContainer for T` que construye el struct tomando cada campo del contenedor por tipo. |
+| RF-022 | Tipos inyectables: otros services, `Repo<T>`, `Config<T>`, `Arc<T>` de recursos registrados con `.provide(valor)`. |
+| RF-023 | El contenedor DEBE construir los providers en orden topológico. |
+| RF-024 | Si falta una dependencia, el arranque DEBE fallar con mensaje: tipo solicitante, campo, tipo faltante y cómo registrarlo. |
+| RF-025 | Una dependencia circular DEBE detectarse al arrancar y reportar el ciclo completo (`A → B → A`). |
+| RF-026 | Los services DEBEN ser `Clone + Send + Sync + 'static` (campos `Arc` internamente). |
+| RF-027 | `rdd check` DEBERÍA detectar dependencias faltantes sin ejecutar la app (análisis estático básico, mejor esfuerzo). |
+| RF-028 | Scope por petición (request-scoped): **fuera del alcance** en 0.x. |
+
+### Ejemplo de código generado por `#[service]`
+
+```rust
+// El usuario escribe:
+#[service]
+pub struct TaskService { repo: Repo<Task> }
+
+// La macro genera (simplificado):
+impl ::rdd::di::FromContainer for TaskService {
+    fn from_container(c: &::rdd::di::Container) -> ::rdd::Result<Self> {
+        Ok(Self { repo: c.resolve::<Repo<Task>>("TaskService", "repo")? })
+    }
+}
+// Extractor propio del núcleo (no depende de ninguna plataforma):
+impl ::rdd::http::FromRequest for TaskService {
+    async fn from_request(_req: &::rdd::http::Request, ctx: &::rdd::http::Ctx) -> ::rdd::Result<Self> {
+        ctx.container().get::<TaskService>()
+    }
+}
+```
+
+---
+
+## 7. Building blocks DDD
+
+### 7.1 `Aggregate`
+
+```rust
+pub trait Aggregate: Send + Sync + 'static {
+    type Id: Clone + Send + Sync + 'static;
+    fn id(&self) -> &Self::Id;
+
+    /// Reservado para eventos de dominio. Implementación por defecto: vacío.
+    /// NO implementar comportamiento en 0.x.
+    fn take_events(&mut self) -> Vec<Box<dyn DomainEvent>> { Vec::new() }
+}
+```
+
+### 7.2 `#[aggregate]`
+
+```rust
+#[aggregate(table = "tasks")]
+pub struct Task {
+    #[id]
+    pub id: Uuid,
+    pub title: String,
+    pub done: bool,
+```
+
+| ID | Requisito |
+|---|---|
+| RF-030 | DEBE existir exactamente un campo `#[id]`; si no, error `RDD0101`. |
+| RF-031 | La macro DEBE generar `impl Aggregate` y añadir `#[derive(Debug, Clone, Serialize)]`. NO DEBE derivar `Deserialize` (el dominio no se construye desde JSON). |
+| RF-032 | Con `table = "..."` la macro DEBE generar `impl Persist` (§12) mapeando campos a columnas del mismo nombre en snake_case. |
+| RF-033 | Con `row = RowType` (en vez de `table`), el aggregate DEBE implementar `From<RowType>` y `Into<RowType>`; así el dominio queda separado de la forma de la tabla (ver ADR-05). |
+| RF-034 | Los campos DEBERÍAN ser privados salvo `id`; los métodos del aggregate imponen las invariantes. El modo simple permite campos `pub`. |
+
+### 7.3 Value Objects
+
+Se escriben a mano con constructor validado; el framework no impone macro en 0.x.
+
+```rust
+pub struct Title(String);
+impl Title {
+    pub fn new(s: impl Into<String>) -> Result<Self> {
+        let s = s.into();
+        if s.trim().is_empty() { return Err(Error::invalid("el título no puede estar vacío")); }
+        Ok(Self(s))
+    }
+}
+```
+
+### 7.4 `Error` y `Result`
+
+```rust
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+pub enum Error {
+    BadRequest(String),    // petición malformada
+    Invalid(String),       // regla de dominio / validación
+    Unauthorized,
+    Forbidden,
+    NotFound(String),
+    Conflict(String),
+    Internal(anyhow::Error),
+}
+```
+
+| ID | Requisito |
+|---|---|
+| RF-040 | Constructores: `Error::invalid(msg)`, `bad_request`, `not_found`, `conflict`, `unauthorized`, `forbidden`. |
+| RF-041 | `Error::Internal` DEBE registrar el detalle con `tracing::error!` y NO DEBE exponerlo al cliente. |
+| RF-042 | Cada adaptador DEBE convertir el error de su driver a `Error` con el mismo mapa: fila/documento no encontrado → `NotFound`; violación de unicidad → `Conflict`; resto → `Internal`. La conversión vive en el crate del motor, no en el núcleo (RA-014): `rdd-core` no conoce `sqlx::Error` ni ningún otro error de driver. |
+
+---
+
+## 8. Macros
+
+### 8.1 Catálogo
+
+| Macro | Aplica a | Efecto |
+|---|---|---|
+| `#[rdd::main]` | `async fn main` | Crea el runtime Tokio, inicializa `tracing` y carga `.env`. |
+| `#[aggregate(...)]` | `struct` | §7.2 |
+| `#[service]` | `struct` | §6.3 |
+| `#[controller("/ruta")]` | `impl` | §8.2 |
+| `#[get]` `#[post]` `#[put]` `#[patch]` `#[delete]` | método dentro de `#[controller]` | §8.2 |
+| `#[middleware(expr)]` | `impl` de controller o método | §11.4 |
+| `module!` | expresión | §6.2 |
+
+### 8.2 `#[controller]` y rutas
+
+```rust
+pub struct TaskController;            // DEBE declararse explícitamente
+
+#[controller("/tasks")]
+impl TaskController {
+    #[get("/")]
+    async fn list(svc: TaskService) -> Result<Vec<Task>> { svc.list().await }
+
+    #[post("/")]
+    async fn create(svc: TaskService, body: Json<NewTask>) -> Result<Task> {
+        svc.create(body.title.clone()).await
+    }
+
+    #[put("/:id/complete")]
+    async fn complete(svc: TaskService, id: Path<Uuid>) -> Result<Task> {
+        svc.complete(*id).await
+    }
+}
+```
+
+| ID | Requisito |
+|---|---|
+| RF-050 | Los métodos del controller son **funciones asociadas sin `self`**; los parámetros son extractores. |
+| RF-051 | La ruta final es `prefijo + ruta`, normalizando barras: `"/tasks"` + `"/"` → `/tasks`; `"/tasks"` + `"/:id"` → `/tasks/:id`. |
+| RF-052 | `Result<T>` donde `T: Serialize` DEBE convertirse a respuesta JSON. |
+| RF-053 | Código de estado por defecto: `POST` → **201**, `()` → **204**, resto → **200**. Se sobrescribe con `#[post("/", status = 202)]`. |
+| RF-054 | Extractores disponibles: `Json<T>`, `Path<T>`, `Query<T>`, `Header<T>`, `Ext<T>` (extensiones puestas por middlewares), cualquier `#[service]`, y `Config<T>`. `Json`, `Path` y `Query` implementan `Deref` hacia su contenido. |
+| RF-055 | Si un extractor falla (JSON inválido, UUID inválido), la respuesta DEBE ser `400` con el formato de §10.3. |
+| RF-056 | El método `routes()` generado (`TaskController::routes()`) DEVE devolver `Vec<RouteDef>` (§4.4); es el único código público que genera la macro además de los handlers. |
+| RF-057 | Los extractores implementan `rdd::http::FromRequest` (`async fn from_request(ctx: &Ctx, bind: Bind) -> Result<Self>`): [`Ctx`](§4.4) envuelve la petición ya leída (RP-002) y `Bind` es la pista de enlace que pasa la macro —qué parámetro de ruta o qué cabecera—, necesaria porque la firma es única para todos los extractores. Como el cuerpo está en memoria, varios extractores pueden leerlo en la misma petición. La macro desenrolla la llamada a cada extractor en el cuerpo generado, sin límite de parámetros impuesto por el sistema de tipos. |
+
+### 8.3 Cambio respecto a borradores previos
+
+En borradores anteriores `impl TaskController` aparecía sin declarar el struct. Una macro de atributo sobre un `impl` no puede declarar el tipo, por lo que **el struct se declara explícitamente** y el scaffold lo genera.
+
+### 8.4 `#[rdd::main]`
+
+```rust
+#[rdd::main]
+async fn main() -> Result<()> { App::new().module(tasks::module()).run("0.0.0.0:3000").await }
+```
+
+Equivale a un `#[tokio::main]` más: `dotenvy::dotenv().ok()`, inicialización de `tracing_subscriber` leyendo `RUST_LOG` (por defecto `info`), y conversión del `Result` final en código de salida.
+
+### 8.5 Expansión de referencia de un handler
+
+`#[controller]` emite, por cada handler, una función `__rdd_route_<handler>()` que devuelve la `RouteDef` (RF-056), y un `routes()` público que las agrupa. La composición de middlewares, la conversión `Result<T>` → respuesta y el aislamiento de pánicos no se escriben aquí: los hace el núcleo a través de [`rdd::api::route_def`], que es el contrato estable entre macro y núcleo (RA-010 impide que `rdd-macros` dependa de `rdd-core`).
+
+```rust
+// #[controller("/tasks")] impl TaskController { #[get("/")]
+//     async fn list(svc: TaskService) -> Result<Vec<Task>> { ... } }
+impl TaskController {
+    #[doc(hidden)]
+    #[allow(non_snake_case)]
+    pub fn __rdd_route_list() -> ::rdd::http::RouteDef {
+        ::rdd::api::route_def(
+            ::rdd::http::Method::GET,
+            "/tasks",                       // prefijo + ruta, normalizada (RF-051)
+            ::rdd::http::StatusCode::OK,    // estado base según verbo/unidad (RF-053)
+            ::std::vec![],                  // #[middleware] de la ruta, en orden (§11.3)
+            |__rdd_ctx: ::rdd::http::Ctx| async move {
+                // RF-057: un `let` por parámetro, sin límite de aridad.
+                let svc = ::rdd::api::extract::<TaskService>(&__rdd_ctx, ::rdd::http::Bind::none()).await?;
+                TaskController::list(svc).await
+            },
+        )
+    }
+
+    /// RF-056: el único código público generado además de los handlers.
+    pub fn routes() -> ::std::vec::Vec<::rdd::http::RouteDef> {
+        ::std::vec![TaskController::__rdd_route_list()]
+    }
+}
+```
+
+// Registro con el que `module!` y `App::controller` montan el controller (§6.2).
+impl ::rdd::Controller for TaskController {
+    const NAME: &'static str = "TaskController";
+    fn register(__rdd_router: &mut ::rdd::api::Router) {
+        __rdd_router.push(TaskController::__rdd_route_list());
+    }
+}
+
+impl ::rdd::ModuleMember for TaskController {
+    fn register(__rdd_builder: ::rdd::ModuleBuilder) -> ::rdd::ModuleBuilder {
+        __rdd_builder.controller::<TaskController>()
+    }
+}
+```
+
+Tres detalles frente a los borradores de esta sección (registro de cambios 0.2.1):
+
+- `Ctx` es **propietario** (`Ctx::of(req)`), no un borrow: los extractores devuelven datos con vida propia y el futuro del closure debe poder enviarse a otro task (RF-073). `ctx.request()` da el borrow cuando se necesita.
+- El estado base es un `StatusCode` que `route_def` aplica solo en `Ok`; un `Err` se materializa en Problem Details con el estado del error (§10.3, RP-004).
+- `TaskService` como extractor llega con `#[service]` (§6.3, fase 0.2). En fase 0.1 la misma forma aplica a `Json<T>`, `Path<T>`, `Query<T>`, `Header<T>` y `Ext<T>`, donde `Bind` lleva el nombre del parámetro de ruta o de la cabecera.
+
+### 8.6 Restricciones
+
+| ID | Requisito |
+|---|---|
+| RN-010 | Las macros NO DEBEN requerir `nightly`. |
+| RN-011 | Las macros NO DEBEN usar `unsafe`. |
+| RN-012 | El código generado DEBE usar rutas absolutas (`::rdd::...`) para evitar colisiones de nombres. |
+| RN-013 | Las macros DEBERÍAN poder inspeccionarse con `cargo expand` y el resultado DEBE coincidir con §8.5. |
+
+### 8.7 Catálogo de diagnósticos
+
+| Código | Causa | Mensaje (resumen) |
+|---|---|---|
+| RDD0101 | Aggregate sin `#[id]` | "`#[aggregate]` necesita un campo marcado con `#[id]`" |
+| RDD0102 | Más de un `#[id]` | "solo un campo puede ser `#[id]`" |
+| RDD0201 | `#[service]` con campo de tipo no inyectable | "el campo `x: T` no puede inyectarse; registra `T` con `.provide()` o conviértelo en `#[service]`" |
+| RDD0301 | Método de controller sin atributo de verbo | "añade `#[get]`, `#[post]`... o elimina el método del bloque `#[controller]`" |
+| RDD0302 | Método con `self` | "los handlers son funciones asociadas, quita `self`" |
+| RDD0303 | Ruta con sintaxis inválida | "la ruta debe empezar por `/`" |
+| RDD0304 | Dos handlers con mismo verbo y ruta | "ruta duplicada: `GET /tasks`" |
+| RDD0305 | Tipo de retorno no es `Result<T>` | "los handlers deben devolver `rdd::Result<T>`" |
+| RDD0401 | `#[middleware]` con expresión que no implementa `Middleware` | "`X` no implementa `rdd::Middleware`" |
+
+Cada diagnóstico DEBE señalar el span exacto y, cuando aplique, sugerir la corrección (`help:`).
+
+---
+
+## 9. Configuración tipada
+
+| ID | Requisito |
+|---|---|
+| RF-060 | `Config<T>` donde `T: Deserialize` DEBE cargarse de `rdd.toml` (sección `[app.config]`) con sobreescritura por variables de entorno. |
+| RF-061 | Precedencia: **variable de entorno > `rdd.toml` > valor por defecto**. |
+| RF-062 | Variables de entorno con prefijo `RDD_` y separador `__` (ej. `RDD_DATABASE__URL`). |
+| RF-063 | Los secretos NO DEBEN guardarse en `rdd.toml`; el scaffold añade `.env` a `.gitignore`. |
+
+---
+
+## 10. Capa HTTP
+
+### 10.1 Contratos
+
+| ID | Requisito |
+|---|---|
+| RF-070 | Todas las respuestas de éxito con cuerpo son `application/json`. |
+| RF-071 | Los nombres de campos JSON siguen el nombre del campo Rust (snake_case) salvo que el usuario use `#[serde(rename_all = "camelCase")]`. |
+
+### 10.2 Sintaxis de parámetros de ruta
+
+El framework expone **siempre** la sintaxis `/:id` (RP-003). Cada plataforma la traduce a la de su router (por ejemplo, las versiones recientes de Axum usan llaves). La traducción es interna a la plataforma, el código de usuario no cambia al actualizar ni al cambiar de plataforma, y la suite de conformidad la verifica (C-04). ⚠️ V1.
+
+### 10.3 Formato de errores (RFC 9457, Problem Details)
+
+Todas las respuestas de error DEBEN usar `Content-Type: application/problem+json`:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Unprocessable Entity",
+  "status": 422,
+  "detail": "el título no puede estar vacío",
+  "instance": "/tasks"
+}
+```
+
+| `Error` | HTTP |
+|---|---|
+| `BadRequest` | 400 |
+| `Unauthorized` | 401 |
+| `Forbidden` | 403 |
+| `NotFound` | 404 |
+| `Conflict` | 409 |
+| `Invalid` | 422 |
+| `Internal` | 500 (con `detail` genérico) |
+
+| ID | Requisito |
+|---|---|
+| RF-072 | Rutas inexistentes DEBEN responder 404 en este formato; métodos no permitidos, 405 con cabecera `Allow`. |
+| RF-073 | Un `panic` en un handler DEBE capturarse y devolver 500 sin tumbar el servidor. |
+
+---
+
+## 11. Sistema de middlewares
+
+### 11.1 Modelo
+
+Un middleware es una función asíncrona sobre los tipos del núcleo (`Request`, `Next`, `Response`) que devuelve una respuesta o un `Error`. El núcleo **compone la cadena completa** antes de entregar el handler a la plataforma (RP-005), por lo que el orden y la semántica son idénticos en cualquier plataforma.
+
+```rust
+pub trait Middleware: Send + Sync + 'static {
+    fn handle(&self, req: Request, next: Next)
+        -> impl Future<Output = Result<Response>> + Send;
+}
+```
+
+**Compatibilidad con Tower:** el trait `Middleware` NO depende de Tower. Las capas Tower existentes se pueden usar **solo** con `AxumPlatform` y envuelven por fuera toda la cadena de `rdd` (RF-089).
+
+### 11.2 Formas de registro
+
+```rust
+// A. Global
+App::new()
+    .middleware(Cors::permissive())
+    .middleware(Logger::default())
+
+// B. Función (sin trait ni boilerplate)
+.middleware(fn_middleware(|req, next| async move {
+    tracing::info!("{} {}", req.method(), req.uri());
+    next.run(req).await
+}))
+
+// C. Capa Tower: es una opción de la plataforma Axum, no de App (RF-089)
+//     .run_on(AxumPlatform::new().layer(CompressionLayer::new()), addr)
+
+// D. Por controller o por ruta
+#[controller("/tasks")]
+#[middleware(Authenticated)]
+impl TaskController {
+    #[delete("/:id")]
+    #[middleware(RequireRole::new("admin"))]
+    async fn remove(svc: TaskService, id: Path<Uuid>) -> Result<()> { svc.remove(*id).await }
+}
+```
+
+### 11.3 Orden de ejecución
+
+El primer middleware registrado es el **más externo**.
+
+```
+Request ─► [globales en orden de registro] ─► [de módulo] ─► [de controller] ─► [de ruta] ─► handler
+Response ◄──────────────────────────── (el mismo camino a la inversa) ◄─────────────────────────┘
+```
+
+| ID | Requisito |
+|---|---|
+| RF-080 | El orden anterior DEBE respetarse y estar cubierto por un test (§21). |
+| RF-081 | Los middlewares globales DEBEN envolver también las respuestas 404/405 (fallback), para que CORS y logging cubran rutas inexistentes. |
+| RF-082 | Un middleware PUEDE cortocircuitar devolviendo `Err(Error::...)` o una `Response` sin llamar a `next`. |
+| RF-083 | Un middleware PUEDE pasar datos a los handlers con `req.extensions_mut().insert(valor)`; el handler los lee con `Ext<T>`. |
+| RF-084 | Un middleware PUEDE obtener servicios con `req.resolve::<T>()` (usa el contenedor, §6.3). |
+| RF-085 | `CORS` DEBE registrarse primero. Debe responder el preflight `OPTIONS` antes de cualquier autenticación. |
+| RF-089 | Las capas Tower se configuran en la plataforma (`AxumPlatform::new().layer(...)`), envuelven por fuera toda la cadena de middlewares de `rdd` y NO pueden aplicarse por módulo, controller ni ruta. Las demás plataformas NO están obligadas a soportarlas. |
+
+### 11.4 `#[middleware(expr)]`
+
+| ID | Requisito |
+|---|---|
+| RF-086 | `expr` es cualquier expresión Rust que produzca un valor `impl Middleware`. |
+| RF-087 | Múltiples `#[middleware]` en el mismo elemento se aplican en el orden en que aparecen (el primero es el más externo). |
+| RF-088 | Un middleware de ruta NO DEBE ejecutarse si la ruta no hace match (no afecta a 404). |
+
+### 11.5 Crate `rdd-cors`
+
+Implementación **propia** sobre el trait `Middleware` del núcleo (sin Tower), de modo que funciona igual en cualquier plataforma. Sigue el protocolo CORS del estándar Fetch.
+
+```rust
+Cors::permissive()                          // desarrollo: cualquier origen
+Cors::new()
+    .allow_origin("https://miapp.com")
+    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+    .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+    .allow_credentials(true)
+    .max_age(Duration::from_secs(3600))
+Cors::from_config()                         // lee [cors] de rdd.toml
+```
+
+| ID | Requisito |
+|---|---|
+| RF-090 | `Cors::new()` sin configuración DEBE denegar todo origen cruzado (seguro por defecto). |
+
+---
+
+## 12. Reglas de dependencias (extiende §4.2)
+
+| Crate | Puede depender de | NO DEBE depender de |
+|---|---|---|
+| `rdd-core` | además: `tokio-util` (CancellationToken), `futures` | `axum`, `hyper`, `tokio-tungstenite`, cualquier plataforma |
+| `rdd-axum` | además: `tokio-tungstenite` (feature `ws`) | `rdd-hyper` |
+| `rdd-realtime` | `rdd-core`, `serde`, `serde_json`, `tokio`, `tracing` | `axum`, `hyper`, `rdd-mcp` |
+| `rdd-mcp` | `rdd-core`, `schemars`, `serde`, `serde_json`, `tokio`, `uuid`, `tracing` | `axum`, `hyper`, `rdd-realtime` |
+| `rdd` (fachada) | features opcionales `realtime`, `mcp` | — |
+| CI DEBE seguir verificando RA-011 (`cargo tree` / `cargo-deny bans`) para `rdd-core`, `rdd-realtime` y `rdd-mcp`. |
+
+---
+
+## 13. Criterios transversales
+
+- [ ] `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace` en verde en cada fase.
+- [ ] Cada requisito DEBE con test de integración o de conformidad; casos nuevos de comportamiento HTTP van a la suite en la misma PR (RP-022).
+- [ ] Los tests de streaming NO DEBEN usar `sleep` fijo largo: usar tiempos acotados (< 2 s) y señales explícitas.
+- [ ] Ningún test deja procesos ni tareas colgadas (los servidores de prueba se apagan con `ShutdownSignal`).
+- [ ] Documentación con ejemplo ejecutable por cada API pública nueva (`cargo test --doc`).
+- [ ] Cada fase termina actualizando `RDD-SPEC.md` y el registro de cambios.
+
+---
+
+## 14. Verificaciones pendientes ⚠️
+
+| # | Verificar | Fase | Impacto |
+|---|---|---|---|
+| V11 | Versión vigente de la especificación MCP y su transporte Streamable HTTP: cabeceras (`Mcp-Session-Id`, `MCP-Protocol-Version`), códigos de estado, reanudación con `Last-Event-ID`, lista de versiones soportables, si `initialize` admite lotes. Contrastar con la spec oficial antes de fijar RF-402/412–417. | 0.8 | RF-4xx |
+| V12 | Cómo completar el upgrade WebSocket de forma que `rdd-core` siga neutral: extensión en `Response` + handshake en la plataforma (`axum::extract::ws` / `hyper::upgrade`). | 0.6 | RF-250, RP-033 |
+| V13 | Cómo detectar la desconexión del cliente en el cuerpo en streaming de Axum (drop del cuerpo/stream) para cancelar `Connection::closed`. | 0.1b | RP-031 |
+| V14 | Compatibilidad de `schemars` con la versión de `serde` y su soporte de JSON Schema para el `inputSchema` de MCP. | 0.8 | RF-403 |
+| V15 | Si el `shutdown` con streams activos de `axum::serve` espera indefinidamente y cómo forzar el cierre tras `shutdown_grace`. | 0.1b | RP-032 |
+
+---
+
+## 15. Fuera de alcance de este addendum
+
+Streaming de **petición** (subidas grandes), compatibilidad con clientes oficiales de Socket.IO (candidato `rdd-socketio`), escalado horizontal / bus entre instancias, autenticación OAuth del servidor MCP, `rdd-hyper` (sigue en su fase 0.5 del spec base, pero DEBERÁ implementar `capabilities()` y `Body::Stream` cuando exista), macros para declarar tools (`#[mcp_tool]`, candidato posterior).
+
+---
+
+## 16. Registro de cambios
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 0.3.0-draft | 2026-11-07 | Streaming de respuesta (`Body::Stream`, SSE, cancelación, backpressure), WebSocket como capacidad de plataforma, `rdd-realtime` (protocolo propio) y `rdd-mcp` (Streamable HTTP + stdio). Sustituye ADR-12; nuevos ADR-16…20; nuevas verificaciones V11…V15. |
+| 0.4.4-draft | 2026-11-07 | Documento actualizado con nueva versión; verificaciones y addendum integrados. |
+
+---
+
+<nav class="doc-pager">
+  <a class="pager-link prev disabled"><span class="dir">← Anterior</span><span class="title">N/A</span></a>
+  <a class="pager-link next disabled"><span class="dir">Siguiente →</span><span class="title">N/A</span></a>
+</nav>`;
+
+      const bodyDiv = document.getElementById('spec-body');
+      bodyDiv.innerHTML = '';
+      
+      // Create a highlightable code block from the spec
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.className = 'language-markdown';
+      code.textContent = specContent;
+      pre.appendChild(code);
+      
+      // Apply syntax highlighting
+     hljs.highlightElement(code);
+      
+      bodyDiv.appendChild(pre);
+      
+      // Initialize tabs
+      const tabs = document.querySelectorAll('.spec-tab');
+      const specBody = document.getElementById('spec-body');
+      
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          // Update active tab
+          tabs.forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          
+          const targetId = tab.dataset.tab;
+          // All content is already loaded, just show/hide sections
+          // For now, show the full content
+        });
+      });
+    });
+  </script>
+</body>
+</html>

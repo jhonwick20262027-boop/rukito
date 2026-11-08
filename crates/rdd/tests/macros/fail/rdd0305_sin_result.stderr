@@ -1,0 +1,6 @@
+error: RDD0305: los handlers deben devolver `rdd::Result<T>` (§8.7)
+         help: `-> Result<Task>` para un cuerpo JSON, `-> Result<()>` si no hay respuesta
+  --> tests/macros/fail/rdd0305_sin_result.rs:12:24
+   |
+12 |     async fn list() -> u32 {
+   |                        ^^^

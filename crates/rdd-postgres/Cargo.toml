@@ -1,0 +1,24 @@
+[package]
+name        = "rdd-postgres"
+description = "Adaptador PostgreSQL para el puerto DbAdapter de rdd (§12), sobre sqlx."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+rdd-core.workspace = true
+sqlx.workspace = true
+
+# RA-015: ningún otro adaptador y ninguna plataforma HTTP entran aquí. La suite de
+# conformidad solo hace falta para probar, así que va como dev-dependency.
+[dev-dependencies]
+rdd-db-tests.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true

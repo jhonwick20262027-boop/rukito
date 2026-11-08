@@ -1,0 +1,69 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rdd",
+    "crates/rdd-axum",
+    "crates/rdd-cli",
+    "crates/rdd-core",
+    "crates/rdd-db-tests",
+    "crates/rdd-macros",
+    "crates/rdd-platform-tests",
+    "crates/rdd-postgres",
+]
+
+[workspace.package]
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.85"
+license      = "MIT"
+repository   = "https://example.invalid/rdd"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Los IDs de requisito (`RF-080`) aparecen en doc-comments con guiones; no son
+# referencias de API, así que `doc_markdown` solo generaría ruido.
+doc_markdown = "allow"
+
+[workspace.dependencies]
+rdd-core           = { path = "crates/rdd-core",           version = "0.1.0" }
+rdd-macros         = { path = "crates/rdd-macros",         version = "0.1.0" }
+rdd                = { path = "crates/rdd",                version = "0.1.0" }
+rdd-axum           = { path = "crates/rdd-axum",           version = "0.1.0" }
+rdd-platform-tests = { path = "crates/rdd-platform-tests", version = "0.1.0" }
+rdd-db-tests       = { path = "crates/rdd-db-tests",       version = "0.1.0" }
+rdd-postgres       = { path = "crates/rdd-postgres",       version = "0.1.0" }
+rdd-cors           = { path = "crates/rdd-cors",           version = "0.1.0" }
+rdd-logger         = { path = "crates/rdd-logger",         version = "0.1.0" }
+
+anyhow             = "1.0"
+axum               = "0.8"
+bytes              = "1.12"
+clap               = { version = "4.6", features = ["derive"] }
+dotenvy            = "0.15"
+futures            = "0.3"
+http               = "1.5"
+http-body-util     = "0.1"
+hyper              = { version = "1.6", features = ["full"] }
+hyper-util         = { version = "0.1", features = ["full"] }
+matchit            = "0.9"
+proc-macro-error2  = { version = "2.0", default-features = false, features = ["syn-derror"] }
+proc-macro2        = "1.0"
+quote              = "1.0"
+serde              = { version = "1.0", features = ["derive"] }
+serde_json         = "1.0"
+sqlx               = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+syn                = { version = "2.0", features = ["full"] }
+thiserror          = "2.0"
+tokio              = { version = "1.54", features = ["full"] }
+tokio-util         = "0.7"
+tower              = { version = "0.5", features = ["util"] }
+tower-http         = { version = "0.7", features = ["limit", "trace", "cors", "compression"] }
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+trybuild           = "1.0"
+uuid               = { version = "1.29", features = ["v4", "serde"] }
+
+[profile.release]
+opt-level = 2

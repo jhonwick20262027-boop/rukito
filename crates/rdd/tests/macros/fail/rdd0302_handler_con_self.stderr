@@ -1,0 +1,6 @@
+error: RDD0302: los handlers de controller son funciones asociadas, no métodos con `self` (RF-050)
+         help: quita `self`; el estado va en los servicios inyectados como parámetros
+  --> tests/macros/fail/rdd0302_handler_con_self.rs:12:19
+   |
+12 |     async fn list(&self) -> rdd::Result<u32> {
+   |                   ^^^^^

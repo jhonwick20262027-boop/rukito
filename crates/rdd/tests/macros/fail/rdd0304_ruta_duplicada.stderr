@@ -1,0 +1,5 @@
+error: RDD0304: ruta duplicada: `GET /c` (§8.7)
+  --> tests/macros/fail/rdd0304_ruta_duplicada.rs:16:5
+   |
+16 |     #[get("/")]
+   |     ^^^^^^^^^^^

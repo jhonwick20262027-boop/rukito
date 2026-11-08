@@ -1,0 +1,6 @@
+error: RDD0301: `#[get]` declara la ruta `GET …`, pero solo tiene sentido dentro de un `impl` marcado con `#[controller]` (§8.2)
+         help: mueve el método a un bloque `#[controller("/prefijo")] impl MiController`
+ --> tests/macros/fail/rdd0301_verbo_suelto.rs:8:1
+  |
+8 | async fn suelto() -> rdd::Result<u32> {
+  | ^^^^^

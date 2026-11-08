@@ -1,0 +1,5 @@
+error: RDD0301: un método dentro de `#[controller]` debe llevar un atributo de verbo (`#[get]`, `#[post]`, `#[put]`, `#[patch]`, `#[delete]`) o salir de este bloque (§8.2)
+  --> tests/macros/fail/rdd0301_metodo_sin_verbo.rs:11:14
+   |
+11 |     async fn helper() -> rdd::Result<u32> {
+   |              ^^^^^^

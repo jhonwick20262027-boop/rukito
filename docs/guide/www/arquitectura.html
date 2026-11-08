@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rdd — Arquitectura del Framework</title>
+  <link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+  <div id="site-header-root"></div>
+
+  <script src="assets/js/highlight.js"></script>
+  <script src="assets/js/site.js"></script>
+  <script>
+    window.RDD = window.RDD || {};
+    RDD.config = {
+      repo: "https://github.com/jhonwick20262027-boop/rdd",
+      version: "v0.1.0",
+      specVersion: "0.4.4",
+    };
+    RDD.searchIndex = [];
+  </script>
+</body>
+<body>
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="index.html" class="active">Inicio</a>
+        <a href="cli.html">CLI</a>
+        <a href="especificacion.html">Especificación</a>
+      </div>
+      <div class="sidebar-group">
+        <h4>Arquitectura</h4>
+        <a href="#workspace">Workspace del framework</a>
+        <a="#dependencias">Dependencias entre crates</a>
+        <a="#stack">Stack tecnológico</a>
+        <a="#interfaz">Interfaz de plataforma</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Inicio</a><span class="sep">/</span><span class="here">Arquitectura</span>
+      </nav>
+
+      <h1>Arquitectura del Framework rdd</h1>
+
+      <section class="arch-section">
+        <div class="arch-grid">
+          <div class="arch-diagram">
+            <svg viewBox="0 0 800 600" aria-labelledby="diagram-title">
+              <title id="diagram-title">Arquitectura del framework rdd</title>
+              <!-- Workspace -->
+              <rect x="20" y="20" width="160" height="80" rx="10" fill="#17130e" stroke="#2b2318"/>
+              <text x="80" y="55" text-anchor="middle" fill="#afa28b" font-family="JetBrains Mono" font-size="11">Cargo.toml<br/>(workspace)</text>
+              <line x1="90" y1="60" x2="100" y2="60" stroke="#2b2318"/>
+              
+              <!-- rdd-core -->
+              <rect x="200" y="20" width="140" height="80" rx="10" fill="#17130e" stroke="#2b2318"/>
+              <text x="270" y="55" text-anchor="middle" fill="#afa28b" font-family="JetBrains Mono" font-size="11">rdd-core<br/>núcleo</text>
+              <line x1="260" y1="60" x2="270" y2="60" stroke="#2b2318"/>
+              
+              <!-- rdd-axum -->
+              <rect x="380" y="20" width="140" height="80" rx="10" fill="#17130e" stroke="#2b2318"/>
+              <text x="450" y="55" text-anchor="middle" fill="#afa28b" font-family="JetBrains Mono" font-size="11">rdd-axum<br/>HTTP platform</text>
+              <line x1="440" y1="60" x2="450" y2="60" stroke="#2b2318"/>
+              
+              <!-- rdd -->
+              <rect x="560" y="20" width="140" height="80" rx="10" fill="#17130e" stroke="#2b2318"/>
+              <text x="630" y="55" text-anchor="middle" fill="#afa28b" font-family="JetBrains Mono" font-size="11">rdd<br/>fachada</text>
+              <line x1="620" y1="60" x2="630" y2="60" stroke="#2b2318"/>
+              
+              <!-- rdd-cli -->
+              <rect x="200" y="120" width="140" height="80" rx="10" fill="#17130e" stroke="#2b2318"/>
+              <text x="270" y="155" text-anchor="middle" fill="#afa28b" font-family="JetBrains Mono" font-size="11">rdd-cli<br/>CLI binary</text>
+              <line x1="260" y1="160" x2="270" y2="160" stroke="#2b2318"/>
+              
+              <!-- rdd-platform-tests -->
+              <rect x="420" y="120" width="140" height="80" rx="10" fill="#17130e" stroke="#2b2318"/>
+              <text x="490" y="155" text-anchor="middle" fill="#afa28b" font-family="JetBrains Mono" font-size="11">rdd-platform-tests<br/>conformance suite</text>
+              <line x1="480" y1="160" x2="490" y2="160" stroke="#2b2318"/>
+              
+              <!-- Adaptadores -->
+              <rect x="640" y="120" width="140" height="80" rx="10" fill="#17130e" stroke="#2b2318"/>
+              <text x="710" y="155" text-anchor="middle" fill="#afa28b" font-family="JetBrains Mono" font-size="11"> adaptadores<br/>(postgres, mysql,...</text>
+              <line x1="700" y1="160" x2="710" y2="160" stroke="#2b2318"/>
+              
+              <!-- User app -->
+              <rect x="100" y="260" width="200" height="100" rx="10" fill="#1a0d05" stroke="#ff5f57"/>
+              <text x="200" y="310" text-anchor="middle" fill="#f3ecdd" font-family="JetBrains Mono" font-size="11">tu-app<br/>(todo-app-ddd)</text>
+              <line x1="200" y1="300" x2="200" y2="300" stroke="#ff5f57"/>
+              
+              <!-- Connections -->
+              <line x1="180" y1="60" x2="200" y2="60" stroke="#2b2318"/>
+              <line x1="360" y1="60" x2="380" y2="60" stroke="#2b2318"/>
+              <line x1="540" y1="60" x2="560" y2="60" stroke="#2b2318"/>
+              <line x1="720" y1="60" x2="640" y2="60" stroke="#2b2318"/>
+              <line x1="270" y1="100" x2="270" y2="120" stroke="#2b2318"/>
+              <line x1="490" y1="100" x2="490" y2="120" stroke="#2b2318"/>
+              <line x1="100" y1="160" x2="100" y2="260" stroke="#2b2318"/>
+              <line x1="310" y1="160" x2="310" y2="260" stroke="#2b2318"/>
+              <line x1="100" y1="360" x2="300" y2="360" stroke="#2b2318"/>
+            </svg>
+          </div>
+
+          <div class="arch-info">
+            <h3>Principios Fundamentales</h3>
+            <p>El framework rdd sigue un diseño limpiamente separado entre núcleo y plataformas:</p>
+            
+            <div class="golden-rule">
+              <b>Regla de oro (RA-001):</b> Las reglas de negocio viven en el aggregate. El controller nunca decide.
+            </div>
+            
+            <h4>Rasgos clave:</h4>
+            <ul>
+              <li><strong>Core HTTP neutral:</strong> Tipos HTTP basados en crate `http`, no en Axum ni hyper directamente</li>
+              <li><strong>Plataforma adaptador:</strong> Axum es la plataforma por defecto, hyper es alternativa intercambiable</li>
+              <li><strong>Sin dependencias circulares:</strong> rdd-core conoce nada de HTTP; las plataformas dependen solo del núcleo</li>
+              <li><strong>DI limitada:</strong> Sin reflexión en tiempo de ejecución; las macros generan constructores tipados</li>
+              <li><strong>Errores Problem Details:</strong> Todas las respuestas siguen RFC 9457 (problem+json)</li>
+            </ul>
+            
+            <h4>Workspace estructura:</h4>
+            <pre>
+crates/
+├── rdd/            # FACHADA: re-exporta rdd-core + macros + feature axum
+├── rdd-core/       # Núcleo: App, DI, middlewares, RouteDef, trait Platform
+├── rdd-axum/       # Plataforma por defecto
+├── rdd/            # Fachada de usuario
+├── rdd-cli/        # Binario `rdd`
+└── todo-app-ddd/   # Aplicación ejemplo
+</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="workspace" class="section">
+        <h2>Workspace del Framework</h2>
+        <p>El repositorio del framework contiene todos los crates necesarios:</p>
+        <ul>
+          <li><strong>rdd-core:</strong> Núcleo puro, sin Axum, sin hyper, sin drivers SQL</li>
+          <li><strong>rdd-macros:</strong> Procedural macros para controller, service, aggregate, middleware</li>
+          <li><strong>rdd-axum:</strong> Plataforma HTTP por defecto sobre Axum</li>
+          <li><strong>rdd-hyper:</strong> Plataforma propia basada en hyper (fase 0.5)</li>
+          <li><strong>rdd-cors, rdd-logger:</strong> Middlewares oficiales</li>
+          <li><strong>rdd-platform-tests:</strong> Suite de conformidad para todas las plataformas</li>
+          <li><strong>rdd-db-tests:</strong> Suite para adaptadores de base de datos</li>
+          <li><strong>rdd-postgres, rdd-mysql, etc.:</strong> Adaptadores por motor</li>
+          <li><strong>rdd-cli:</strong> Interfaz de línea de comandos</li>
+        </ul>
+      </section>
+
+      <section id="dependencias" class="section">
+        <h2>Dependencias entre Crates</h2>
+        <pre>
+rdd-macros ────┐
+                ├── rdd-core ──┐
+                │               ├── rdd (fachada) ──► [feature axum] → rdd-axum
+                │               │                 └─► [feature hyper] → rdd-hyper
+                │               ├── rdd-cors, rdd-logger
+                │               ├── rdd-postgres, rdd-mysql, rdd-mongodb
+                │               ├── rdd-platform-tests (dev)
+                │               └── rdd-db-tests (dev)
+                └── rdd-prisma ──► rdd-cli
+rdd-cli ────────┘
+</pre>
+      </section>
+
+      <section id="stack" class="section">
+        <h2>Stack Tecnológico</h2>
+        <table>
+          <tr><td>Runtime async</td><td>tokio</td><td>núcleo</td><td>Estándar de facto (ADR-11)</td></tr>
+          <tr><td>Tipos HTTP</td><td>crate http + bytes</td><td>núcleo</td><td>Neutrales: compartidos por Axum, hyper, Tower</td></tr>
+          <tr><td>Plataforma por defecto</td><td>axum (⚠️ V1)</td><td>rdd-axum</td><td>Router y servidor maduros</td></tr>
+          <tr><td>Plataforma propia</td><td>hyper + hyper-util (⚠️ V9)</td><td>rdd-hyper</td><td>Control total, valida abstracción</td></tr>
+          <tr><td>Capas Tower</td><td>tower, tower-http</td><td>solo rdd-axum</td><td>Opcionales vía AxumPlatform::layer (RF-089)</td></tr>
+          <tr><td>Puerto persistencia</td><td>DbAdapter propio</td><td>núcleo</td><td>Sin drivers: RA-014</td></tr>
+          <tr><td>PostgreSQL / MySQL</td><td>sqlx 0.9</td><td>rdd-postgres, rdd-mysql</td><td>Async, sin ORM pesado</td></tr>
+          <tr><td>MongoDB</td><td>mongodb 3.x oficial</td><td>rdd-mongodb</td><td>Driver async, sin SQL ni JOIN</td></tr>
+          <tr><td>Redis</td><td>cliente async (⚠️ V13)</td><td>rdd-redis</td><td>KV: agregados simples + caché</td></tr>
+          <tr><td>SQL Server</td><td>tiberius-ng 0.13 + bb8 (⚠️ V12)</td><td>rdd-mssql</td><td>sqlx eliminó MSSQL en 0.7</td></tr>
+          <tr><td>Serialización</td><td>serde, serde_json</td><td>núcleo</td><td>Estándar</td></tr>
+          <tr><td>Errores</td><td>thiserror + anyhow</td><td>núcleo</td><td>Errores tipados en el borde</td></tr>
+          <tr><td>Trazas</td><td>tracing, tracing-subscriber</td><td>núcleo</td><td>Estándar</td></tr>
+          <tr><td>IDs</td><td>uuid</td><td>núcleo</td><td>Estándar</td></tr>
+          <tr><td>Macros</td><td>syn, quote, proc-macro2</td><td>rdd-macros</td><td>Diagnósticos claros</td></tr>
+          <tr><td>CLI</td><td>clap</td><td>rdd-cli</td><td>Estándar</td></tr>
+          <tr><td>Esquema/migraciones</td><td>Prisma CLI (Node)</td><td>herramienta externa</td><td>Ver §13</td></tr>
+        </table>
+      </section>
+
+      <section id="interfaz" class="section">
+        <h2>Interfaz de Plataforma (Modelo Adaptador)</h2>
+        <p>El núcleo define <strong>qué</strong> es una aplicación HTTP (rutas como datos, middlewares compuestos). La plataforma solo sabe <strong>servirla</strong>.</p>
+        
+        <h3>Tipo HttpApp:</h3>
+        <pre>
+// rdd-core
+pub type Request   = http::Request<bytes::Bytes>;
+pub type Response  = http::Response<bytes::Bytes>;
+pub type BoxHandler = Arc<dyn Fn(Request) -> BoxFuture<'static, Response> + Send + Sync>;
+
+pub struct RouteDef {
+    pub method:  Method,
+    pub path:    String,              // Siempre sintaxis "/:id" (RP-003)
+    pub handler: BoxHandler,           // incluye su cadena completa de middlewares
+}
+
+pub struct HttpApp {
+    pub routes:   Vec<RouteDef>,
+    pub fallback: BoxHandler,         // decide 404 o 405 (RP-007)
+    pub limits:   Limits,
+}
+impl HttpApp {
+    pub async fn dispatch(&self, req: Request) -> Response;
+}
+</pre>
+
+        <h3>Trait Platform:</h3>
+        <pre>
+// rdd-core
+pub trait Platform: Send + 'static {
+    fn name(&self) -> &'static str;
+    fn serve(self, app: HttpApp, listener: TcpListener, shutdown: ShutdownSignal)
+        -> BoxFuture<'static, Result<()>>;
+}
+</pre>
+
+        <p>El núcleo provee <code>App::run(addr)</code> usando la plataforma por defecto (Axum), o <code>App::run_on(plataforma, addr)</code> para cualquiera implementada.</p>
+      </section>
+    </main>
+
+    <aside class="doc-pager">
+      <a class="pager-link prev disabled"><span class="dir">← Anterior</span><span class="title">N/A</span></a>
+      <a class="pager-link next"><span class="dir">Siguiente →</span><span class="title">Guía Rápida</span></a>
+    </aside>
+  </article>
+</body>
+</html>

@@ -1,0 +1,43 @@
+[package]
+name        = "rdd"
+description = "Fachada del framework: re-exporta rdd-core y las macros, y elige la plataforma por feature."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# RA-013: el usuario depende de este crate, nunca de rdd-core a secas, porque lo
+# que generan las macros son rutas absolutas ::rdd::...
+rdd-core.workspace = true
+rdd-macros.workspace = true
+
+# Lo que necesita #[rdd::main] (§8.4), re-exportado para que el proyecto del
+# usuario no declare dependencias de infraestructura.
+dotenvy.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# La plataforma por defecto: `rdd-axum` (RP-012). Es `optional` para poder
+# compilar la fachada sin ella y verificar que `run()` desaparece.
+rdd-axum = { workspace = true, optional = true }
+
+[features]
+default = ["axum"]
+# Activar `axum` hace dos cosas: trae la plataforma y le dice al núcleo que
+# existe una plataforma por defecto, que es lo que habilita `App::run` (RP-012).
+axum    = ["dep:rdd-axum", "rdd-core/default-platform"]
+
+[dev-dependencies]
+bytes.workspace = true
+http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+trybuild.workspace = true
+uuid.workspace = true

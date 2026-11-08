@@ -1,0 +1,21 @@
+[package]
+name        = "rdd-macros"
+description = "Proc-macros de rdd: #[controller], verbos HTTP, #[middleware], #[rdd::main] y module!."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# RA-010: este crate NO depende de rdd-core. Lo que genera usa rutas absolutas
+# ::rdd::... (RN-012), asi que el arbol de dependencias se cierra en la fachada.
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true

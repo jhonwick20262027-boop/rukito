@@ -1,0 +1,5 @@
+error: RDD0303: el prefijo de `#[controller]` debe empezar por `/` (§8.2)
+ --> tests/macros/fail/rdd0303_prefijo_sin_barra.rs:9:14
+  |
+9 | #[controller("c")]
+  |              ^^^

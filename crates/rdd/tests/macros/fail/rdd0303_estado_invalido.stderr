@@ -1,0 +1,7 @@
+error: RDD0303: la ruta del verbo debe ser una cadena literal que empiece por `/`, con parámetros `/:nombre` (§8.2, §10.2)
+        Detalle del parser: RDD0303: `42` no es un `status` válido; se quiere un decimal entre 100 y 999 (RF-053)
+         help: `#[get("/tasks", status = 201)]`
+  --> tests/macros/fail/rdd0303_estado_invalido.rs:11:25
+   |
+11 |     #[get("/", status = 42)]
+   |                         ^^

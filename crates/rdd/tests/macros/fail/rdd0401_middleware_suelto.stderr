@@ -1,0 +1,6 @@
+error: RDD0401: `#[middleware(…)]` solo se interpreta dentro de un `impl` marcado con `#[controller]` (§11.4)
+         help: el atributo acompaña a la declaración de una ruta; sueltos, los middlewares se registran con `App::middleware(…)` o `Module::middleware(…)`
+ --> tests/macros/fail/rdd0401_middleware_suelto.rs:7:14
+  |
+7 | #[middleware(Algo)]
+  |              ^^^^

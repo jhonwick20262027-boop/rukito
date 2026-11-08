@@ -1,44 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>rdd — Especificación Técnica del Framework REST DDD</title>
   <link rel="stylesheet" href="assets/css/main.css">
 </head>
-<body>
+<body data-nav="spec">
   <div id="site-header-root"></div>
 
   <script src="assets/js/highlight.js"></script>
   <script src="assets/js/site.js"></script>
   <script>
     window.RDD = window.RDD || {};
-    RDD.config = {
-      repo: "https://github.com/jhonwick20262027-boop/rdd",
-      version: "v0.1.0",
-      specVersion: "0.4.4",
-    };
     // Build search index from the RDD-SPEC content
     RDD.searchIndex = [
-      { title: "0. Cómo usar este documento", section: "Introducción", keywords: "rdd, spec, documento, verdad", url: "#0-_-cómo-usar-este-documento" },
-      { title: "1. Visión y principios", section: "Principios", keywords: "rdd, vision, principios, diseño", url: "#1-_-visión-y-principios" },
-      { title: "2. Alcance", section: "Alcance", keywords: "rdd, alcance, fases, fuera-alcance", url: "#2-_-alcance" },
-      { title: "3. Glosario DDD", section: "Glosario", keywords: "rdd, ddd, aggregate, service, repository", url: "#3-_-glosario-ddd-aplicado" },
-      { title: "4. Arquitectura general", section: "Arquitectura", keywords: "rdd, arquitectura, workspace, crate, platform", url: "#4-_-arquitectura-general" },
-      { title: "5. Estructura de proyecto de usuario", section: "Usuario", keywords: "rdd, proyecto, scaffold, convention, nestjs", url: "#5-_-estructura-de-proyecto-de-usuario" },
-      { title: "6. Núcleo: App, Module, contenedor", section: "Núcleo", keywords: "rdd, app, module, di, container", url: "#6-_-núcleo-app-module-contenedor" },
-      { title: "7. Building blocks DDD", section: "Bloques DDD", keywords: "rdd, aggregate, value-object, error, result", url: "#7-_-building-blocks-ddd" },
-      { title: "8. Macros", section: "Macros", keywords: "rdd, macro, controller, service, aggregate", url: "#8-_-macros" },
-      { title: "9. Configuración tipada", section: "Config", keywords: "rdd, config, rdd.toml, entorno, variables", url: "#9-_-configuración-tipada" },
-      { title: "10. Capa HTTP", section: "HTTP", keywords: "rdd, http, error, problem details, rfcs", url: "#10-_-capa-http" },
-      { title: "11. Sistema de middlewares", section: "Middlewares", keywords: "rdd, middleware, cors, logger, rf-080", url: "#11-_-sistema-de-middlewares" },
-      { title: "12. Reglas de dependencias", section: "Dependencias", keywords: "rdd, crate, dependency, RA-011", url: "#12-_-reglas-de-dependencias" },
-      { title: "13. Criterios transversales", section: "Criterios", keywords: "rdd, test, fmt, clippy, verde", url: "#13-_-criterios-transversales" },
-      { title: "14. Verificaciones pendientes", section: "Verificaciones", keywords: "rdd, V11, V12, V13, V14, V15", url: "#14-_-verificaciones-pendientes" },
+      { title: "Especificación técnica", section: "Documento completo", keywords: "rdd, spec, requisitos, arquitectura, DDD", url: "especificacion.html" },
     ];
   </script>
-</head>
-<body>
   <article class="spec-layout">
     <div class="spec-tabs">
       <div class="spec-tab active" data-tab="0">0. Cómo usar</div>

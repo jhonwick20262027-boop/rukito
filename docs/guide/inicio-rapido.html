@@ -1,40 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>rdd — Guía Rápida de Inicio</title>
-  <link rel="stylesheet" href="assets/css/main.css">
+  <meta name="description" content="Crea y ejecuta tu primera API con rdd en Rust.">
+  <link rel="stylesheet" href="../assets/css/main.css">
 </head>
-<body>
+<body data-root=".." data-nav="guide">
   <div id="site-header-root"></div>
 
-  <script src="assets/js/highlight.js"></script>
-  <script src="assets/js/site.js"></script>
-  <script>
-    window.RDD = window.RDD || {};
-    RDD.config = {
-      repo: "https://github.com/jhonwick20262027-boop/rdd",
-      version: "v0.1.0",
-      specVersion: "0.4.4",
-    };
-    RDD.searchIndex = [];
-  </script>
+  <script src="../assets/js/highlight.js"></script>
+  <script src="../assets/js/site.js"></script>
 
   <article class="docs-layout">
     <aside class="sidebar">
       <div class="sidebar-group">
         <h4>Secciones</h4>
-        <a href="index.html" class="active">Inicio</a>
+        <a href="inicio-rapido.html" class="active">Guía rápida</a>
         <a href="arquitectura.html">Arquitectura</a>
         <a href="cli.html">CLI</a>
-        <a href="especificacion.html">Especificación</a>
+        <a href="../especificacion.html">Especificación</a>
       </div>
     </aside>
 
     <main class="doc-content">
       <nav class="breadcrumb">
-        <a href="index.html">Inicio</a><span class="sep">/</span><span class="here">Guía Rápida</span>
+        <a href="../index.html">Inicio</a><span class="sep">/</span><span class="here">Guía rápida</span>
       </nav>
 
       <h1>Guía Rápida: Tu Primera API con rdd</h1>
@@ -48,8 +40,8 @@
               Construye APIs robustas con ergonomía de NestJS y minimalismo de Rust.
             </p>
             <div class="hero-ctas">
-              <a href="guide/cli.html" class="btn btn-primary btn-sm">Ver CLI</a>
-              <a href="especificacion.html" class="btn btn-primary btn-sm">Ver Especificación</a>
+              <a href="cli.html" class="btn btn-primary btn-sm">Ver CLI</a>
+              <a href="../especificacion.html" class="btn btn-primary btn-sm">Ver especificación</a>
             </div>
           </div>
           <div>
@@ -140,7 +132,7 @@ cd mi-api</code></pre>
         </div>
 
         <h2>Ejemplo completo</h2>
-        <p>El comando <code>rdd new</code> genera una estructura completa como la mostrada en la <a href="especificacion.html#5-estructura-de-proyecto-de-usuario">sección de estructura de proyecto</a>, incluyendo:</p>
+        <p>El comando <code>rdd new</code> genera una estructura completa como la descrita en la <a href="../especificacion.html">especificación técnica</a>, incluyendo:</p>
         <ul>
           <li>Módulo <code>tasks</code> con controller, service, repository y entidades</li>
           <li>Controlador HTTP con rutas <code>GET /tasks</code> y <code>POST /tasks</code></li>
@@ -162,8 +154,8 @@ cd mi-api</code></pre>
     </main>
 
     <aside class="doc-pager">
-      <a class="pager-link prev disabled"><span class="dir">← Anterior</span><span class="title">N/A</span></a>
-      <a class="pager-link next"><span class="dir">Siguiente →</span><span class="title">Arquitectura</span></a>
+      <a class="pager-link prev disabled" aria-disabled="true"><span class="dir">← Anterior</span><span class="title">Inicio</span></a>
+      <a class="pager-link next" href="arquitectura.html"><span class="dir">Siguiente →</span><span class="title">Arquitectura</span></a>
     </aside>
   </article>
 

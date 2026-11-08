@@ -2,10 +2,16 @@
 (function () {
   const RDD = window.RDD;
   RDD.config = {
-    repo: "https://github.com/jhonwick20262027-boop/rdd",
+    repo: "https://github.com/jhonwick20262027-boop/rukito",
     version: "v0.1.0",
     specVersion: "0.4.4",
   };
+  RDD.searchIndex = [
+    { title: "Guía rápida", section: "Inicio", keywords: "rdd, rust, api, empezar", url: "guide/inicio-rapido.html" },
+    { title: "Arquitectura", section: "Framework", keywords: "rdd, crates, workspace, dependencias", url: "guide/arquitectura.html" },
+    { title: "CLI", section: "Referencia", keywords: "rdd, comandos, new, module, run", url: "guide/cli.html" },
+    { title: "Especificación", section: "Referencia", keywords: "rdd, spec, requisitos, arquitectura", url: "especificacion.html" },
+  ];
 
   const root = document.body.dataset.root || ".";
   const url = (p) => root + "/" + p;
@@ -270,7 +276,9 @@
       const e = matches[i];
       if (!e) return;
       close();
-      window.location.href = url(e.url);
+      window.location.href = e.url.charAt(0) === "#"
+        ? window.location.pathname + e.url
+        : url(e.url);
     }
     function open() {
       overlay.classList.add("open");

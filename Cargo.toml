@@ -15,7 +15,7 @@ members = [
 [workspace.package]
 version      = "0.1.0"
 edition      = "2024"
-rust-version = "1.85"
+rust-version = "1.94"
 license      = "MIT"
 repository   = "https://example.invalid/rdd"
 
@@ -60,6 +60,7 @@ syn                = { version = "2.0", features = ["full"] }
 thiserror          = "2.0"
 tokio              = { version = "1.54", features = ["full"] }
 tokio-util         = "0.7"
+toml               = "0.9"
 tower              = { version = "0.5", features = ["util"] }
 tower-http         = { version = "0.7", features = ["limit", "trace", "cors", "compression"] }
 tracing            = "0.1"

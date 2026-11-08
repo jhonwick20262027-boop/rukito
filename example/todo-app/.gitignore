@@ -1,0 +1,5 @@
+# RF-063: `.env` lleva credenciales y no se versiona.
+/target
+.env
+*.log
+*.db

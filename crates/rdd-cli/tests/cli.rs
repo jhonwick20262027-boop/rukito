@@ -20,6 +20,96 @@ fn run(dir: &PathBuf, args: &[&str]) -> std::process::Output {
 }
 
 #[test]
+fn migrate_applies_versioned_sql_and_is_idempotent() {
+    let dir = temp_dir("migrate");
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"migration-test\"\n",
+    )
+    .expect("manifest must be created");
+    std::fs::write(
+        dir.join("rdd.toml"),
+        "[database]\nmigrations_dir = \"db/changes\"\n",
+    )
+    .expect("config must be created");
+    let migrations = dir.join("db/changes");
+    std::fs::create_dir_all(&migrations).expect("migration directory must be created");
+    std::fs::write(
+        migrations.join("0001_create_widgets.sql"),
+        "CREATE TABLE widgets (id INTEGER PRIMARY KEY, title TEXT NOT NULL);",
+    )
+    .expect("migration must be created");
+
+    let first = run(
+        &dir,
+        &["migrate", "--database-url", "sqlite://migration-test.db"],
+    );
+    assert!(
+        first.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&first.stdout).contains("create widgets"),
+        "stdout: {}",
+        String::from_utf8_lossy(&first.stdout)
+    );
+
+    let second = run(
+        &dir,
+        &["migrate", "--database-url", "sqlite://migration-test.db"],
+    );
+    assert!(
+        second.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&second.stdout).contains("al día"),
+        "stdout: {}",
+        String::from_utf8_lossy(&second.stdout)
+    );
+
+    std::fs::write(
+        migrations.join("0001_create_widgets.sql"),
+        "CREATE TABLE widgets (id INTEGER PRIMARY KEY, title TEXT NOT NULL, done BOOLEAN NOT NULL DEFAULT FALSE);",
+    )
+    .expect("migration must be changed");
+    let changed = run(
+        &dir,
+        &["migrate", "--database-url", "sqlite://migration-test.db"],
+    );
+    assert!(
+        !changed.status.success(),
+        "changing an applied migration must fail"
+    );
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime must be created");
+    runtime.block_on(async {
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(dir.join("migration-test.db"))
+            .create_if_missing(false);
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .connect_with(options)
+            .await
+            .expect("SQLite DB must exist");
+        let exists: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'widgets'",
+        )
+        .fetch_one(&db)
+        .await
+        .expect("migration table must be queryable");
+        assert_eq!(exists, 1);
+        db.close().await;
+    });
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn dry_run_lists_without_writing() {
     let dir = temp_dir("dry-run");
     let output = run(&dir, &["new", "todo-app", "--dry-run"]);

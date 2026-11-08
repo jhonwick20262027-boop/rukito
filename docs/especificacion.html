@@ -40,14 +40,14 @@
     <div class="spec-meta">
       <div>
         <span>Documento: <strong>RDD-SPEC.md</strong></span>
-        <span>Versión: <strong>0.4.4-draft</strong></span>
+        <span>Versión: <strong>0.4.6-draft</strong></span>
         <span>Fecha: <strong>2026-11-07</strong></span>
         <span>Estado: <strong>Borrador para aprobación</strong></span>
       </div>
       <div class="spec-tabs-mobile">
         <select id="specVersionSelect">
           <option value="0.3.0">Addendum 0.3.0</option>
-          <option value="0.4.4" selected>0.4.4-draft</option>
+          <option value="0.4.6" selected>0.4.6-draft</option>
         </select>
       </div>
     </div>
@@ -69,7 +69,7 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.4.4-draft |
+| Versión del documento | 0.4.6-draft |
 | Fecha | 2026-11-07 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
@@ -82,7 +82,7 @@
 2. **Palabras normativas:** **DEBE** = obligatorio. **NO DEBE** = prohibido. **DEBERÍA** = recomendado, con excepción justificada. **PUEDE** = opcional.
 3. **Cada requisito tiene un ID** (`RF-xxx` funcional, `RN-xxx` no funcional, `RA-xxx` regla de arquitectura, `RP-xxx` requisito de plataforma HTTP). Los commits y PRs referencian los IDs.
 4. **No se fijan versiones de dependencias aquí.** Al iniciar cada fase se usan las últimas versiones estables compatibles y se fijan en `Cargo.lock`. Las dependencias cuyo comportamiento cambia entre versiones mayores (Axum, Prisma CLI) están marcadas con ⚠️ en la lista de verificaciones (§22).
-5. **MSRV propuesto:** Rust 1.85 (edición 2024). Revisar al iniciar la fase 0.1.
+5. **MSRV:** Rust 1.94 (edición 2024), requerido por SQLx 0.9.
 
 ---
 
@@ -262,8 +262,8 @@ rdd-prisma ──► rdd-cli
 | Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
 | IDs | `uuid` | núcleo | Estándar. |
 | Macros | `syn`, `quote`, `proc-macro2`, crate de diagnósticos (⚠️ V6) | `rdd-macros` | Diagnósticos claros. |
-| CLI | `clap` | `rdd-cli` | Estándar. |
-| Esquema/migraciones | **Prisma CLI** (Node, solo en desarrollo) | herramienta externa | Ver §13. |
+| CLI y migraciones | `clap`, `sqlx` (Any, SQLite/PostgreSQL), `tokio`, `toml`, `dotenvy` | `rdd-cli` | `rdd migrate` aplica migraciones versionadas como paso explícito antes del despliegue; el servidor no migra al arrancar (RF-188). |
+| Esquema/migraciones | `sqlx` 0.9 para migraciones versionadas runtime; Prisma CLI para schema y generación | `rdd-cli` / herramienta externa | Prisma continúa según §13. |
 
 ### 4.4 Interfaz de plataforma (modelo "adaptador sobre el router del servidor")
 
@@ -1029,7 +1029,7 @@ Streaming de **petición** (subidas grandes), compatibilidad con clientes oficia
 | Versión | Fecha | Cambio |
 |---|---|---|
 | 0.3.0-draft | 2026-11-07 | Streaming de respuesta (`Body::Stream`, SSE, cancelación, backpressure), WebSocket como capacidad de plataforma, `rdd-realtime` (protocolo propio) y `rdd-mcp` (Streamable HTTP + stdio). Sustituye ADR-12; nuevos ADR-16…20; nuevas verificaciones V11…V15. |
-| 0.4.4-draft | 2026-11-07 | Documento actualizado con nueva versión; verificaciones y addendum integrados. |
+| 0.4.6-draft | 2026-11-07 | Se añade `rdd migrate` para ejecutar migraciones versionadas de SQLite/PostgreSQL como paso explícito de despliegue (RF-188); el servidor no migra al arrancar. MSRV fijado en Rust 1.94 por SQLx 0.9. |
 
 ---
 

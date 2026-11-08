@@ -1,0 +1,31 @@
+# Configuración del proyecto (§15.1).
+# RF-150: las secciones desconocidas se ignoran; RF-151: cada paquete externo
+# lee solo la suya.
+
+[app]
+name = "todo-app"
+host = "0.0.0.0"
+port = 3000
+body_limit_bytes = 2_097_152
+
+[database]
+provider = "sqlite"            # motor predeterminado
+url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL
+max_connections = 10
+acquire_timeout_secs = 5
+migrations_dir = "migrations"
+
+[prisma]
+schema        = "prisma/schema.prisma"
+generated_dir = "src/generated"
+# cli_version se fija al iniciar la fase 0.4 (§15.1).
+
+[cors]                          # leído solo por rdd-cors (fase 0.3)
+allow_origins     = ["http://localhost:5173"]
+allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+allow_headers     = ["content-type", "authorization"]
+allow_credentials = false
+max_age_secs      = 3600
+
+[logger]                        # leído solo por rdd-logger (fase 0.3)
+format = "pretty"               # "pretty" | "json"

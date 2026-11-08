@@ -41,6 +41,7 @@ pub fn project_files(ctx: &ProjectContext<'_>, with_example: bool) -> Vec<Genera
         GeneratedFile::new(".env.example", render(DOTENV_EXAMPLE, &vars)),
         GeneratedFile::new(".gitignore", GITIGNORE),
         GeneratedFile::new("docs/.gitkeep", ""),
+        GeneratedFile::new("migrations/.gitkeep", ""),
         GeneratedFile::new("prisma/schema.prisma", schema_prisma(with_example)),
         GeneratedFile::new("prisma/migrations/.gitkeep", ""),
         GeneratedFile::new("tests/acceptance.rs", acceptance_rs(with_example)),
@@ -268,7 +269,7 @@ fn cargo_toml(ctx: &ProjectContext<'_>) -> String {
          name = \"{package}\"\n\
          version = \"0.1.0\"\n\
          edition = \"2024\"\n\
-         rust-version = \"1.85\"\n\
+         rust-version = \"1.94\"\n\
          description = \"Aplicación rdd generada con `rdd new`.\"\n\
          publish = false\n\
          \n\
@@ -349,6 +350,7 @@ provider = "sqlite"            # motor predeterminado
 url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL
 max_connections = 10
 acquire_timeout_secs = 5
+migrations_dir = \"migrations\"
 
 [prisma]
 schema        = "prisma/schema.prisma"
@@ -385,7 +387,7 @@ edition = "2024"
 
 const CLIPPY_TOML: &str = r#"# ≈ .eslintrc.json (§5). Se exige con `cargo clippy -- -D warnings`.
 
-msrv = "1.85"
+msrv = "1.94"
 "#;
 
 const DOCKERFILE: &str = r#"# Imagen de la app. Requiere `rdd` publicado en crates.io; mientras tanto,
@@ -414,6 +416,7 @@ APP_NAME=@package@
 HOST=0.0.0.0
 PORT=3000
 RUST_LOG=info
+DATABASE_URL=sqlite://@package@.db
 "#;
 
 const DOTENV_EXAMPLE: &str = r#"# Plantilla versionable de `.env` (RF-063). Nunca poner aquí credenciales reales.

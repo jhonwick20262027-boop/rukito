@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 
 mod files;
 mod g_module;
+mod migrations;
 mod module_template;
 mod naming;
 mod new_project;
@@ -29,6 +30,8 @@ enum Command {
     G(Generate),
     /// Ejecuta la app del proyecto actual.
     Run(run_app::RunArgs),
+    /// Aplica las migraciones pendientes antes del despliegue.
+    Migrate(migrations::MigrateArgs),
 }
 
 /// Subcomandos de `rdd g` (§14.1).
@@ -43,5 +46,6 @@ fn main() -> anyhow::Result<()> {
         Command::New(args) => new_project::execute(args),
         Command::G(Generate::Module(args)) => g_module::execute(args),
         Command::Run(args) => run_app::execute(args),
+        Command::Migrate(args) => migrations::execute(args),
     }
 }

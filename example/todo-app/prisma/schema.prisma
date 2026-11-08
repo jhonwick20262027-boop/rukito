@@ -1,0 +1,16 @@
+// Fuente de verdad del esquema de datos (§15.2).
+// Prisma se conecta en la fase 0.4; hasta entonces `rdd db generate` no
+// produce nada y `src/generated/` queda vacío.
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Task {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title     String
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("tasks")
+}

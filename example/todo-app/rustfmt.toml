@@ -1,0 +1,4 @@
+# ≈ .prettierrc (§5). Estilo por defecto de rustfmt; solo se fija el edition
+# para que coincida con Cargo.toml.
+
+edition = "2024"

@@ -71,7 +71,9 @@ pub fn execute(args: NewArgs) -> Result<()> {
     println!("proyecto `{package}` creado en ./{package}");
     println!("siguiente paso:");
     println!("  cd {package}");
-    println!("  rdd run --memory");
+    println!("  rdd migrate");
+    println!("  rdd run");
+    println!("usa `rdd run --memory` para omitir la base de datos");
     Ok(())
 }
 
@@ -143,6 +145,7 @@ mod tests {
             ".env.example",
             ".gitignore",
             "docs/.gitkeep",
+            "migrations/.gitkeep",
             "prisma/schema.prisma",
             "prisma/migrations/.gitkeep",
             "tests/acceptance.rs",
@@ -205,6 +208,7 @@ mod tests {
         // RF-003: las carpetas que no son módulos Rust llevan `.gitkeep`.
         for keep in [
             "docs/.gitkeep",
+            "migrations/.gitkeep",
             "prisma/migrations/.gitkeep",
             "tests/e2e/.gitkeep",
             "tests/fixtures/.gitkeep",

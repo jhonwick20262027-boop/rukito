@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.4.5-draft |
+| Versión del documento | 0.4.6-draft |
 | Fecha | 2026-11-07 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
@@ -16,7 +16,7 @@
 2. **Palabras normativas:** **DEBE** = obligatorio. **NO DEBE** = prohibido. **DEBERÍA** = recomendado, con excepción justificada. **PUEDE** = opcional.
 3. **Cada requisito tiene un ID** (`RF-xxx` funcional, `RN-xxx` no funcional, `RA-xxx` regla de arquitectura, `RP-xxx` requisito de plataforma HTTP). Los commits y PRs referencian los IDs.
 4. **No se fijan versiones de dependencias aquí.** Al iniciar cada fase se usan las últimas versiones estables compatibles y se fijan en `Cargo.lock`. Las dependencias cuyo comportamiento cambia entre versiones mayores (Axum, Prisma CLI) están marcadas con ⚠️ en la lista de verificaciones (§22).
-5. **MSRV propuesto:** Rust 1.85 (edición 2024). Revisar al iniciar la fase 0.1.
+5. **MSRV:** Rust 1.94 (edición 2024), requerido por SQLx 0.9.
 
 ---
 
@@ -158,7 +158,7 @@ rdd-prisma ──► rdd-cli
 | `rdd-platform-tests` | `rdd-core`; las plataformas como `dev-dependencies` | — |
 | `rdd-db-tests` | `rdd-core`, `uuid`, `serde_json`; `tokio` como `dev-dependency` | cualquier adaptador, cualquier driver |
 | `rdd-prisma` | `serde`, `thiserror` | `axum`, `sqlx`, `rdd-core` |
-| `rdd-cli` | `rdd-prisma`, `clap` | `rdd-core` (el CLI no enlaza el framework) |
+| `rdd-cli` | `rdd-prisma`, `clap`, `sqlx` (Any, migraciones SQLite/PostgreSQL), `tokio`, `toml`, `dotenvy` | `rdd-core` (el CLI no enlaza el framework) |
 
 `anyhow` entra en los adaptadores porque `Error::internal` recibe un `anyhow::Error`
 (RF-042): así el error del driver se conserva como fuente en vez de aplanarse a
@@ -194,8 +194,8 @@ revés, para que la suite no arrastre ningún driver.
 | Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
 | IDs | `uuid` | núcleo | Estándar. |
 | Macros | `syn`, `quote`, `proc-macro2`, crate de diagnósticos (⚠️ V6) | `rdd-macros` | Diagnósticos claros. |
-| CLI | `clap` | `rdd-cli` | Estándar. |
-| Esquema/migraciones | **Prisma CLI** (Node, solo en desarrollo) | herramienta externa | Ver §13. |
+| CLI y migraciones | `clap`, `sqlx` (Any, SQLite/PostgreSQL), `tokio`, `toml` | `rdd-cli` | `rdd migrate` ejecuta SQL versionado antes del despliegue. |
+| Esquema/migraciones | `sqlx` 0.9 para migraciones versionadas runtime; Prisma CLI para schema y generación | `rdd-cli` / herramienta externa | `rdd migrate` aplica SQL versionado; Prisma continúa según §13. |
 
 ### 4.4 Interfaz de plataforma (modelo "adaptador sobre el router del servidor")
 
@@ -1296,11 +1296,27 @@ Generar el código desde la **introspección de la BD** (`information_schema`) t
 | `rdd g module <name>` | Genera un módulo con la convención NestJS de §5 (RF-001). |
 | `rdd g middleware <Name> [--module <m>]` | Genera un middleware propio. |
 | `rdd add <paquete>` | Ejecuta `cargo add` para `cors`, `logger`, o un crate externo y muestra el fragmento a añadir en `main.rs`. |
+| `rdd migrate [--database-url <url>] [--source <dir>]` | Aplica las migraciones SQL pendientes antes del despliegue. Por defecto lee la URL desde la variable indicada por `[database].url_env` y el directorio desde `[database].migrations_dir` (`migrations/`). |
 | `rdd run [--memory]` | Ejecuta la app; con `--memory` usa backend en memoria (sin base de datos). |
 | `rdd dev` | Como `run`, recompilando al cambiar archivos (usa `cargo-watch` si está instalado; si no, indica cómo instalarlo). |
 | `rdd db ...` | §13.3 |
 | `rdd check` | Verifica reglas de arquitectura (§17) y dependencias (RF-027). |
 | `rdd doctor` | Verifica el entorno (§13.2). |
+
+`rdd migrate` lee `.env` y `rdd.toml`, aplica en orden ascendente los archivos
+`<VERSION>_<DESCRIPCION>.sql` (VERSION entero positivo), y registra versiones y
+checksums en `_sqlx_migrations`. Solo corre migraciones pendientes; una migración
+ya aplicada cuyo contenido cambió produce un error. SQLite crea el archivo si no
+existe; PostgreSQL requiere que la base ya exista. El comando soporta SQLite y
+PostgreSQL, los drivers SQL disponibles actualmente. Los archivos SQL deben ser
+compatibles con el motor configurado. No se ejecutan migraciones al arrancar la
+app: CI/CD o el operador DEBE ejecutar `rdd migrate` como paso explícito antes
+de `rdd run` o de poner la nueva versión en servicio. `--database-url` y
+`--source` permiten sobreescribir los valores configurados.
+
+| ID | Requisito |
+|---|---|
+| RF-188 | `rdd migrate` DEBE aplicar solo migraciones pendientes en orden, registrar versiones/checksums, fallar explícitamente ante errores o cambios de checksum y ser idempotente. El arranque del servidor NO DEBE migrar implícitamente; el despliegue DEBE poder ejecutar migraciones como paso separado. |
 
 ### 14.2 Archivos que genera `rdd g module tasks`
 
@@ -1577,7 +1593,7 @@ async fn crea_y_completa_una_tarea() {
 - [x] `Error` y respuestas Problem Details (§10.3)
 - [x] Apagado ordenado (RF-013), `/health` (RF-016), límite de cuerpo (RF-017), normalización de barra (RF-018)
 - [x] Diagnósticos RDD0301–RDD0305
-- [x] `rdd new`, `rdd g module` y `rdd run` con el árbol de §5 (RF-001 a RF-007, RF-140, RF-141, RF-143)
+- [x] `rdd new`, `rdd g module`, `rdd migrate` y `rdd run` con el árbol de §5 (RF-001 a RF-007, RF-140, RF-141, RF-143, RF-188)
 
 **Aceptación:** un proyecto creado con `rdd new` compila sin cambios (RF-143), responde en `/health` y devuelve 404 y 405 en formato Problem Details; un test de integración recorre todos los códigos de §10.3; `AxumPlatform` y `dispatch` pasan la suite de conformidad disponible en esta fase.
 
@@ -1741,6 +1757,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.4.3-draft | 2026-11-07 | **El puerto gana `id_column`**, descubierto al implementar el segundo adaptador — exactamente el fallo que ADR-15 y `rdd-db-tests` existen para detectar. (1) **§12.1**: `get` y `delete` reciben `id_column: &str` además de la tabla y el id. Un motor SQL necesita el nombre de la columna para el `WHERE` y no puede adivinarlo, porque `Persist::COLUMNS[0]` puede llamarse `task_id` y no `id`; inferirlo de `save` obligaría a guardar antes de poder leer. `Repo<T>` lo pasa desde `T::COLUMNS[0]`; MongoDB y Redis lo ignoran. (2) **§12.1**: el orden de `Row` deja de ser contractual. `all` no recibe la lista de columnas y hace `SELECT *`, así que la fila llega en el orden físico de la tabla; `from_row` lee por nombre y las columnas de más se ignoran. Afirmar el orden de `COLUMNS` habría sido falso para cualquier motor SQL. |
 
 | 0.4.4-draft | 2026-11-07 | **Tipos que `Value` no puede representar**, detectado al escribir el códec de `rdd-postgres`. (1) **RF-187 nuevo**: un adaptador solo decodifica tipos con variante simétrica en `Value`; los demás dan error explícito nombrando columna y tipo. Convertir `TIMESTAMPTZ` a `String` sería una trampa: se lee bien pero al guardar se envía el OID de `TEXT` y PostgreSQL lo rechaza. (2) **§12.5**: la fila de PostgreSQL remite a RF-187. (3) **V15 nueva**: falta decidir si `Value` gana variantes temporal y decimal antes de la fase 0.4. (4) **§25.5**: la tabla `tasks` pierde `created_at TIMESTAMPTZ`, que era incompatible con lo anterior. (5) **§4.2**: `anyhow` entra en las dependencias permitidas de los cinco adaptadores —`Error::internal` lo exige para conservar el error del driver como fuente (RF-042)— y se corrige la dirección de la suite: cada adaptador depende de `rdd-db-tests` como `dev-dependency`, no al revés. (6) **§15.2**: la plantilla de `schema.prisma` pierde `createdAt DateTime` por la misma razón que §25.5 — el código generado desde ese esquema no podría leer la columna hasta que V15 se resuelva. (7) **§12.4**: se fija el mecanismo de RF-181 — el test de integración de cada motor se activa con `RDD_TEST_<MOTOR>_URL`, y el crate crea y destruye su propia tabla de sonda. (8) **§25.4/§25.6**: la instancia local pasa al contenedor `rdd-pg` en el puerto **5433**. En 5432 el servicio nativo de Windows le gana la conexión al proxy de Docker, así que el contenedor es inalcanzable desde el host; ni el servicio nativo ni `todo-pg` se modifican. |
+| 0.4.5-draft | 2026-11-07 | Se añade `rdd-sqlite` como adaptador predeterminado para proyectos locales y se actualizan la fachada, el scaffold y las guías. |
+| 0.4.6-draft | 2026-11-07 | Se añade `rdd migrate` para aplicar migraciones versionadas de SQLite/PostgreSQL como paso explícito de despliegue (RF-188); el servidor no migra al arrancar. Se fija Rust 1.94 como MSRV por SQLx 0.9. |
 
 ---
 
@@ -1827,9 +1845,10 @@ en memoria (RF-015).
 
 ### 25.5 Esquema de la tabla
 
-Mientras `rdd db migrate` no exista (fase 0.4), el ejemplo crea su tabla con SQL
-plano en `todo-app-ddd/migrations/0001_tasks.sql`, aplicado con `psql`. El fichero
-es el que §13 generará desde `schema.prisma` cuando Prisma entre.
+El ejemplo crea su tabla con SQL plano en
+`todo-app-ddd/migrations/0001_tasks.sql`. Se aplica con `rdd migrate`, que
+mantiene el historial y es reutilizable en CI/CD; Prisma podrá generar estos
+archivos desde `schema.prisma` cuando entre.
 
 ```sql
 CREATE TABLE IF NOT EXISTS tasks (
@@ -1848,7 +1867,7 @@ La columna entra cuando V15 se resuelva, no antes.
 
 ```bash
 docker start rdd-pg                                    # PostgreSQL local, puerto 5433
-psql "$DATABASE_URL" -f migrations/0001_tasks.sql
+rdd migrate                                             # paso explícito antes de desplegar/arrancar
 cargo run -p todo-app-ddd                              # o: rdd run
 
 curl -X POST localhost:3000/tasks \
@@ -1867,6 +1886,7 @@ curl -i localhost:3000/tasks/<id>                      # 404 Problem Details
 ```bash
 rdd new todo-app-ddd && cd todo-app-ddd
 rdd g module task-items              # nuevo módulo con el árbol de §5
+rdd migrate                          # antes del primer arranque y de cada despliegue
 rdd run                              # servidor (RDD_MEMORY=1 para memoria)
 rdd check                            # reglas de arquitectura (CI)
 ```

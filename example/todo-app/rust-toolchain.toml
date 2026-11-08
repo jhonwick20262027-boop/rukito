@@ -1,0 +1,9 @@
+# ≈ tsconfig.json en lo relativo al toolchain (§5).
+#
+# No se fija `channel`: un canal pinned obligaría a rustup a descargar otro
+# toolchain y `rdd new` dejaría de compilar sin red (RF-143, RF-007). El mínimo
+# soportado lo declara `rust-version` en Cargo.toml.
+
+[toolchain]
+profile = "minimal"
+components = ["rustfmt", "clippy"]

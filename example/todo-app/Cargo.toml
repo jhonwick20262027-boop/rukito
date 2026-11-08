@@ -1,0 +1,24 @@
+# ≈ package.json + tsconfig.json (§5). El MSRV lo fija `rust-version`;
+# `rust-toolchain.toml` solo declara el perfil.
+[package]
+name = "todo-app"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+description = "Mini aplicación TODO con rdd y SQLite."
+publish = false
+
+[dependencies]
+# RA-013: el proyecto depende de la fachada, nunca de `rdd-core`.
+rdd = { path = "../../crates/rdd" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+bytes = "1"
+http = "1"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[workspace]

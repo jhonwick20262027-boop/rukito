@@ -345,7 +345,7 @@ port = 3000
 body_limit_bytes = 2_097_152
 
 [database]
-provider = "postgresql"        # único valor soportado en 0.x
+provider = "sqlite"            # motor predeterminado
 url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL
 max_connections = 10
 acquire_timeout_secs = 5
@@ -423,8 +423,8 @@ HOST=0.0.0.0
 PORT=3000
 RUST_LOG=info
 
-# PostgreSQL local. La URL va en el entorno, nunca en `rdd.toml` (§15.1).
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/@database@
+# SQLite local. La URL va en el entorno, nunca en `rdd.toml` (§15.1).
+DATABASE_URL=sqlite://@package@.db
 
 # Reservadas: rdd 0.x no trae autenticación ni caché (ver `src/config/`).
 JWT_SECRET=
@@ -481,6 +481,9 @@ async fn main() -> Result<()> {
         .config(config)
         // rdd:modules
 @module_lines@        .module(app_module::module());
+
+    let app = app.database(config::database_config::url()
+        .unwrap_or_else(|| "sqlite://@package@.db".to_owned()));
 
     // `rdd run --memory` deja `RDD_MEMORY=1` para elegir el backend en memoria
     // sin base de datos (§14.1, RF-015).
@@ -584,11 +587,11 @@ pub fn load() -> rdd::AppConfig {
 }
 "#;
 
-const DATABASE_CONFIG_RS: &str = r#"//! URL de PostgreSQL (§15.1, sección `[database]`).
+const DATABASE_CONFIG_RS: &str = r#"//! URL de la base de datos (§15.1, sección `[database]`).
 //!
-//! La URL vive en `DATABASE_URL`, nunca en `rdd.toml` (RF-063). En 0.2
-//! `App::database(url)` elige el backend (RF-111); en 0.1 no hay persistencia,
-//! así que aquí solo se centraliza la lectura.
+//! La URL vive en `DATABASE_URL`, nunca en `rdd.toml` (RF-063). `main.rs` usa
+//! SQLite local si no se configura otra URL; `App::database(url)` elige el motor
+//! por su esquema (RF-111).
 
 /// `None` cuando no está puesta o está vacía.
 pub fn url() -> Option<String> {

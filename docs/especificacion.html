@@ -116,7 +116,7 @@ Un framework REST para Rust con la ergonomía de NestJS y el minimalismo de las 
 - Sistema de middlewares propio del núcleo: globales, por módulo, por controlador y por ruta. Las capas Tower se admiten como opción de la plataforma Axum (RF-089).
 - Suite de conformidad de plataformas (§4.5) y, en la fase 0.5, una segunda plataforma (`rdd-hyper`) que valide la abstracción.
 - Crates externos `rdd-cors` y `rdd-logger`.
-- Persistencia multi-motor **vía adaptadores**: el núcleo define el puerto `DbAdapter` y cada motor vive en su propio crate (§12). Entran primero memoria, PostgreSQL y MySQL; después MongoDB, Redis y MSSQL.
+- Persistencia multi-motor **vía adaptadores**: el núcleo define el puerto `DbAdapter` y cada motor vive en su propio crate (§12). SQLite se incluye como adaptador predeterminado para proyectos locales; PostgreSQL cuenta con adaptador y MySQL, MongoDB, Redis y MSSQL quedan para fases posteriores.
 - Migraciones y esquema con **Prisma CLI** y generación de código Rust a partir de `schema.prisma`.
 - CLI `rdd` para scaffolding y ejecución.
 
@@ -133,7 +133,7 @@ Un framework REST para Rust con la ergonomía de NestJS y el minimalismo de las 
 | Runtimes distintos de Tokio | El núcleo y las plataformas asumen Tokio (ADR-11). |
 | OpenAPI automático | Candidato post-0.4. |
 | Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. |
-| Motores sin adaptador publicado | El puerto `DbAdapter` (§12.1) es la vía de extensión. SQLite es candidato barato (lo cubre `sqlx`); Oracle, Cassandra y DynamoDB no están previstos. |
+| Motores sin adaptador publicado | El puerto `DbAdapter` (§12.1) es la vía de extensión. SQLite está implementado en `rdd-sqlite` y es el adaptador predeterminado; Oracle, Cassandra y DynamoDB no están previstos. |
 | Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
 | Transacciones declarativas (`#[transactional]`) | Candidato post-0.4. |
 
@@ -173,6 +173,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd-hyper/                # plataforma propia (fase 0.5)
 │   ├── rdd-platform-tests/       # suite de conformidad de plataformas (§4.5)
 │   ├── rdd-db-tests/             # suite de conformidad de adaptadores (§12.4)
+│   ├── rdd-sqlite/               # adaptador SQLite predeterminado (sqlx)
 │   ├── rdd-postgres/             # adaptador PostgreSQL (sqlx)
 │   ├── rdd-mysql/                # adaptador MySQL/MariaDB (sqlx)
 │   ├── rdd-mongodb/              # adaptador MongoDB (fase 0.6)
@@ -191,10 +192,10 @@ Si el núcleo se llamara `rdd` y además incluyera `rdd-axum` como feature, habr
 
 ```toml
 # Cargo.toml del usuario
-rdd      = "..."                          # incluye la plataforma axum por defecto
+rdd      = "..."                          # incluye axum y SQLite por defecto
 rdd-cors = "..."
 # o, sin Axum:
-# rdd = { version = "...", default-features = false, features = ["hyper"] }
+# rdd = { version = "...", default-features = false, features = ["hyper", "sqlite"] }
 ```
 
 ### 4.2 Dependencias entre crates (RA-010)
@@ -205,6 +206,7 @@ rdd-core ◄───┼── rdd (fachada) ──► [feature axum]  rdd-axum
       ▲       │                 └─► [feature hyper] rdd-hyper
       ├── rdd-axum, rdd-hyper
       ├── rdd-cors, rdd-logger
+      ├── rdd-sqlite
       ├── rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
       ├── rdd-platform-tests ──► (dev) cada plataforma
       └── rdd-db-tests ────────► (dev) cada adaptador
@@ -219,6 +221,7 @@ rdd-prisma ──► rdd-cli
 | `rdd-axum` | `rdd-core`, `axum`, `tower`, `tower-http` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
 | `rdd-cors`, `rdd-logger` | `rdd-core` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
+| `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
 | `rdd-redis` | `rdd-core`, cliente Redis, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
@@ -249,6 +252,7 @@ rdd-prisma ──► rdd-cli
 | Plataforma propia | `hyper` + `hyper-util` (⚠️ V9) | `rdd-hyper` | Control total, valida la abstracción. |
 | Capas Tower | `tower`, `tower-http` | solo `rdd-axum` | Opcionales vía `AxumPlatform::layer` (RF-089). |
 | Puerto de persistencia | `DbAdapter` propio (§12.1) | núcleo | Sin drivers: el núcleo no conoce ningún motor (RA-014). |
+| SQLite | `sqlx` 0.9 | `rdd-sqlite` | Adaptador predeterminado para proyectos locales; crea el archivo de base de datos si no existe. |
 | PostgreSQL / MySQL | `sqlx` 0.9 | `rdd-postgres`, `rdd-mysql` | Async, sin ORM pesado; un mismo cliente cubre los dos motores. |
 | MongoDB | `mongodb` 3.x (oficial) | `rdd-mongodb` | Driver oficial async. Documental: no hay SQL ni `JOIN`. |
 | Redis | cliente async (⚠️ V13) | `rdd-redis` | KV: agregados simples por clave + caché/sesiones. |

@@ -1016,6 +1016,7 @@ version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -1232,6 +1233,7 @@ dependencies = [
  "rdd-axum",
  "rdd-core",
  "rdd-macros",
+ "rdd-sqlite",
  "serde",
  "serde_json",
  "tokio",
@@ -1324,6 +1326,19 @@ dependencies = [
 
 [[package]]
 name = "rdd-postgres"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rdd-core",
+ "rdd-db-tests",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rdd-sqlite"
 version = "0.1.0"
 dependencies = [
  "anyhow",

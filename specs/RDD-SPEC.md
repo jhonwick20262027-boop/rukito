@@ -48,7 +48,7 @@
 - Sistema de middlewares propio del núcleo: globales, por módulo, por controlador y por ruta. Las capas Tower se admiten como opción de la plataforma Axum (RF-089).
 - Suite de conformidad de plataformas (§4.5) y, en la fase 0.5, una segunda plataforma (`rdd-hyper`) que valide la abstracción.
 - Crates externos `rdd-cors` y `rdd-logger`.
-- Persistencia multi-motor **vía adaptadores**: el núcleo define el puerto `DbAdapter` y cada motor vive en su propio crate (§12). Entran primero memoria, PostgreSQL y MySQL; después MongoDB, Redis y MSSQL.
+- Persistencia multi-motor **vía adaptadores**: el núcleo define el puerto `DbAdapter` y cada motor vive en su propio crate (§12). SQLite se incluye como adaptador predeterminado para proyectos locales; PostgreSQL cuenta con adaptador y MySQL, MongoDB, Redis y MSSQL quedan para fases posteriores.
 - Migraciones y esquema con **Prisma CLI** y generación de código Rust a partir de `schema.prisma`.
 - CLI `rdd` para scaffolding y ejecución.
 
@@ -65,7 +65,7 @@
 | Runtimes distintos de Tokio | El núcleo y las plataformas asumen Tokio (ADR-11). |
 | OpenAPI automático | Candidato post-0.4. |
 | Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. |
-| Motores sin adaptador publicado | El puerto `DbAdapter` (§12) es la vía de extensión. SQLite es candidato barato (lo cubre `sqlx`); Oracle, Cassandra y DynamoDB no están previstos. |
+| Motores sin adaptador publicado | El puerto `DbAdapter` (§12) es la vía de extensión. SQLite está implementado en `rdd-sqlite` y es el adaptador predeterminado; Oracle, Cassandra y DynamoDB no están previstos. |
 | Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
 | Transacciones declarativas (`#[transactional]`) | Candidato post-0.4. |
 
@@ -104,6 +104,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd-hyper/                # plataforma propia (fase 0.5)
 │   ├── rdd-platform-tests/       # suite de conformidad de plataformas (§4.5)
 │   ├── rdd-db-tests/             # suite de conformidad de adaptadores (§12.4)
+│   ├── rdd-sqlite/               # adaptador SQLite predeterminado (sqlx)
 │   ├── rdd-postgres/             # adaptador PostgreSQL (sqlx)
 │   ├── rdd-mysql/                # adaptador MySQL/MariaDB (sqlx)
 │   ├── rdd-mongodb/              # adaptador MongoDB (fase 0.6)
@@ -120,11 +121,11 @@ rdd/                              # repositorio del framework
 
 ```toml
 # Cargo.toml del usuario
-rdd      = "..."                          # axum + postgres por defecto (§12.6)
+rdd      = "..."                          # axum + sqlite por defecto (§12.6)
 rdd-cors = "..."
 uuid     = { version = "1", features = ["v4", "serde"] }   # el id del agregado (§7.2)
 # o, sin Axum:
-# rdd = { version = "...", default-features = false, features = ["hyper", "postgres"] }
+# rdd = { version = "...", default-features = false, features = ["hyper", "sqlite"] }
 ```
 
 ### 4.2 Dependencias entre crates (RA-010)
@@ -135,7 +136,7 @@ rdd-core ◄───┼── rdd (fachada) ──► [feature axum]  rdd-axum
      ▲       │                 └─► [feature hyper] rdd-hyper
      ├── rdd-axum, rdd-hyper
      ├── rdd-cors, rdd-logger
-     ├── rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
+     ├── rdd-sqlite, rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
      ├── rdd-platform-tests ──► (dev) cada plataforma
      └── rdd-db-tests ────────► (dev) cada adaptador
 rdd-prisma ──► rdd-cli
@@ -146,6 +147,7 @@ rdd-prisma ──► rdd-cli
 | `rdd-core` | `http`, `bytes`, `futures`, `tokio`, `serde`, `serde_json`, `tracing`, `uuid`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower-http`, cualquier plataforma, **cualquier driver de BD** (`sqlx`, `mongodb`, `redis`, `tiberius`), Prisma, Node |
 | `rdd-macros` | `syn`, `quote`, `proc-macro2`, crate de diagnósticos | `rdd-core` |
 | `rdd` | `rdd-core`, `rdd-macros`, plataformas y adaptadores (opcionales por feature) | — |
+| `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-axum` | `rdd-core`, `axum`, `tower`, `tower-http` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
 | `rdd-cors`, `rdd-logger` | `rdd-core` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
@@ -183,7 +185,7 @@ revés, para que la suite no arrastre ningún driver.
 | Plataforma propia | `hyper` + `hyper-util` (⚠️ V9) | `rdd-hyper` | Control total, valida la abstracción. |
 | Capas Tower | `tower`, `tower-http` | solo `rdd-axum` | Opcionales vía `AxumPlatform::layer` (RF-089). |
 | Puerto de persistencia | `DbAdapter` propio (§12.1) | núcleo | Sin drivers: el núcleo no conoce ningún motor (RA-014). |
-| PostgreSQL / MySQL | `sqlx` 0.9 | `rdd-postgres`, `rdd-mysql` | Async, sin ORM pesado; un mismo cliente cubre los dos motores. |
+| SQLite / PostgreSQL / MySQL | `sqlx` 0.9 | `rdd-sqlite`, `rdd-postgres`, `rdd-mysql` | Async, sin ORM pesado; SQLite es el adaptador predeterminado para proyectos locales. |
 | MongoDB | `mongodb` 3.x (oficial) | `rdd-mongodb` | Driver oficial async. Documental: no hay SQL ni `JOIN`. |
 | Redis | cliente async (⚠️ V13) | `rdd-redis` | KV: agregados simples por clave + caché/sesiones. |
 | SQL Server | `tiberius-ng` 0.13 + `bb8` (⚠️ V12) | `rdd-mssql` | `sqlx` eliminó MSSQL en 0.7 y `tiberius` original está sin mantenimiento. |
@@ -1058,7 +1060,7 @@ permite el upsert sin firmar un método por motor.
 | ID | Requisito |
 |---|---|
 | RF-110 | `Repo<T>` es un **handle** sobre `Arc<dyn DbAdapter>`. `MemoryBackend` vive en el núcleo (no arrastra driver); cada motor vive en su crate. |
-| RF-111 | El adaptador se elige al arrancar por el **esquema de la URL**: `postgres://`/`postgresql://`, `mysql://`/`mariadb://`, `mongodb://`, `redis://`, `sqlserver://`. `.in_memory()` fuerza memoria. Un esquema cuyo adaptador no está instalado DEBE fallar **al arrancar** diciendo qué crate añadir, nunca en tiempo de petición. |
+| RF-111 | El adaptador se elige al arrancar por el **esquema de la URL**: `sqlite://`, `postgres://`/`postgresql://`, `mysql://`/`mariadb://`, `mongodb://`, `redis://`, `sqlserver://`. SQLite se incluye por defecto en la fachada `rdd`; `.in_memory()` fuerza memoria. Un esquema cuyo adaptador no está instalado DEBE fallar **al arrancar** diciendo qué crate añadir, nunca en tiempo de petición. |
 | RF-112 | `save` DEBE ser un upsert atómico en una sola operación nativa del motor (§12.5). |
 | RF-113 | Toda consulta DEBE usar parámetros enlazados; NO DEBE interpolarse texto del usuario. En motores sin parámetros (Redis) la clave se compone solo con el identificador saneado. |
 | RF-114 | Los identificadores DEBEN entrecomillarse con la convención del motor (§12.5). El usuario nunca escribe comillas de SQL a mano. |
@@ -1117,6 +1119,7 @@ cliente nativo, porque el puerto no tiene DDL (RF-117).
 | Motor | Crate | Upsert (RF-112) | Identificadores (RF-114) | Notas |
 |---|---|---|---|---|
 | Memoria | `rdd-core` | reemplazo por id | — | Sin driver. Backend de tests y de `rdd run --memory` (RF-015). |
+| SQLite | `rdd-sqlite` | `INSERT … ON CONFLICT (id) DO UPDATE` | `"tabla"."columna"` | `sqlx`. Adaptador predeterminado; crea el archivo local si no existe. Las columnas UUID y JSON se declaran `UUID` y `JSON` para conservar sus variantes. |
 | PostgreSQL | `rdd-postgres` | `INSERT … ON CONFLICT (id) DO UPDATE` | `"tabla"."columna"` | `sqlx`. Referencia del puerto. Solo decodifica tipos con variante simétrica en `Value` (RF-187). |
 | MySQL/MariaDB | `rdd-mysql` | `INSERT … ON DUPLICATE KEY UPDATE` | `` `tabla`.`columna` `` | `sqlx`. Exige clave primaria o única en `id`. |
 | MongoDB | `rdd-mongodb` | `replaceOne` con `upsert: true` | no aplica | Documento completo por `_id`. `all` = `find({})`. |
@@ -1419,7 +1422,7 @@ body_limit_bytes = 2_097_152
 [database]
 # El motor lo decide el esquema de la URL (RF-111). `provider` es orientativo:
 # lo usa `rdd doctor` para saber qué crate de adaptador comprobar.
-provider = "postgresql"        # postgresql | mysql | mongodb | redis | mssql | memory
+provider = "sqlite"            # sqlite | postgresql | mysql | mongodb | redis | mssql | memory
 url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL (RF-063)
 max_connections = 10
 acquire_timeout_secs = 5
@@ -1580,12 +1583,12 @@ async fn crea_y_completa_una_tarea() {
 
 ### Fase 0.2 — Dominio, DI y persistencia
 
-**Entrega:** `#[aggregate]`, `#[service]`, puerto `DbAdapter`, `Repo<T>`, `Persist`, `MemoryBackend`, `rdd-db-tests`, `rdd-postgres`, `rdd-mysql`.
+**Entrega:** `#[aggregate]`, `#[service]`, puerto `DbAdapter`, `Repo<T>`, `Persist`, `MemoryBackend`, `rdd-db-tests`, `rdd-sqlite`, `rdd-postgres`, `rdd-mysql`.
 
 - [ ] Puerto `DbAdapter` + `Value` + `Row` neutros en `rdd-core`, sin ningún driver (RA-014, RF-185)
 - [ ] `Persist` (§12.2): trait del **aggregate** (`TABLE`, `COLUMNS`, `to_values`, `from_row`), lo implementa `#[aggregate]`. Un boceto previo lo definió como repositorio CRUD síncrono con backends MySQL y MongoDB, y otro como `from_row(&PgRow)`; ambos se retiraron: el primero contradecía §12.1 (async) y el segundo ataba el puerto a PostgreSQL.
 - [ ] `MemoryBackend` en el núcleo (§12.1, RF-015, RF-110)
-- [ ] `rdd-postgres` y `rdd-mysql` sobre `sqlx`, elección por esquema de URL al arrancar (RF-111, ⚠️ V11)
+- [ ] `rdd-sqlite`, `rdd-postgres` y `rdd-mysql` sobre `sqlx`, elección por esquema de URL al arrancar (RF-111, ⚠️ V11)
 - [ ] `rdd-db-tests`: suite de conformidad obligatoria (RF-180 a RF-182, RA-016)
 - [ ] `#[aggregate]` macro — expansión mínima por ahora (expande `item` tal cual); expansión completa planificada para 0.2.1
 - [ ] `#[service]` macro — expansión mínima por ahora (expande `item` tal cual); expansión completa planificada para 0.2.1

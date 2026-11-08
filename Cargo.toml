@@ -9,6 +9,7 @@ members = [
     "crates/rdd-macros",
     "crates/rdd-platform-tests",
     "crates/rdd-postgres",
+    "crates/rdd-sqlite",
 ]
 
 [workspace.package]
@@ -34,6 +35,7 @@ rdd-axum           = { path = "crates/rdd-axum",           version = "0.1.0" }
 rdd-platform-tests = { path = "crates/rdd-platform-tests", version = "0.1.0" }
 rdd-db-tests       = { path = "crates/rdd-db-tests",       version = "0.1.0" }
 rdd-postgres       = { path = "crates/rdd-postgres",       version = "0.1.0" }
+rdd-sqlite         = { path = "crates/rdd-sqlite",         version = "0.1.0" }
 rdd-cors           = { path = "crates/rdd-cors",           version = "0.1.0" }
 rdd-logger         = { path = "crates/rdd-logger",         version = "0.1.0" }
 
@@ -53,7 +55,7 @@ proc-macro2        = "1.0"
 quote              = "1.0"
 serde              = { version = "1.0", features = ["derive"] }
 serde_json         = "1.0"
-sqlx               = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+sqlx               = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "uuid", "chrono", "json"] }
 syn                = { version = "2.0", features = ["full"] }
 thiserror          = "2.0"
 tokio              = { version = "1.54", features = ["full"] }

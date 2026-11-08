@@ -18,6 +18,10 @@ pub use rdd_macros::{controller, delete, get, main, middleware, module, patch, p
 #[cfg(feature = "axum")]
 pub use rdd_axum::AxumPlatform;
 
+/// Adaptador SQLite predeterminado para almacenamiento persistente local.
+#[cfg(feature = "sqlite")]
+pub use rdd_sqlite::SqliteAdapter;
+
 /// Lo que expande `#[rdd::main]` (§8.4): instala la plataforma por defecto,
 /// carga `.env`, monta `tracing` con `RUST_LOG` (por defecto `info`), crea el
 /// runtime Tokio y convierte el `Result` final en código de salida.
@@ -34,6 +38,9 @@ where
     // gana, así que un `main` propio que ya la instaló no se pisa.
     #[cfg(feature = "axum")]
     rdd_core::http::set_default_platform(|| std::sync::Arc::new(rdd_axum::AxumPlatform::new()));
+
+    #[cfg(feature = "sqlite")]
+    rdd_sqlite::register();
 
     dotenvy::dotenv().ok();
 

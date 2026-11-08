@@ -26,12 +26,14 @@ tracing-subscriber.workspace = true
 # La plataforma por defecto: `rdd-axum` (RP-012). Es `optional` para poder
 # compilar la fachada sin ella y verificar que `run()` desaparece.
 rdd-axum = { workspace = true, optional = true }
+rdd-sqlite = { workspace = true, optional = true }
 
 [features]
-default = ["axum"]
+default = ["axum", "sqlite"]
 # Activar `axum` hace dos cosas: trae la plataforma y le dice al núcleo que
 # existe una plataforma por defecto, que es lo que habilita `App::run` (RP-012).
 axum    = ["dep:rdd-axum", "rdd-core/default-platform"]
+sqlite  = ["dep:rdd-sqlite"]
 
 [dev-dependencies]
 bytes.workspace = true

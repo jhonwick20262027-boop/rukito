@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 rdd-core.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["postgres"] }
 
 # RA-015: ningún otro adaptador y ninguna plataforma HTTP entran aquí. La suite de
 # conformidad solo hace falta para probar, así que va como dev-dependency.

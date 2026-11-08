@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rdd — REST DDD Framework for Rust</title>
+  <link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+  <div id="site-header-root"></div>
+
+  <script src="assets/js/highlight.js"></script>
+  <script src="assets/js/site.js"></script>
+  <script>
+    window.RDD = window.RDD || {};
+    RDD.config = {
+      repo: "https://github.com/jhonwick20262027-boop/rdd",
+      version: "v0.1.0",
+      specVersion: "0.4.4",
+      searchIndex: [
+        { title: "Guía Rápida", section: "Inicio", keywords: "rdd, guide, getting started", url: "guide/inicio-rapido.html" },
+        { title: "Arquitectura", section: "Arquitectura", keywords: "rdd, arquitectura, diagrama", url: "guide/arquitectura.html" },
+        { title: "CLI", section: "CLI", keywords: "rdd, cli, new, g module, run", url: "guide/cli.html" },
+        { title: "Especificación", section: "Especificación", keywords: "rdd, spec, RDD-SPEC", url: "especificacion.html" },
+        { title: "API HTTP", section: "Ruteo", keywords: "rdd, routes, controller, handler", url: "guide/routing.html" },
+        { title: "Middlewares", section: "Middlewares", keywords: "rdd, middleware, cors, logger", url: "guide/middlewares.html" },
+        { title: "Errores", section: "Errores", keywords: "rdd, error, problem details, RFC 9457", url: "errores.html" },
+        { title: "Configuración", section: "Configuración", keywords: "rdd, config, rdd.toml, entorno", url: "configuracion.html" },
+        { title: "Persistencia", section: "Persistencia", keywords: "rdd, repo, db, prisma, sqlx", url: "persistencia.html" },
+        { title: "Macros", section: "Macros", keywords: "rdd, #[controller], #[service], #[aggregate]", url: "macros.html" },
+      ]
+    };
+    RDD.searchIndex = RDD.config.searchIndex;
+  </script>
+</body>
+</html>

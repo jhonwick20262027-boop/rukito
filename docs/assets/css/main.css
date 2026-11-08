@@ -166,6 +166,7 @@ code, pre, kbd { font-family: var(--font-mono); }
 .btn svg { width: 15px; height: 15px; }
 
 .menu-toggle { display: none; }
+.mobile-nav { display: none; }
 
 /* ============ Fondo animado ============ */
 .forge-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: var(--bg); }
@@ -452,8 +453,8 @@ p code, li code, td code, h3 code, h4 code {
 
 /* ============ Layout de documentación ============ */
 .docs-layout {
-  display: grid; grid-template-columns: 264px minmax(0, 1fr) 216px;
-  gap: 40px; max-width: 1460px; margin: 0 auto;
+  display: grid; grid-template-columns: 240px minmax(0, 1fr);
+  gap: 36px; max-width: 1240px; margin: 0 auto;
   padding: calc(var(--header-h) + 34px) 30px 80px;
 }
 .sidebar { position: sticky; top: calc(var(--header-h) + 30px); height: calc(100vh - var(--header-h) - 50px); overflow-y: auto; padding-right: 8px; }
@@ -476,6 +477,10 @@ p code, li code, td code, h3 code, h4 code {
 .sidebar-group a.active .n { color: var(--rust-400); }
 
 .doc-content { min-width: 0; }
+.doc-content .section { padding: 0; }
+.doc-content > .hero { padding: 0; }
+.doc-content > .hero .hero-grid { grid-template-columns: 1fr; gap: 24px; }
+.doc-content > .hero h1 { font-size: clamp(28px, 3vw, 38px); }
 .breadcrumb { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--faint); margin-bottom: 18px; }
 .breadcrumb a { color: var(--faint); }
 .breadcrumb a:hover { color: var(--ember); }
@@ -549,8 +554,9 @@ tbody tr:hover { background: rgba(255, 255, 255, .02); }
 .toc a.lvl3 { padding-left: 26px; font-size: 12px; }
 
 /* Pager */
-.doc-pager { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 56px; }
+.doc-pager { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; width: 100%; margin-top: 56px; }
 .pager-link {
+  min-width: 0;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 16px 20px; background: var(--surface); transition: all .2s;
 }
@@ -643,7 +649,6 @@ tbody tr:hover { background: rgba(255, 255, 255, .02); }
 
 /* ============ Responsive ============ */
 @media (max-width: 1280px) {
-  .docs-layout { grid-template-columns: 240px minmax(0, 1fr); }
   .toc { display: none; }
 }
 @media (max-width: 1020px) {
@@ -677,16 +682,17 @@ tbody tr:hover { background: rgba(255, 255, 255, .02); }
   .mobile-nav.open { display: flex; animation: pane-in .25s var(--ease-out); }
   .mobile-nav a { color: var(--muted); padding: 10px 8px; font-size: 15px; border-radius: 8px; }
   .mobile-nav a:hover, .mobile-nav a.active { color: var(--ember); background: rgba(255, 90, 31, .08); }
-  .docs-layout { grid-template-columns: 1fr; padding-top: calc(var(--header-h) + 22px); }
+  .docs-layout { grid-template-columns: minmax(0, 1fr); padding-top: calc(var(--header-h) + 22px); }
   .sidebar {
-    position: fixed; top: var(--header-h); left: 0; bottom: 0; z-index: 98;
-    width: 280px; height: auto; background: var(--bg-2);
-    border-right: 1px solid var(--border); padding: 22px 18px;
-    transform: translateX(-100%); transition: transform .3s var(--ease-out);
+    position: static; width: auto; height: auto; overflow: visible;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 16px; margin-bottom: 4px;
   }
-  .sidebar.open { transform: none; box-shadow: 30px 0 80px rgba(0,0,0,.5); }
-  .docs-sidebar-toggle { display: inline-flex !important; }
-  .doc-pager { grid-template-columns: 1fr; }
+  .sidebar-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; }
+  .sidebar-group + .sidebar-group { margin-top: 10px; }
+  .sidebar-group h4 { flex-basis: 100%; padding-left: 8px; }
+  .sidebar-group a { padding: 6px 9px; }
+  .doc-pager { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 36px; }
   .footer-links { gap: 30px; flex-wrap: wrap; }
 }
 @media (max-width: 560px) {
@@ -702,6 +708,7 @@ tbody tr:hover { background: rgba(255, 255, 255, .02); }
   .header-inner { padding: 0 18px; gap: 14px; }
   .container { padding: 0 18px; }
   .code-tabs { overflow-x: auto; }
+  .doc-pager { grid-template-columns: 1fr; }
 }
 
 .docs-sidebar-toggle {

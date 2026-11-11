@@ -1,0 +1,31 @@
+# rdd
+
+> rdd es un framework REST para Rust con diseño guiado por dominio (DDD). Genera APIs organizadas en cuatro capas —domain, application, infrastructure y presentation— sobre tipos HTTP neutrales y Problem Details (RFC 9457). El CLI crea el proyecto, genera módulos y aplica migraciones; SQLite es la base local por defecto y PostgreSQL está soportado mediante adaptadores sobre sqlx.
+
+Datos canónicos del proyecto:
+
+- Lenguaje: Rust 2024 (MSRV 1.94); runtime tokio.
+- Regla de oro: las reglas de negocio viven en el aggregate; el controller nunca decide.
+- Núcleo HTTP neutral basado en `http` y `bytes`; Axum es la plataforma por defecto.
+- Scaffold por módulo: `domain/`, `application/`, `infrastructure/` y `presentation/`, sin carpetas vacías.
+- Comandos: `rdd new <nombre>`, `rdd g module <nombre>`, `rdd migrate`, `rdd run`.
+- Migraciones SQL versionadas con `rdd migrate` y seguimiento en `_sqlx_migrations`; el servidor no migra al arrancar.
+- Errores y respuestas de error en formato Problem Details (`application/problem+json`).
+- Middlewares oficiales: CORS propio (`rdd-cors`), logging y rate limiting.
+- Licencia MIT; repositorio `https://github.com/jhonwick20262027-boop/rukito`.
+
+## Documentación
+
+- [Guía rápida](https://jhonwick20262027-boop.github.io/rukito/guide/inicio-rapido.html): instalar `rdd-cli`, crear un proyecto, generar un módulo, migrar y ejecutar.
+- [Arquitectura](https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html): crates del workspace, dependencias permitidas, stack tecnológico e interfaz de plataforma.
+- [Referencia de la CLI](https://jhonwick20262027-boop.github.io/rukito/guide/cli.html): comandos, opciones de generación y `rdd migrate`.
+- [Especificación completa](https://jhonwick20262027-boop.github.io/rukito/especificacion.html): principios, requisitos RF/RA/RP, decisiones de arquitectura y criterios de aceptación.
+
+## Referencia técnica
+
+- [Especificación en Markdown](https://jhonwick20262027-boop.github.io/rukito/specs/RDD-SPEC.md): fuente de verdad del framework, apta para lectura por agentes.
+- [Repositorio en GitHub](https://github.com/jhonwick20262027-boop/rukito): código del workspace, crates del framework y aplicación de ejemplo.
+
+## Opcional
+
+- [Sitemap](https://jhonwick20262027-boop.github.io/rukito/sitemap.xml): índice de páginas publicadas.

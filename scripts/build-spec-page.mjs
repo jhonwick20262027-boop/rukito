@@ -238,14 +238,94 @@ const index = rendered.map(
     `      { title: ${JSON.stringify(section.label)}, section: "Especificación", keywords: ${JSON.stringify(`${title} ${section.label}`)}, url: "especificacion.html#${section.id}" },`,
 );
 
+// SEO y GEO: una sola URL canónica, descripción reutilizada en Open Graph y
+// datos estructurados que citan versión y fecha reales del documento.
+const site = "https://jhonwick20262027-boop.github.io/rukito/";
+const canonical = `${site}especificacion.html`;
+const pageTitle = "Especificación técnica de rdd: framework REST DDD en Rust";
+const description = `Especificación ${version} del framework rdd: requisitos, arquitectura de cuatro capas y criterios de aceptación.`;
+const specLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "@id": `${canonical}#article`,
+      headline: pageTitle,
+      description,
+      url: canonical,
+      mainEntityOfPage: canonical,
+      inLanguage: "es",
+      version,
+      creativeWorkStatus: status,
+      dateModified: date,
+      proficiencyLevel: "Expert",
+      isPartOf: { "@type": "WebSite", "@id": `${site}#website`, url: site, name: "rdd" },
+      author: { "@type": "Organization", name: "rdd", url: site },
+      publisher: {
+        "@type": "Organization",
+        name: "rdd",
+        url: site,
+        logo: {
+          "@type": "ImageObject",
+          url: `${site}assets/img/icon-512.png`,
+          width: 512,
+          height: 512,
+        },
+      },
+      about: [
+        { "@type": "Thing", name: "Rust" },
+        { "@type": "Thing", name: "Domain-Driven Design" },
+        { "@type": "Thing", name: "Software specification" },
+      ],
+    },
+    {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Inicio", item: site },
+        { "@type": "ListItem", position: 2, name: "Especificación", item: canonical },
+      ],
+    },
+  ],
+};
+
 const page = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rdd — ${esc(title)}</title>
-  <meta name="description" content="${esc(`${title} (${version}). Requisitos, arquitectura y criterios de aceptación del framework rdd.`)}">
+  <title>${esc(pageTitle)}</title>
+  <meta name="description" content="${esc(description)}">
+  <meta name="keywords" content="rdd especificación, requisitos, arquitectura, DDD, Rust, framework REST">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="${canonical}">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="assets/img/icon-192.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="alternate" type="text/markdown" href="specs/RDD-SPEC.md" title="Especificación RDD en Markdown">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="${esc(pageTitle)}">
+  <meta property="og:description" content="${esc(description)}">
+  <meta property="og:url" content="${canonical}">
+  <meta property="og:image" content="${site}assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta property="article:modified_time" content="${esc(date)}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${esc(pageTitle)}">
+  <meta name="twitter:description" content="${esc(description)}">
+  <meta name="twitter:image" content="${site}assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
   <link rel="stylesheet" href="assets/css/main.css">
+  <script type="application/ld+json">
+${JSON.stringify(specLd, null, 2)}
+  </script>
 </head>
 <body data-nav="spec">
   <div id="site-header-root"></div>

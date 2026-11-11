@@ -3,9 +3,86 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rdd — Arquitectura del Framework</title>
-  <meta name="description" content="Arquitectura de rdd: crates, capas y dependencias del framework.">
+  <title>Arquitectura de rdd: crates, capas y dependencias</title>
+  <meta name="description" content="Crates, capas y dependencias permitidas del framework rdd: núcleo HTTP neutral, plataforma Axum y adaptadores de base de datos.">
+  <meta name="keywords" content="rdd arquitectura, crates Rust, rdd-core, rdd-axum, DDD, capas, workspace">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-192.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Arquitectura de rdd: crates, capas y dependencias">
+  <meta property="og:description" content="Crates, capas y dependencias permitidas del framework rdd: núcleo HTTP neutral, plataforma Axum y adaptadores de base de datos.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Arquitectura de rdd: crates, capas y dependencias">
+  <meta name="twitter:description" content="Crates, capas y dependencias permitidas del framework rdd.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
   <link rel="stylesheet" href="../assets/css/main.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html#article",
+        "headline": "Arquitectura de rdd: crates, capas y dependencias",
+        "description": "Crates, capas y dependencias permitidas del framework rdd: núcleo HTTP neutral, plataforma Axum y adaptadores de base de datos.",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html",
+        "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html",
+        "inLanguage": "es",
+        "proficiencyLevel": "Expert",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "name": "rdd"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "dateModified": "2026-11-11",
+        "about": [
+          { "@type": "Thing", "name": "Software architecture" },
+          { "@type": "Thing", "name": "Rust" },
+          { "@type": "Thing", "name": "Axum" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Inicio", "item": "https://jhonwick20262027-boop.github.io/rukito/" },
+          { "@type": "ListItem", "position": 2, "name": "Arquitectura", "item": "https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html" }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body data-root=".." data-nav="arch">
   <div id="site-header-root"></div>

@@ -3,9 +3,109 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rdd — RDD — Especificación técnica del framework REST DDD en Rust</title>
-  <meta name="description" content="RDD — Especificación técnica del framework REST DDD en Rust (0.5.0-draft). Requisitos, arquitectura y criterios de aceptación del framework rdd.">
+  <title>Especificación técnica de rdd: framework REST DDD en Rust</title>
+  <meta name="description" content="Especificación 0.5.0-draft del framework rdd: requisitos, arquitectura de cuatro capas y criterios de aceptación.">
+  <meta name="keywords" content="rdd especificación, requisitos, arquitectura, DDD, Rust, framework REST">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/especificacion.html">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="assets/img/icon-192.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="alternate" type="text/markdown" href="specs/RDD-SPEC.md" title="Especificación RDD en Markdown">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Especificación técnica de rdd: framework REST DDD en Rust">
+  <meta property="og:description" content="Especificación 0.5.0-draft del framework rdd: requisitos, arquitectura de cuatro capas y criterios de aceptación.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/especificacion.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta property="article:modified_time" content="2026-11-10">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Especificación técnica de rdd: framework REST DDD en Rust">
+  <meta name="twitter:description" content="Especificación 0.5.0-draft del framework rdd: requisitos, arquitectura de cuatro capas y criterios de aceptación.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
   <link rel="stylesheet" href="assets/css/main.css">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "@id": "https://jhonwick20262027-boop.github.io/rukito/especificacion.html#article",
+      "headline": "Especificación técnica de rdd: framework REST DDD en Rust",
+      "description": "Especificación 0.5.0-draft del framework rdd: requisitos, arquitectura de cuatro capas y criterios de aceptación.",
+      "url": "https://jhonwick20262027-boop.github.io/rukito/especificacion.html",
+      "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/especificacion.html",
+      "inLanguage": "es",
+      "version": "0.5.0-draft",
+      "creativeWorkStatus": "Borrador para aprobación",
+      "dateModified": "2026-11-10",
+      "proficiencyLevel": "Expert",
+      "isPartOf": {
+        "@type": "WebSite",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/",
+        "name": "rdd"
+      },
+      "author": {
+        "@type": "Organization",
+        "name": "rdd",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "rdd",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+          "width": 512,
+          "height": 512
+        }
+      },
+      "about": [
+        {
+          "@type": "Thing",
+          "name": "Rust"
+        },
+        {
+          "@type": "Thing",
+          "name": "Domain-Driven Design"
+        },
+        {
+          "@type": "Thing",
+          "name": "Software specification"
+        }
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Inicio",
+          "item": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Especificación",
+          "item": "https://jhonwick20262027-boop.github.io/rukito/especificacion.html"
+        }
+      ]
+    }
+  ]
+}
+  </script>
 </head>
 <body data-nav="spec">
   <div id="site-header-root"></div>

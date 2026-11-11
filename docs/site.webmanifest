@@ -1,0 +1,29 @@
+{
+  "name": "rdd — Framework REST DDD para Rust",
+  "short_name": "rdd",
+  "description": "Documentación del framework rdd: APIs REST en Rust con diseño guiado por dominio.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "browser",
+  "background_color": "#0d0b08",
+  "theme_color": "#0d0b08",
+  "icons": [
+    {
+      "src": "assets/img/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "assets/img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

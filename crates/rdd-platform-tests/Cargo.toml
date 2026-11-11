@@ -25,3 +25,12 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+# C-13 a C-16 (§4.5): la plataforma con transporte y el cliente WebSocket viven
+# aquí, como dev-dependencies; el resto de la suite sigue sin verlos.
+rdd-axum = { workspace = true, features = ["ws"] }
+tokio-tungstenite.workspace = true
+# V17 (§22): la medición del hub también es una dev-dependency, para que la
+# suite de conformidad no arrastre el tiempo real fuera de sus pruebas.
+rdd-socket.workspace = true

@@ -8,7 +8,9 @@
 pub mod jwt;
 pub mod require_auth;
 pub mod require_role;
+pub mod task_events;
 
 pub use jwt::JwtMiddleware;
 pub use require_auth::RequireAuth;
 pub use require_role::RequireRole;
+pub use task_events::TaskEvents;

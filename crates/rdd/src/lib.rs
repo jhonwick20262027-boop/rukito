@@ -26,6 +26,26 @@ pub use rdd_sqlite::SqliteAdapter;
 #[cfg(feature = "postgres")]
 pub use rdd_postgres::PostgresAdapter;
 
+/// Hub de salas y presencia del tiempo real (§10.5); lo activa la feature
+/// `socket`. El puerto `.socket(...)` viene del núcleo y no depende de esto.
+#[cfg(feature = "socket")]
+pub use rdd_socket::{Hub, Lagged, Payload, Subscription};
+
+/// Servidor MCP por stdio (§10.6, §12.6); lo activa la feature `mcp`.
+///
+/// No hay nada que registrar: la app resuelve sus services y construye las tools
+/// en `presentation/`, igual que un controller (RA-019, ADR-22).
+#[cfg(feature = "mcp")]
+pub mod mcp {
+    pub use rdd_mcp::{
+        CallToolResult, Content, McpServer, Tool, ToolContext, serve_io, serve_stdio,
+    };
+}
+
+/// Re-export de las tres piezas que documenta §12.6, por comodidad.
+#[cfg(feature = "mcp")]
+pub use rdd_mcp::{McpServer, Tool, serve_stdio};
+
 /// Puebla el registro de adaptadores del núcleo (RF-191).
 ///
 /// Los seis motores se declaran siempre, aunque su feature esté apagada: es lo

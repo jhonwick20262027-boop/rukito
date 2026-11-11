@@ -1,0 +1,20 @@
+[package]
+name        = "rdd-socket"
+description = "Hub de tiempo real de rdd: salas, difusión y presencia sobre el puerto de actualización del núcleo."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# RA-017: solo el puerto neutral y crates neutrales; ninguna plataforma, Tower
+# ni `tokio-tungstenite` entran en este árbol.
+rdd-core.workspace = true
+bytes.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true

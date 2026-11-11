@@ -10,9 +10,10 @@ use crate::di::{BoxedValue, ContainerBuilder, ContainerError, ProviderReg};
 #[cfg(feature = "default-platform")]
 use crate::http::platform::default_platform;
 use crate::http::platform::{Platform, PlatformFuture, ShutdownSignal};
-use crate::http::routes::{HttpApp, Limits, RouteDef};
+use crate::http::routes::{HttpApp, Limits, RouteDef, normalize_path, to_route_syntax};
 use crate::http::types::{BoxHandler, Method, Middleware, Response, StatusCode};
 use crate::module::{Controller, Module};
+use crate::socket::{SocketHandler, UpgradeDef};
 
 /// Límite de cuerpo por defecto: 2 MB (RF-017).
 pub const DEFAULT_BODY_LIMIT: usize = 2 * 1024 * 1024;
@@ -91,6 +92,7 @@ pub struct BuiltApp {
 pub struct App {
     modules: Vec<Module>,
     globals: Vec<Arc<dyn Middleware>>,
+    upgrades: Vec<UpgradeDef>,
     providers: Vec<ProviderReg>,
     values: Vec<(TypeId, BoxedValue, String)>,
     backend: Option<Backend>,
@@ -113,6 +115,7 @@ impl App {
         Self {
             modules: Vec::new(),
             globals: Vec::new(),
+            upgrades: Vec::new(),
             providers: Vec::new(),
             values: Vec::new(),
             backend: None,
@@ -145,6 +148,17 @@ impl App {
     /// Middleware global ya encajado (lo usan `Cors`, `Logger`, la CLI).
     pub fn boxed_middleware(mut self, mw: Arc<dyn Middleware>) -> Self {
         self.globals.push(mw);
+        self
+    }
+
+    /// Registra un canal de actualización (§10.4, RF-194).
+    ///
+    /// La ruta usa `/:nombre` (RP-003), se normaliza como cualquier otra
+    /// (RF-018) y no participa del 404/405 del fallback. El handshake pasa por
+    /// los middlewares globales y después por `SocketHandler::authorize`
+    /// (RF-198).
+    pub fn socket<H: SocketHandler>(mut self, path: &str, handler: H) -> Self {
+        self.upgrades.push(UpgradeDef::new(path, Arc::new(handler)));
         self
     }
 
@@ -253,12 +267,21 @@ impl App {
             routes.push(health_route());
         }
 
+        validate_upgrades(&self.upgrades, &routes)?;
+
         let limits = Limits {
             body_limit_bytes: self.body_limit,
             shutdown_grace: self.shutdown_grace,
+            ..Limits::default()
         };
 
-        let http = HttpApp::assemble(routes, self.globals.clone(), Arc::clone(&container), limits);
+        let http = HttpApp::assemble(
+            routes,
+            self.upgrades,
+            self.globals.clone(),
+            Arc::clone(&container),
+            limits,
+        );
 
         Ok(BuiltApp {
             http,
@@ -406,6 +429,35 @@ fn health_route() -> RouteDef {
         })
     });
     RouteDef::new(Method::GET, "/health", handler)
+}
+
+/// Valida que los canales no choquen entre sí ni con una ruta HTTP (RF-194).
+///
+/// Un choque llegaría a Axum como ruta duplicada y abortaría el arranque; aquí
+/// se informa antes de abrir el socket.
+fn validate_upgrades(upgrades: &[UpgradeDef], routes: &[RouteDef]) -> Result<(), ContainerError> {
+    let mut router = matchit::Router::<()>::new();
+    for upgrade in upgrades {
+        let path = normalize_path(&upgrade.path);
+        if routes
+            .iter()
+            .any(|route| normalize_path(&route.path) == path)
+        {
+            return Err(ContainerError::Init {
+                tipo: "socket".to_owned(),
+                source: anyhow::anyhow!(
+                    "el canal `{path}` choca con una ruta HTTP del mismo camino"
+                ),
+            });
+        }
+        if let Err(err) = router.insert(to_route_syntax(&path), ()) {
+            return Err(ContainerError::Init {
+                tipo: "socket".to_owned(),
+                source: anyhow::anyhow!("el canal `{path}` es inválido o está duplicado: {err}"),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Alias para que la fachada re-exporte el valor por defecto del límite.

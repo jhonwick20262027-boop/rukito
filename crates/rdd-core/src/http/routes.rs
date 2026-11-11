@@ -11,6 +11,7 @@ use crate::http::types::{
     BoxHandler, BoxedMiddleware, CoreHandler, Method, Request, Response, StatusCode, compose,
     materialize, reopen,
 };
+use crate::socket::{Handshake, Negotiation, SocketContext, SocketHandler, UpgradeDef};
 
 /// Una ruta declarativa: método, ruta con sintaxis `/:nombre` y handler completo.
 ///
@@ -69,35 +70,52 @@ pub fn normalize_path(path: &str) -> String {
     if trimmed.is_empty() { "/" } else { trimmed }.to_owned()
 }
 
-/// Límites que la plataforma debe aplicar (§4.4, RF-017, RP-009).
+/// Límites que la plataforma debe aplicar (§4.4, RF-017, RF-196, RP-009).
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
     /// Tamaño máximo del cuerpo de petición (RF-017).
     pub body_limit_bytes: usize,
     /// Plazo de drenaje al apagar (RP-009).
     pub shutdown_grace: std::time::Duration,
+    /// Tamaño máximo de un mensaje entrante por el canal (RF-196).
+    pub socket_message_limit_bytes: usize,
+    /// Capacidad de la cola de salida de un canal (RF-196).
+    pub socket_outbound_queue: usize,
 }
+
+/// Mensaje de canal por defecto: 1 MiB (RF-196).
+pub const DEFAULT_SOCKET_MESSAGE_LIMIT: usize = 1024 * 1024;
+
+/// Cola de salida por defecto de un canal (RF-196).
+pub const DEFAULT_SOCKET_OUTBOUND_QUEUE: usize = 64;
 
 impl Default for Limits {
     fn default() -> Self {
         Self {
             body_limit_bytes: crate::app::DEFAULT_BODY_LIMIT,
             shutdown_grace: std::time::Duration::from_secs(30),
+            socket_message_limit_bytes: DEFAULT_SOCKET_MESSAGE_LIMIT,
+            socket_outbound_queue: DEFAULT_SOCKET_OUTBOUND_QUEUE,
         }
     }
 }
 
-/// La aplicación HTTP como datos: rutas, fallback y límites (§4.4).
+/// La aplicación HTTP como datos: rutas, canales, fallback y límites (§4.4).
 ///
 /// El núcleo compone todo lo semántico; la plataforma solo sabe servirlo.
 pub struct HttpApp {
     /// Rutas montadas, con su cadena de middlewares ya compuesta.
     pub routes: Vec<RouteDef>,
+    /// Canales de actualización, fuera del 404/405 del fallback (RF-194).
+    pub upgrades: Vec<UpgradeDef>,
     /// Decide 404 o 405; también envuelto por los middlewares globales (RF-081).
     pub fallback: BoxHandler,
-    /// Límites aplicables por la plataforma (RP-006, RP-009).
+    /// Límites aplicables por la plataforma (RP-006, RP-009, RF-196).
     pub limits: Limits,
     router: OnceLock<RouteTable>,
+    upgrade_router: OnceLock<UpgradeTable>,
+    globals: Vec<BoxedMiddleware>,
+    container: Arc<Container>,
 }
 
 impl HttpApp {
@@ -110,6 +128,7 @@ impl HttpApp {
     /// completa para que cualquier middleware pueda resolver servicios (RF-022).
     pub(crate) fn assemble(
         routes: Vec<RouteDef>,
+        upgrades: Vec<UpgradeDef>,
         globals: Vec<BoxedMiddleware>,
         container: Arc<Container>,
         limits: Limits,
@@ -128,20 +147,104 @@ impl HttpApp {
 
         Self {
             routes,
+            upgrades,
             fallback: materialize(fallback),
             limits,
             router: OnceLock::new(),
+            upgrade_router: OnceLock::new(),
+            globals,
+            container,
         }
     }
 
     /// App vacía: responde 404 a todo (RF-010).
     pub fn empty(container: Arc<Container>, limits: Limits) -> Self {
-        Self::assemble(Vec::new(), Vec::new(), container, limits)
+        Self::assemble(Vec::new(), Vec::new(), Vec::new(), container, limits)
     }
 
     /// Tabla de rutas del núcleo, construida una sola vez (V8: `matchit`).
     fn router(&self) -> &RouteTable {
         self.router.get_or_init(|| RouteTable::build(&self.routes))
+    }
+
+    /// Tabla de canales, construida una sola vez (RF-194).
+    fn upgrade_router(&self) -> &UpgradeTable {
+        self.upgrade_router
+            .get_or_init(|| UpgradeTable::build(&self.upgrades))
+    }
+
+    /// Decide un handshake de actualización (§10.4).
+    ///
+    /// La plataforma solo la llama cuando la petición es un upgrade dirigido a
+    /// una ruta registrada. El núcleo corre la cadena global completa —igual
+    /// que una ruta HTTP— y después `authorize`, siempre **antes** del 101
+    /// (RF-198, RP-024). Cualquier rechazo es una respuesta HTTP normal.
+    pub async fn negotiate(&self, req: Request) -> Negotiation {
+        let path = normalize_path(req.uri().path());
+        let Some((handler, params)) = self.upgrade_router().at(&path) else {
+            let err = Error::not_found(format!("la ruta {path} no existe"));
+            return Negotiation::Reject(error_response_for(&err, &path));
+        };
+
+        let accepted: Arc<std::sync::Mutex<Option<Handshake>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let terminal_slot = Arc::clone(&accepted);
+        let terminal: CoreHandler = Arc::new(move |req: Request| {
+            let slot = Arc::clone(&terminal_slot);
+            let handler = Arc::clone(&handler);
+            Box::pin(async move {
+                let ctx = SocketContext {
+                    path: normalize_path(req.uri().path()),
+                    params: req
+                        .extensions()
+                        .get::<PathParams>()
+                        .map(|params| {
+                            params
+                                .iter()
+                                .map(|(name, value)| (name.to_owned(), value.to_owned()))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    container: req
+                        .extensions()
+                        .get::<Arc<Container>>()
+                        .cloned()
+                        .unwrap_or_else(|| Arc::clone(crate::di::default_container())),
+                    extensions: req.extensions().clone(),
+                };
+                handler.authorize(&ctx)?;
+                if let Ok(mut slot) = slot.lock() {
+                    *slot = Some(Handshake {
+                        context: ctx,
+                        handler: Arc::clone(&handler),
+                    });
+                }
+                let mut resp = Response::new(bytes::Bytes::new());
+                *resp.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
+                resp.extensions_mut().insert(UpgradeAccepted);
+                Ok(resp)
+            })
+        });
+
+        // Los parámetros entran antes de la cadena, igual que en una ruta (RP-003).
+        let req = with_extensions(req, params, None);
+        let chain = close(Arc::clone(&self.container), &self.globals, terminal);
+        match chain(req).await {
+            Ok(resp) if resp.extensions().get::<UpgradeAccepted>().is_some() => {
+                let handshake = accepted.lock().ok().and_then(|mut slot| slot.take());
+                match handshake {
+                    Some(handshake) => Negotiation::Accept(handshake),
+                    None => Negotiation::Reject(error_response_for(
+                        &Error::internal(anyhow::anyhow!(
+                            "el handshake terminó sin contexto de canal"
+                        )),
+                        &path,
+                    )),
+                }
+            }
+            Ok(resp) => Negotiation::Reject(resp),
+            Err(err) => Negotiation::Reject(error_response_for(&err, &path)),
+        }
     }
 
     /// Enrutado y ejecución sin servidor: plataforma de referencia en proceso
@@ -153,6 +256,11 @@ impl HttpApp {
         // RP-006: el límite se comprueba antes de invocar al handler.
         if let Some(resp) = self.check_body(&req) {
             return resp;
+        }
+
+        // RP-023: `dispatch` no transporta el canal; lo declara sin implementar.
+        if self.upgrade_router().at(&path).is_some() {
+            return self.upgrade_not_implemented(&path);
         }
 
         match self.lookup(&path, &method) {
@@ -207,6 +315,12 @@ impl HttpApp {
             // NotFound y rutas malformadas acaban en 404; nunca en panic.
             None => Look::Missing,
         }
+    }
+
+    /// 501 en Problem Details para un canal que esta plataforma no transporta
+    /// (RP-027).
+    pub fn upgrade_not_implemented(&self, path: &str) -> Response {
+        not_implemented(&normalize_path(path))
     }
 
     /// Rutas montadas, para el registro de arranque (RN-042).
@@ -331,6 +445,59 @@ pub async fn invoke_guarded(handler: BoxHandler, req: Request, path: &str) -> Re
 
 type MethodMap = HashMap<Method, BoxHandler>;
 
+/// Marca de la respuesta centinela que emite el terminal del handshake.
+///
+/// La cadena global devuelve `Response`, así que el handshake aceptado viaja en
+/// las extensiones de un 101 interno; nunca llega a la plataforma.
+#[derive(Clone, Copy)]
+struct UpgradeAccepted;
+
+/// Tabla de canales (RF-194), con `matchit` igual que las rutas.
+struct UpgradeTable {
+    inner: matchit::Router<Arc<dyn SocketHandler>>,
+}
+
+/// Handler encontrado y parámetros capturados de su ruta.
+type UpgradeMatch = (Arc<dyn SocketHandler>, Vec<(String, String)>);
+
+impl UpgradeTable {
+    fn build(upgrades: &[UpgradeDef]) -> Self {
+        let mut inner = matchit::Router::new();
+        for upgrade in upgrades {
+            let path = normalize_path(&upgrade.path);
+            if let Err(err) = inner.insert(to_route_syntax(&path), Arc::clone(&upgrade.handler)) {
+                // `App::build` valida antes; aquí queda registrado para las
+                // plataformas que arman `HttpApp` a mano.
+                tracing::error!(path, error = %err, "canal duplicado o inválido al montar");
+            }
+        }
+        Self { inner }
+    }
+
+    fn at(&self, path: &str) -> Option<UpgradeMatch> {
+        let found = self.inner.at(path).ok()?;
+        let params = found
+            .params
+            .iter()
+            .map(|(name, value)| (name.to_owned(), value.to_owned()))
+            .collect();
+        Some((Arc::clone(found.value), params))
+    }
+}
+
+/// 501 en Problem Details para un upgrade que `dispatch` no puede transportar
+/// (RP-023).
+fn not_implemented(path: &str) -> Response {
+    let problem = Problem {
+        r#type: "about:blank".to_owned(),
+        title: "Not Implemented".to_owned(),
+        status: StatusCode::NOT_IMPLEMENTED.as_u16(),
+        detail: "esta plataforma no transporta el canal de actualización".to_owned(),
+        instance: path.to_owned(),
+    };
+    problem_response(StatusCode::NOT_IMPLEMENTED, &problem, None)
+}
+
 /// Tabla de rutas del núcleo, construida con `matchit` (V8).
 ///
 /// `matchit` habla `{nombre}`, así que [`to_route_syntax`] traduce `/:nombre`
@@ -413,6 +580,7 @@ pub fn to_route_syntax(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::types::{Middleware, fn_middleware};
     use bytes::Bytes;
 
     fn ok(body: &'static str) -> CoreHandler {
@@ -440,6 +608,7 @@ mod tests {
             .collect();
         HttpApp::assemble(
             routes,
+            Vec::new(),
             globals,
             Arc::new(Container::empty()),
             Limits::default(),
@@ -598,6 +767,104 @@ mod tests {
         assert_eq!(
             app.route_listing(),
             vec!["GET /tasks", "POST /tasks", "GET /tasks/:id"]
+        );
+    }
+
+    #[derive(Clone, Debug)]
+    struct Session;
+
+    struct Channel;
+
+    impl crate::socket::SocketHandler for Channel {
+        fn authorize(&self, ctx: &SocketContext) -> crate::Result<()> {
+            ctx.ext::<Session>().map(|_| ()).ok_or(Error::Unauthorized)
+        }
+
+        fn handle(
+            &self,
+            _ctx: SocketContext,
+            _conn: Box<dyn crate::socket::SocketConnection>,
+        ) -> crate::http::BoxFuture<'static, crate::Result<()>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    fn with_channel(globals: Vec<BoxedMiddleware>) -> HttpApp {
+        let handler: Arc<dyn crate::socket::SocketHandler> = Arc::new(Channel);
+        HttpApp::assemble(
+            Vec::new(),
+            vec![crate::socket::UpgradeDef::new("/ws/:room", handler)],
+            globals,
+            Arc::new(Container::empty()),
+            Limits::default(),
+        )
+    }
+
+    fn identity() -> impl Middleware {
+        fn_middleware(|mut req, next| async move {
+            req.extensions_mut().insert(Session);
+            next.run(req).await
+        })
+    }
+
+    #[tokio::test]
+    async fn el_handshake_ve_parametros_e_identidad_y_acepta() {
+        use crate::socket::Negotiation;
+
+        let app = with_channel(vec![Arc::new(identity())]);
+        let req = http::Request::builder()
+            .method(Method::GET)
+            .uri("/ws/sala-1")
+            .body(Bytes::new())
+            .unwrap();
+        match app.negotiate(req).await {
+            Negotiation::Accept(handshake) => {
+                assert_eq!(handshake.context.path, "/ws/sala-1");
+                assert_eq!(
+                    handshake.context.param("room"),
+                    Some("sala-1"),
+                    "el handler debe recibir los parámetros de ruta"
+                );
+                assert!(handshake.context.ext::<Session>().is_some());
+            }
+            Negotiation::Reject(resp) => panic!("esperaba 101, llegó {}", resp.status()),
+        }
+    }
+
+    #[tokio::test]
+    async fn authorize_rechaza_antes_del_101() {
+        use crate::socket::Negotiation;
+
+        let app = with_channel(Vec::new());
+        let req = http::Request::builder()
+            .method(Method::GET)
+            .uri("/ws/sala-1")
+            .body(Bytes::new())
+            .unwrap();
+        match app.negotiate(req).await {
+            Negotiation::Reject(resp) => {
+                assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+                assert_eq!(
+                    resp.headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok()),
+                    Some("application/problem+json")
+                );
+            }
+            Negotiation::Accept(_) => panic!("no debe aceptar sin identidad"),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_responde_501_a_un_canal() {
+        let app = with_channel(Vec::new());
+        let resp = app.dispatch(req(Method::GET, "/ws/sala-1")).await;
+        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            resp.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok()),
+            Some("application/problem+json")
         );
     }
 }

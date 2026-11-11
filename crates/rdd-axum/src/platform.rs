@@ -86,8 +86,10 @@ impl AxumPlatform {
     }
 
     /// Construye el router de Axum con las rutas del núcleo (RP-003, RP-008).
-    fn router(&self, app: &HttpApp) -> Router {
+    fn router(&self, app: Arc<HttpApp>, shutdown: ShutdownSignal) -> Router {
         let limits = app.limits;
+        #[cfg(not(feature = "ws"))]
+        let _ = shutdown;
         let fallback = Arc::clone(&app.fallback);
         let fallback_service = Arc::clone(&fallback);
         let fallback_handler = move |req: Request| {
@@ -111,6 +113,35 @@ impl AxumPlatform {
                 router = router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
             }
         }
+
+        for upgrade in &app.upgrades {
+            let pattern = to_route_syntax(&upgrade.path);
+            #[cfg(feature = "ws")]
+            let handler = {
+                let app = Arc::clone(&app);
+                let shutdown = shutdown.clone();
+                move |params: Path<HashMap<String, String>>, req: Request| {
+                    let app = Arc::clone(&app);
+                    let shutdown = shutdown.clone();
+                    async move { crate::ws::serve_upgrade(app, shutdown, params.0, req).await }
+                }
+            };
+            #[cfg(not(feature = "ws"))]
+            let handler = {
+                let app = Arc::clone(&app);
+                move |req: Request| {
+                    let app = Arc::clone(&app);
+                    async move {
+                        let resp = app.upgrade_not_implemented(req.uri().path());
+                        core_response(resp)
+                    }
+                }
+            };
+
+            for spelling in spellings(&pattern) {
+                router = router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
+            }
+        }
         router
     }
 }
@@ -120,6 +151,10 @@ impl Platform for AxumPlatform {
         "axum"
     }
 
+    fn supports_upgrades(&self) -> bool {
+        cfg!(feature = "ws")
+    }
+
     fn serve(
         self: Arc<Self>,
         app: HttpApp,
@@ -127,7 +162,8 @@ impl Platform for AxumPlatform {
         shutdown: ShutdownSignal,
     ) -> PlatformResult<PlatformFuture<Result<(), PlatformError>>> {
         let grace = app.limits.shutdown_grace;
-        let router = self.router(&app);
+        let app = Arc::new(app);
+        let router = self.router(Arc::clone(&app), shutdown.clone());
 
         // RP-009: al activarse la señal se dejan de aceptar conexiones nuevas y
         // se drenan las en curso. El plazo `shutdown_grace` se impone por fuera:
@@ -175,6 +211,13 @@ fn apply_layers(mut router: MethodRouter, layers: &[ErasedLayer]) -> MethodRoute
         router = router.layer(layer.clone());
     }
     router
+}
+
+/// Respuesta del núcleo al tipo de Axum, sin transportar canales (RP-027).
+#[cfg(not(feature = "ws"))]
+fn core_response(resp: rdd_core::http::Response) -> Response {
+    let (parts, body) = resp.into_parts();
+    Response::from_parts(parts, axum::body::Body::from(body))
 }
 
 /// Rutas del núcleo agrupadas por ruta declarada, conservando el orden de montaje.

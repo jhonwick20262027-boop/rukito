@@ -17,6 +17,7 @@ pub mod domain;
 pub mod error;
 pub mod http;
 pub mod module;
+pub mod socket;
 
 pub use app::{App, AppConfig, Backend, BuiltApp, DEFAULT_BODY_LIMIT, NO_DEFAULT_PLATFORM};
 pub use db::{Db, DbAdapter, MemoryBackend, Persist, Repo, Row, Value};
@@ -24,6 +25,10 @@ pub use domain::{Aggregate, DomainEvent};
 pub use error::{ContainerError, Error, PlatformError, PlatformResult, Problem, Result};
 pub use http::rate_limit::{RateLimit, RateLimitConfigError};
 pub use module::{Controller, Module, ModuleBuilder, ModuleMember, ProviderMarker};
+pub use socket::{
+    Handshake, Negotiation, SocketConnection, SocketContext, SocketHandler, SocketMessage,
+    UpgradeDef,
+};
 
 /// Tipos que un proyecto de usuario importa normalmente.
 pub mod prelude {
@@ -39,4 +44,7 @@ pub mod prelude {
         RequestExt, Response, RouteDef, ShutdownSignal, StatusCode, compose, fn_middleware, header,
     };
     pub use crate::module::{Controller, Module, ModuleBuilder, ModuleMember, ProviderMarker};
+    pub use crate::socket::{
+        SocketConnection, SocketContext, SocketHandler, SocketMessage, UpgradeDef,
+    };
 }

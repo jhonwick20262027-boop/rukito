@@ -17,6 +17,11 @@ use self::application::tasks_use_cases::TasksUseCases;
 use self::domain::Task;
 use self::infrastructure::tasks_repository::TasksRepository;
 use self::presentation::tasks_controller::TasksController;
+use crate::middleware::TaskEvents;
+
+/// Canal de actualización del módulo; `main` lo registra en el contenedor y en
+/// `App::socket` (§10.4, §26.7).
+pub use self::presentation::task_feed::TaskFeed;
 
 /// El caso de uso con su adaptador real. La capa HTTP importa este alias en vez
 /// del adaptador, que RA-003 le prohíbe (§14.2).
@@ -45,7 +50,7 @@ pub fn module() -> rdd::Module {
     module! {
         providers: [],
         controllers: [TasksController],
-        middlewares: [],
+        middlewares: [TaskEvents],
     }
 }
 

@@ -19,7 +19,9 @@ workspace = true
 
 [dependencies]
 # RA-013: el proyecto depende de la fachada, nunca de `rdd-core`.
-rdd.workspace = true
+# La feature `socket` trae el hub de §10.5 y el transporte WS de `rdd-axum`; `mcp`
+# trae el servidor MCP por stdio de §10.6.
+rdd = { workspace = true, features = ["socket", "mcp"] }
 # Paquete externo que lee su propia sección de `rdd.toml` (§11.5, RF-151).
 rdd-cors.workspace = true
 # `Error::internal` recibe un `anyhow::Error`; lo usan los adaptadores (§10.3).
@@ -35,8 +37,13 @@ password-hash.workspace = true
 jsonwebtoken.workspace = true
 # El middleware avisa de un token inválido sin rechazar la petición (§26.3).
 tracing.workspace = true
+# `tokio::select!` en el handler del canal: escucha al cliente y a la sala a la
+# vez (§10.4).
+tokio.workspace = true
 
 [dev-dependencies]
 bytes.workspace = true
+futures.workspace = true
 http.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true

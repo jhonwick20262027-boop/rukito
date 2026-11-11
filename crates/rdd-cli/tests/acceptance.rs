@@ -7,6 +7,10 @@
 //! ```text
 //! cargo test -p rdd-cli --test acceptance -- --ignored
 //! ```
+//!
+//! El proyecto generado se resuelve fuera del workspace, así que necesita el
+//! registro de crates. Sin red, la misma corrida vale con `CARGO_NET_OFFLINE=true`
+//! —lo heredan los `cargo` hijos— si las dependencias ya están en la caché.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -95,7 +99,7 @@ fn generated_projects_compile_and_pass_their_tests() {
     assert_ok(&output, "`rdd g module`");
     assert!(
         project
-            .join("src/modules/task_items/dto/create_task_item_dto.rs")
+            .join("src/modules/task_items/presentation/dto.rs")
             .is_file()
     );
     assert_ok(&cargo(&project, &["test"]), "RF-007 tras `rdd g module`");
@@ -106,6 +110,15 @@ fn generated_projects_compile_and_pass_their_tests() {
     let bare = temp.join("bare-app");
     assert_ok(&cargo(&bare, &["test"]), "RF-007 con --no-example");
     assert_clean(&bare);
+
+    // RF-189: `--database postgres` activa la feature de la fachada y deja los
+    // cinco sitios coherentes. Compila y pasa sus tests sin servidor, porque
+    // `tests/acceptance.rs` monta la app en memoria (§14.2).
+    generate(&temp, "pg-app", &["--database", "postgres"]);
+    let pg = temp.join("pg-app");
+    assert_ok(&cargo(&pg, &["check"]), "RF-143 con --database postgres");
+    assert_ok(&cargo(&pg, &["test"]), "RF-007 con --database postgres");
+    assert_clean(&pg);
 
     let _ = std::fs::remove_dir_all(&temp);
 }

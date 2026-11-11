@@ -9,11 +9,13 @@ port = 3000
 body_limit_bytes = 2_097_152
 
 [database]
-provider = "sqlite"            # motor predeterminado
-url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL
+# El motor lo decide el esquema de la URL (RF-111); `provider` es orientativo y
+# lo lee `rdd doctor`. Salió de `rdd new --database` (RF-189).
+provider = "sqlite"
+url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL (RF-063)
 max_connections = 10
 acquire_timeout_secs = 5
-migrations_dir = "migrations"
+migrations_dir = "migrations"  # lo lee `rdd migrate` (§14.1)
 
 [prisma]
 schema        = "prisma/schema.prisma"

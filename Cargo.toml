@@ -5,11 +5,14 @@ members = [
     "crates/rdd-axum",
     "crates/rdd-cli",
     "crates/rdd-core",
+    "crates/rdd-cors",
     "crates/rdd-db-tests",
     "crates/rdd-macros",
     "crates/rdd-platform-tests",
     "crates/rdd-postgres",
     "crates/rdd-sqlite",
+    # RF-193: el demo de §26 pasa la misma puerta que los crates del framework.
+    "example/todo-app",
 ]
 
 [workspace.package]
@@ -40,6 +43,8 @@ rdd-cors           = { path = "crates/rdd-cors",           version = "0.1.0" }
 rdd-logger         = { path = "crates/rdd-logger",         version = "0.1.0" }
 
 anyhow             = "1.0"
+# Solo las usa el demo de §26: ni el núcleo ni rdd-cors las arrastran (RA-011, RA-014).
+argon2             = "0.5"
 axum               = "0.8"
 bytes              = "1.12"
 clap               = { version = "4.6", features = ["derive"] }
@@ -49,7 +54,12 @@ http               = "1.5"
 http-body-util     = "0.1"
 hyper              = { version = "1.6", features = ["full"] }
 hyper-util         = { version = "0.1", features = ["full"] }
+# HS256 con secreto: sin PEM no hacen falta `pem` ni `simple_asn1` (§26.3).
+jsonwebtoken       = { version = "9.3", default-features = false }
 matchit            = "0.9"
+# `argon2` habilita `password-hash/rand_core` pero no `rand_core/getrandom`, así
+# que sin esta línea `OsRng` no existe y no se puede generar la sal (§26.3).
+password-hash      = { version = "0.5", features = ["getrandom"] }
 proc-macro-error2  = { version = "2.0", default-features = false, features = ["syn-derror"] }
 proc-macro2        = "1.0"
 quote              = "1.0"

@@ -63,8 +63,8 @@ pub fn kebab_case(input: &str) -> String {
 
 /// Singular de un nombre de módulo (RF-005).
 ///
-/// Se usa para `entities/`, `dto/`, `interfaces/` y `mappers/`; `controllers/`,
-/// `services/`, `repositories/` y `constants/` conservan el plural. La regla es
+/// Se usa para el agregado y su archivo en `domain/`; `application/`,
+/// `infrastructure/` y `presentation/` conservan el plural. La regla es
 /// fija, no lingüística: `ies`→`y`; `ses`/`xes`/`zes`/`ches`/`shes`→quita `es`;
 /// `s` final salvo `ss`→quita `s`; en otro caso, igual.
 pub fn singular(input: &str) -> String {
@@ -73,18 +73,17 @@ pub fn singular(input: &str) -> String {
     if ["shes", "ches", "ses", "xes", "zes"]
         .iter()
         .any(|suffix| input.ends_with(suffix))
+        && let Some(stem) = input.strip_suffix("es")
     {
-        if let Some(stem) = input.strip_suffix("es") {
-            return stem.to_owned();
-        }
+        return stem.to_owned();
     }
     if let Some(stem) = input.strip_suffix("ies") {
         return format!("{stem}y");
     }
-    if !input.ends_with("ss") {
-        if let Some(stem) = input.strip_suffix('s') {
-            return stem.to_owned();
-        }
+    if !input.ends_with("ss")
+        && let Some(stem) = input.strip_suffix('s')
+    {
+        return stem.to_owned();
     }
     input.to_owned()
 }

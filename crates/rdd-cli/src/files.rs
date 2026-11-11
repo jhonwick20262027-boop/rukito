@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
@@ -45,7 +46,8 @@ impl Insertion {
 ///
 /// Con `dry_run` no toca el disco (RF-141). Sin `force` se niega a pisar archivos
 /// que ya existen (RF-140); las inserciones no cuentan como sobrescritura porque
-/// §14.3 las pide sobre archivos existentes.
+/// §14.3 las pide sobre archivos existentes. Al aplicar, los `.rs` escritos salen
+/// formateados (RF-007).
 pub fn apply(
     root: &Path,
     files: &[GeneratedFile],
@@ -105,6 +107,51 @@ pub fn apply(
 
     for insertion in insertions {
         insert(root, insertion)?;
+    }
+    format_rust(root, files)?;
+    Ok(())
+}
+
+/// Formatea los `.rs` que se acaban de escribir (RF-007, §5.2).
+///
+/// El ancho de las firmas generadas crece con el nombre del módulo, así que
+/// ninguna plantilla fija pasa `cargo fmt --check` con `tasks` y con `task-items`
+/// a la vez. Se llama al binario y no a `cargo fmt` para no consultar el registro
+/// de crates, que RF-143 exige poder evitar sin red.
+fn format_rust(root: &Path, files: &[GeneratedFile]) -> Result<()> {
+    // Las rutas van relativas a `root`, que es el directorio del proceso: unirlas
+    // aquí duplicaría el prefijo cuando `rdd new` pasa una raíz relativa.
+    let paths: Vec<&Path> = files
+        .iter()
+        .map(|file| file.path.as_path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect();
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let output = Command::new("rustfmt")
+        .current_dir(root)
+        .args(["--edition", "2024", "--config", "skip_children=true"])
+        .args(&paths)
+        .output();
+    let output = match output {
+        Ok(output) => output,
+        Err(err) => {
+            println!(
+                "aviso: no se pudo ejecutar rustfmt ({err}); los archivos quedaron escritos \
+                 sin formatear. Instálalo con `rustup component add rustfmt` y corre \
+                 `cargo fmt --all` (RF-007)."
+            );
+            return Ok(());
+        }
+    };
+
+    if !output.status.success() {
+        bail!(
+            "rustfmt rechazó el código generado (RF-007):\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     Ok(())
 }
@@ -248,6 +295,37 @@ mod tests {
             fs::read_to_string(dir.join("main.rs")).unwrap(),
             "fn main() {}\n"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// RF-007: el scaffold nace formateado. La plantilla no puede estarlo para
+    /// cualquier nombre de módulo, así que lo garantiza el escritor.
+    #[test]
+    fn formats_the_rust_files_it_writes_and_leaves_the_rest_alone() {
+        let dir = scratch("format");
+        let files = [
+            GeneratedFile::new("src/main.rs", "fn  main( ){let x=1;println!(\"{x}\");}\n"),
+            GeneratedFile::new("rdd.toml", "provider  =  \"sqlite\"\n"),
+        ];
+        apply(&dir, &files, &[], false, false).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(dir.join("src/main.rs")).unwrap(),
+            "fn main() {\n    let x = 1;\n    println!(\"{x}\");\n}\n"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("rdd.toml")).unwrap(),
+            "provider  =  \"sqlite\"\n"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dry_run_does_not_format_or_write() {
+        let dir = scratch("format-dry");
+        let files = [GeneratedFile::new("main.rs", "fn  main( ){}\n")];
+        apply(&dir, &files, &[], false, true).unwrap();
+        assert!(!dir.join("main.rs").exists());
         let _ = fs::remove_dir_all(&dir);
     }
 }

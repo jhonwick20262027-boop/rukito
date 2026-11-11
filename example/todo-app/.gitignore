@@ -2,4 +2,8 @@
 /target
 .env
 *.log
+
+# La base local la crea `rdd migrate` y lleva datos de usuario (RF-063).
 *.db
+*.db-shm
+*.db-wal

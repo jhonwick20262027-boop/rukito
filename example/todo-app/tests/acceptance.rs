@@ -1,9 +1,13 @@
-//! Aceptación de 0.1 (§21, RF-007): el proyecto compila, responde en `/health`
-//! y devuelve 404 y 405 en formato Problem Details (§10.3).
+//! Aceptación del demo (§26.6) y de la plataforma (§21, RF-007).
 //!
 //! Un test de integración no puede importar el binario, así que el árbol de
-//! `src/` se incluye por ruta: `crate::modules::…` y `crate::app_*` resuelven
-//! igual que en `main.rs` y no hay que duplicar el cableado.
+//! `src/` se incluye por ruta: `crate::modules::…`, `crate::middleware::…` y
+//! `crate::config::…` resuelven igual que en `main.rs` y no hay que duplicar el
+//! cableado.
+//!
+//! Las comprobaciones 1 y 7 de §26.6 (`rdd migrate` y persistencia tras reiniciar)
+//! necesitan un proceso y un archivo SQLite de verdad: se verifican con el CLI,
+//! no aquí. Las otras seis sí son automáticas.
 
 #![allow(dead_code)]
 
@@ -13,39 +17,91 @@ mod app_controller;
 mod app_module;
 #[path = "../src/app_service.rs"]
 mod app_service;
+#[path = "../src/config/mod.rs"]
+mod config;
+#[path = "../src/middleware/mod.rs"]
+mod middleware;
 #[path = "../src/modules/mod.rs"]
 mod modules;
+
+use std::sync::Arc;
+use std::time::Duration;
 
 use rdd::http::{Method, header, into_response};
 use rdd::prelude::*;
 use rdd::{controller, module};
+use rdd_cors::Cors;
 
-fn app() -> HttpApp {
-    App::new()
-        .in_memory()
-        .module(app_module::module())
-        .module(modules::tasks::module())
-        .build()
-        .expect("la app debe construirse")
-        .http
+use crate::middleware::JwtMiddleware;
+use crate::modules::users::domain::{PasswordHasher, User};
+use crate::modules::users::infrastructure::argon2_hasher::Argon2Hasher;
+use crate::modules::users::{JwtTokens, Role, Session, TokenCodec};
+
+/// Secreto de prueba. El del entorno no se toca: `std::env::set_var` es `unsafe`
+/// en edition 2024 y el workspace prohíbe `unsafe`, así que el codec se inyecta.
+const SECRET: &str = "secreto-de-prueba-lo-bastante-largo-para-hs256";
+const ORIGIN: &str = "http://localhost:5173";
+const PASSWORD: &str = "contrasena-de-prueba";
+
+/// El mismo cableado que `main.rs` (§26.4), con el backend en memoria compartido
+/// para poder sembrar cuentas sin pasar por `/auth/register`.
+struct Demo {
+    http: HttpApp,
+    backend: Arc<MemoryBackend>,
 }
 
-async fn sqlite_app() -> HttpApp {
-    let adapter =
-        rdd::SqliteAdapter::connect_with("sqlite::memory:", 1, std::time::Duration::from_secs(5))
-            .await
-            .expect("SQLite debe conectar");
-    sqlx::query(include_str!("../migrations/0001_tasks.sql"))
-        .execute(adapter.pool())
-        .await
-        .expect("el esquema SQLite debe crearse");
-    App::new()
-        .adapter(adapter.into_arc())
-        .module(app_module::module())
+fn demo(limit: u32) -> Demo {
+    let backend = Arc::new(MemoryBackend::new());
+    let tokens = JwtTokens::new(SECRET, Duration::from_secs(3600));
+    let http = App::new()
+        .middleware(cors())
+        .middleware(JwtMiddleware::new(Arc::new(tokens.clone())))
+        .middleware(
+            RateLimit::new(limit, Duration::from_secs(60), rate_key)
+                .expect("el límite de prueba es válido"),
+        )
+        .module(modules::users::module(tokens))
         .module(modules::tasks::module())
+        .module(app_module::module())
+        .adapter(backend.clone())
         .build()
         .expect("la app debe construirse")
-        .http
+        .http;
+    Demo { http, backend }
+}
+
+/// La misma sección `[cors]` del `rdd.toml` del demo, escrita aquí para que la
+/// suite no dependa del directorio desde el que se lance `cargo test`.
+fn cors() -> Cors {
+    Cors::new()
+        .allow_origin(ORIGIN)
+        .allow_methods(["GET", "POST", "PUT", "PATCH", "DELETE"])
+        .allow_headers(["content-type", "authorization"])
+        .max_age(Duration::from_secs(3600))
+        .build()
+        .expect("la configuración CORS de prueba es válida")
+}
+
+fn rate_key(req: &Request) -> String {
+    match req.ext::<Session>() {
+        Some(session) => format!("user:{}", session.id),
+        None => "anonymous".to_owned(),
+    }
+}
+
+/// Siembra una cuenta y devuelve su JWT. Emitirlo con el codec en vez de llamar a
+/// `/auth/login` mantiene libre el cubo de los anónimos para las pruebas de 429.
+async fn seed(demo: &Demo, email: &str, role: Role) -> String {
+    let hash = Argon2Hasher.hash(PASSWORD).expect("argon2 debe hashear");
+    let user = User::new(email.to_owned(), hash, role).expect("el correo de prueba es válido");
+    let token = JwtTokens::new(SECRET, Duration::from_secs(3600))
+        .issue(&user.session())
+        .expect("el codec debe emitir");
+    Repo::<User>::new(demo.backend.clone())
+        .save(&user)
+        .await
+        .expect("sembrar la cuenta");
+    token
 }
 
 fn request(method: Method, uri: &str, body: &str) -> Request {
@@ -57,8 +113,26 @@ fn request(method: Method, uri: &str, body: &str) -> Request {
         .expect("petición válida")
 }
 
+fn with_token(mut req: Request, token: &str) -> Request {
+    req.headers_mut().insert(
+        header::AUTHORIZATION,
+        format!("Bearer {token}").parse().expect("cabecera válida"),
+    );
+    req
+}
+
 async fn send(http: &HttpApp, method: Method, uri: &str, body: &str) -> Response {
     http.dispatch(request(method, uri, body)).await
+}
+
+async fn send_as(demo: &Demo, method: Method, uri: &str, body: &str, token: &str) -> Response {
+    demo.http
+        .dispatch(with_token(request(method, uri, body), token))
+        .await
+}
+
+fn credentials(email: &str) -> String {
+    format!(r#"{{"email":"{email}","password":"{PASSWORD}"}}"#)
 }
 
 fn json(resp: &Response) -> serde_json::Value {
@@ -78,16 +152,16 @@ fn problem(resp: &Response) -> serde_json::Value {
 
 #[tokio::test]
 async fn health_responde_ok() {
-    let http = app();
-    let resp = send(&http, Method::GET, "/health", "").await;
+    let demo = demo(100);
+    let resp = send(&demo.http, Method::GET, "/health", "").await;
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(json(&resp)["status"], "ok");
 }
 
 #[tokio::test]
 async fn la_raiz_responde_json() {
-    let http = app();
-    let resp = send(&http, Method::GET, "/", "").await;
+    let demo = demo(100);
+    let resp = send(&demo.http, Method::GET, "/", "").await;
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(
         resp.headers()
@@ -99,8 +173,8 @@ async fn la_raiz_responde_json() {
 
 #[tokio::test]
 async fn ruta_inexistente_es_404_en_problem_details() {
-    let http = app();
-    let resp = send(&http, Method::GET, "/no-existe", "").await;
+    let demo = demo(100);
+    let resp = send(&demo.http, Method::GET, "/no-existe", "").await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body = problem(&resp);
     assert_eq!(body["status"], 404);
@@ -109,8 +183,8 @@ async fn ruta_inexistente_es_404_en_problem_details() {
 
 #[tokio::test]
 async fn metodo_no_permitido_es_405_con_allow() {
-    let http = app();
-    let resp = send(&http, Method::POST, "/", "").await;
+    let demo = demo(100);
+    let resp = send(&demo.http, Method::POST, "/", "").await;
     assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
     assert!(
         resp.headers()
@@ -174,82 +248,337 @@ async fn un_panico_es_500_y_no_filtra_el_detalle() {
     );
 }
 
+/// §26.6, comprobación 2: registro 201 y login 200 con un JWT utilizable.
 #[tokio::test]
-async fn crud_del_modulo_de_ejemplo() {
-    let http = app();
+async fn registro_y_login_devuelven_un_jwt() {
+    let demo = demo(100);
 
-    let resp = send(&http, Method::POST, "/tasks", r#"{"title":"pan"}"#).await;
+    let resp = send(
+        &demo.http,
+        Method::POST,
+        "/auth/register",
+        &credentials("ana@example.com"),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let id = json(&resp)["id"]
+    let body = json(&resp);
+    assert_eq!(body["email"], "ana@example.com");
+    // Sin `ADMIN_EMAIL` en el entorno nadie nace admin (§26.3), y el cliente no
+    // puede elegir el rol porque `RegisterDto` no lleva ese campo.
+    assert_eq!(body["role"], "user");
+    assert!(
+        body.get("password_hash").is_none(),
+        "la respuesta no debe serializar el hash"
+    );
+
+    let resp = send(
+        &demo.http,
+        Method::POST,
+        "/auth/login",
+        &credentials("ana@example.com"),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = json(&resp);
+    assert_eq!(body["token_type"], "Bearer");
+    let token = body["access_token"]
         .as_str()
-        .expect("el id debe ser un UUID")
+        .expect("el login debe devolver un JWT")
         .to_owned();
+    assert_eq!(token.split('.').count(), 3, "un JWT tiene tres partes");
 
-    let resp = send(&http, Method::GET, &format!("/tasks/{id}"), "").await;
+    let resp = send_as(&demo, Method::GET, "/users/me", "", &token).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(json(&resp)["title"], "pan");
+    assert_eq!(json(&resp)["email"], "ana@example.com");
 
-    let resp = send(&http, Method::GET, "/tasks?q=pan", "").await;
+    let resp = send(
+        &demo.http,
+        Method::POST,
+        "/auth/login",
+        r#"{"email":"ana@example.com","password":"otra-cosa"}"#,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(problem(&resp)["status"], 401);
+}
+
+/// §26.6, comprobación 3: sin token 401, con token 200.
+#[tokio::test]
+async fn las_tareas_exigen_sesion() {
+    let demo = demo(100);
+
+    let resp = send(&demo.http, Method::GET, "/tasks", "").await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(problem(&resp)["status"], 401);
+
+    // `JwtMiddleware` identifica sin rechazar: un token inservible deja la
+    // petición sin sesión y es `RequireAuth` quien responde 401 (§26.3).
+    let resp = send_as(&demo, Method::GET, "/tasks", "", "token-inservible").await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    let token = seed(&demo, "ana@example.com", Role::User).await;
+    let resp = send_as(&demo, Method::GET, "/tasks", "", &token).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(json(&resp).as_array().unwrap().len(), 1);
+    assert_eq!(json(&resp).as_array().unwrap().len(), 0);
+}
 
-    let done = r#"{"done":true}"#;
-    let resp = send(&http, Method::PUT, &format!("/tasks/{id}"), done).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(json(&resp)["done"], true);
+/// §26.6, comprobación 4: `DELETE` exige `admin`. El rol se comprueba antes que
+/// la propiedad, así que un `user` recibe 403 aunque la tarea no sea suya.
+#[tokio::test]
+async fn borrar_exige_rol_admin() {
+    let demo = demo(100);
+    let admin = seed(&demo, "admin@example.com", Role::Admin).await;
+    let user = seed(&demo, "ana@example.com", Role::User).await;
 
-    let resp = send(&http, Method::DELETE, &format!("/tasks/{id}"), "").await;
+    let resp = send_as(
+        &demo,
+        Method::POST,
+        "/tasks",
+        r#"{"title":"del admin"}"#,
+        &admin,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let id = json(&resp)["id"].as_str().unwrap().to_owned();
+
+    let resp = send_as(&demo, Method::DELETE, &format!("/tasks/{id}"), "", &user).await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_eq!(problem(&resp)["status"], 403);
+
+    let resp = send_as(&demo, Method::DELETE, &format!("/tasks/{id}"), "", &admin).await;
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
     assert!(resp.body().is_empty(), "204 no lleva cuerpo (RF-053)");
+}
 
-    let resp = send(&http, Method::GET, &format!("/tasks/{id}"), "").await;
+/// §26.6, comprobación 5 (C-09): CORS responde el preflight antes que JWT y antes
+/// que el rate limit. Si hubiera seguido la cadena, `/tasks` no acepta OPTIONS y
+/// la respuesta sería 405; y llevaría cabeceras `RateLimit-*`.
+#[tokio::test]
+async fn el_preflight_no_pasa_por_autenticacion() {
+    let demo = demo(100);
+    let resp = demo
+        .http
+        .dispatch(
+            http::Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/tasks")
+                .header(header::ORIGIN, ORIGIN)
+                .header("access-control-request-method", "DELETE")
+                .header("access-control-request-headers", "authorization")
+                .body(bytes::Bytes::new())
+                .expect("petición válida"),
+        )
+        .await;
+
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert!(resp.body().is_empty());
+    assert_eq!(resp.headers()["access-control-allow-origin"], ORIGIN);
+    assert!(
+        resp.headers()["access-control-allow-methods"]
+            .to_str()
+            .unwrap()
+            .contains("DELETE")
+    );
+    assert!(
+        resp.headers()["access-control-allow-headers"]
+            .to_str()
+            .unwrap()
+            .contains("authorization")
+    );
+    assert_eq!(resp.headers()["access-control-max-age"], "3600");
+    assert!(
+        resp.headers()["vary"]
+            .to_str()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("origin"),
+        "RF-096 exige Vary en el preflight"
+    );
+    assert!(
+        !resp.headers().contains_key("ratelimit-limit"),
+        "el preflight no debe llegar al rate limit"
+    );
+}
+
+/// RF-098: un origen no configurado recibe 204 sin ninguna `Access-Control-*`.
+/// El bloqueo lo ejecuta el navegador, no el servidor.
+#[tokio::test]
+async fn un_origen_no_permitido_no_recibe_cabeceras_cors() {
+    let demo = demo(100);
+    let resp = demo
+        .http
+        .dispatch(
+            http::Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/tasks")
+                .header(header::ORIGIN, "http://malicioso.example")
+                .header("access-control-request-method", "GET")
+                .body(bytes::Bytes::new())
+                .expect("petición válida"),
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert!(!resp.headers().contains_key("access-control-allow-origin"));
+    assert!(
+        resp.headers()["vary"]
+            .to_str()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("origin")
+    );
+}
+
+/// §26.6, comprobación 6 (RF-107): superar el límite es 429 con `Retry-After` y
+/// las tres cabeceras `RateLimit-*`, en Problem Details.
+#[tokio::test]
+async fn superar_el_limite_es_429() {
+    let demo = demo(2);
+    for _ in 0..2 {
+        let resp = send(&demo.http, Method::GET, "/health", "").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(resp.headers()["ratelimit-limit"], "2");
+    }
+    let resp = send(&demo.http, Method::GET, "/health", "").await;
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(resp.headers()["ratelimit-remaining"], "0");
+    assert!(resp.headers().contains_key("ratelimit-reset"));
+    assert!(
+        resp.headers()["retry-after"]
+            .to_str()
+            .unwrap()
+            .parse::<u64>()
+            .is_ok(),
+        "Retry-After debe ser un número de segundos"
+    );
+    assert_eq!(problem(&resp)["status"], 429);
+}
+
+/// RF-109: la cuota es por identidad, no por aplicación. Agotar la de una cuenta
+/// no deja fuera a la otra.
+#[tokio::test]
+async fn la_cuota_es_por_cuenta() {
+    let demo = demo(2);
+    let ana = seed(&demo, "ana@example.com", Role::User).await;
+    let bob = seed(&demo, "bob@example.com", Role::User).await;
+
+    for _ in 0..2 {
+        let resp = send_as(&demo, Method::GET, "/tasks", "", &ana).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+    let resp = send_as(&demo, Method::GET, "/tasks", "", &ana).await;
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let resp = send_as(&demo, Method::GET, "/tasks", "", &bob).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.headers()["ratelimit-remaining"], "1");
+}
+
+/// §26.6, comprobación 8: el acceso cruzado responde 404, no 403, para no revelar
+/// que el recurso existe. Vale también para un admin (§26.5).
+#[tokio::test]
+async fn las_tareas_ajenas_son_404_no_403() {
+    let demo = demo(100);
+    let ana = seed(&demo, "ana@example.com", Role::User).await;
+    let bob = seed(&demo, "bob@example.com", Role::User).await;
+    let admin = seed(&demo, "admin@example.com", Role::Admin).await;
+
+    let resp = send_as(&demo, Method::POST, "/tasks", r#"{"title":"de ana"}"#, &ana).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let id = json(&resp)["id"].as_str().unwrap().to_owned();
+    let uri = format!("/tasks/{id}");
+
+    let resp = send_as(&demo, Method::GET, &uri, "", &bob).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     assert_eq!(problem(&resp)["status"], 404);
+
+    let resp = send_as(&demo, Method::PUT, &uri, r#"{"done":true}"#, &bob).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let resp = send_as(&demo, Method::GET, "/tasks", "", &bob).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        json(&resp).as_array().unwrap().is_empty(),
+        "el listado tampoco debe incluir tareas ajenas"
+    );
+
+    // El admin pasa `RequireRole` pero no es el dueño: 404 igual que todos.
+    let resp = send_as(&demo, Method::DELETE, &uri, "", &admin).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let resp = send_as(&demo, Method::GET, &uri, "", &ana).await;
+    assert_eq!(resp.status(), StatusCode::OK, "la tarea de ana sigue ahí");
 }
 
 #[tokio::test]
-async fn crud_del_modulo_funciona_con_sqlite() {
-    let http = sqlite_app().await;
-    let resp = send(&http, Method::POST, "/tasks", r#"{"title":"persistir"}"#).await;
-    assert_eq!(resp.status(), StatusCode::CREATED);
-    let id = json(&resp)["id"].as_str().expect("UUID").to_owned();
+async fn crud_del_modulo_de_ejemplo() {
+    let demo = demo(100);
+    // `DELETE` exige `admin` (§26.4): el CRUD completo se hace con esa identidad.
+    let token = seed(&demo, "admin@example.com", Role::Admin).await;
 
-    let resp = send(&http, Method::GET, &format!("/tasks/{id}"), "").await;
+    let resp = send_as(&demo, Method::GET, "/users/me", "", &token).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(json(&resp)["title"], "persistir");
+    let me = json(&resp)["id"].as_str().unwrap().to_owned();
 
-    let resp = send(
-        &http,
+    let resp = send_as(&demo, Method::POST, "/tasks", r#"{"title":"pan"}"#, &token).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = json(&resp);
+    let id = body["id"]
+        .as_str()
+        .expect("el id debe ser un UUID en texto")
+        .to_owned();
+    uuid::Uuid::parse_str(&id).expect("el id debe ser un UUID válido (§7.2)");
+    assert_eq!(
+        body["owner_id"].as_str().unwrap(),
+        me,
+        "la tarea nace con dueño (§26.5)"
+    );
+
+    let resp = send_as(&demo, Method::GET, &format!("/tasks/{id}"), "", &token).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json(&resp)["title"], "pan");
+
+    let resp = send_as(&demo, Method::GET, "/tasks?q=pan", "", &token).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(json(&resp).as_array().unwrap().len(), 1);
+
+    let resp = send_as(
+        &demo,
         Method::PUT,
         &format!("/tasks/{id}"),
         r#"{"done":true}"#,
+        &token,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(json(&resp)["done"], true);
 
-    let resp = send(&http, Method::DELETE, &format!("/tasks/{id}"), "").await;
+    let resp = send_as(&demo, Method::DELETE, &format!("/tasks/{id}"), "", &token).await;
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert!(resp.body().is_empty(), "204 no lleva cuerpo (RF-053)");
+
+    let resp = send_as(&demo, Method::GET, &format!("/tasks/{id}"), "", &token).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(problem(&resp)["status"], 404);
 }
 
 #[tokio::test]
 async fn validacion_del_modulo_de_ejemplo() {
-    use crate::modules::tasks::constants::tasks_constants::MAX_TITLE_LEN;
+    use crate::modules::tasks::domain::task::MAX_TITLE_LEN;
 
-    let http = app();
+    let demo = demo(100);
+    let token = seed(&demo, "ana@example.com", Role::User).await;
 
-    let vacio = r#"{"title":"  "}"#;
-    let resp = send(&http, Method::POST, "/tasks", vacio).await;
+    let resp = send_as(&demo, Method::POST, "/tasks", r#"{"title":"  "}"#, &token).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert_eq!(problem(&resp)["instance"], "/tasks");
 
     let largo = format!(r#"{{"title":"{}"}}"#, "x".repeat(MAX_TITLE_LEN + 1));
-    let resp = send(&http, Method::POST, "/tasks", &largo).await;
+    let resp = send_as(&demo, Method::POST, "/tasks", &largo, &token).await;
     assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(problem(&resp)["status"], 422);
 
     // RF-055: un parámetro de ruta que no convierte es 400.
-    let resp = send(&http, Method::GET, "/tasks/abc", "").await;
+    let resp = send_as(&demo, Method::GET, "/tasks/abc", "", &token).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert_eq!(problem(&resp)["status"], 400);
 }

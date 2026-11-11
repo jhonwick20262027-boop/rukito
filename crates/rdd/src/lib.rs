@@ -22,9 +22,37 @@ pub use rdd_axum::AxumPlatform;
 #[cfg(feature = "sqlite")]
 pub use rdd_sqlite::SqliteAdapter;
 
+/// Adaptador PostgreSQL; lo activa la feature `postgres` (§12.6).
+#[cfg(feature = "postgres")]
+pub use rdd_postgres::PostgresAdapter;
+
+/// Puebla el registro de adaptadores del núcleo (RF-191).
+///
+/// Los seis motores se declaran siempre, aunque su feature esté apagada: es lo
+/// que permite que el error de RF-111 nombre el crate y la feature que faltan en
+/// vez de decir «esquema no soportado». Solo se instala la factoría de los
+/// compilados.
+fn register_adapters() {
+    use rdd_core::db::registry::declare;
+
+    declare(&["sqlite"], "rdd-sqlite", "sqlite");
+    declare(&["postgres", "postgresql"], "rdd-postgres", "postgres");
+    declare(&["mysql", "mariadb"], "rdd-mysql", "mysql");
+    declare(&["mongodb"], "rdd-mongodb", "mongodb");
+    declare(&["redis"], "rdd-redis", "redis");
+    declare(&["sqlserver"], "rdd-mssql", "mssql");
+
+    #[cfg(feature = "sqlite")]
+    rdd_sqlite::register();
+
+    #[cfg(feature = "postgres")]
+    rdd_postgres::register();
+}
+
 /// Lo que expande `#[rdd::main]` (§8.4): instala la plataforma por defecto,
-/// carga `.env`, monta `tracing` con `RUST_LOG` (por defecto `info`), crea el
-/// runtime Tokio y convierte el `Result` final en código de salida.
+/// registra los adaptadores de base de datos, carga `.env`, monta `tracing` con
+/// `RUST_LOG` (por defecto `info`), crea el runtime Tokio y convierte el `Result`
+/// final en código de salida.
 ///
 /// Es `#[doc(hidden)]` porque el usuario no lo llama: lo genera la macro.
 #[doc(hidden)]
@@ -39,8 +67,10 @@ where
     #[cfg(feature = "axum")]
     rdd_core::http::set_default_platform(|| std::sync::Arc::new(rdd_axum::AxumPlatform::new()));
 
-    #[cfg(feature = "sqlite")]
-    rdd_sqlite::register();
+    // RF-119: `App::connect()` resuelve la URL contra este registro, así que
+    // tiene que estar poblado antes de que el `main` del usuario llegue a
+    // `.database(url)`.
+    register_adapters();
 
     dotenvy::dotenv().ok();
 
@@ -70,5 +100,61 @@ where
                 std::process::ExitCode::FAILURE
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rdd_core::db::{declared, factory_for};
+
+    use super::register_adapters;
+
+    /// RF-191: los seis esquemas de RF-111 quedan declarados aunque su crate no
+    /// esté compilado, que es lo que da el mensaje con nombre y feature.
+    #[test]
+    fn declara_los_seis_motores() {
+        register_adapters();
+        let schemes = declared();
+        for expected in [
+            "sqlite",
+            "postgres",
+            "postgresql",
+            "mysql",
+            "mariadb",
+            "mongodb",
+            "redis",
+            "sqlserver",
+        ] {
+            assert!(
+                schemes.iter().any(|scheme| scheme == expected),
+                "falta `{expected}` en {schemes:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn sqlite_se_instala_solo() {
+        register_adapters();
+        assert!(factory_for("sqlite://app.db").is_ok());
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn postgres_se_instala_con_su_feature() {
+        register_adapters();
+        assert!(factory_for("postgres://localhost/db").is_ok());
+        assert!(factory_for("postgresql://localhost/db").is_ok());
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    #[test]
+    fn postgres_sin_feature_nombra_el_crate_que_falta() {
+        register_adapters();
+        let err = factory_for("postgres://localhost/db")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("rdd-postgres"), "{err}");
+        assert!(err.contains("postgres"), "{err}");
     }
 }

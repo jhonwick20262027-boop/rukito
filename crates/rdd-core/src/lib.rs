@@ -22,6 +22,7 @@ pub use app::{App, AppConfig, Backend, BuiltApp, DEFAULT_BODY_LIMIT, NO_DEFAULT_
 pub use db::{Db, DbAdapter, MemoryBackend, Persist, Repo, Row, Value};
 pub use domain::{Aggregate, DomainEvent};
 pub use error::{ContainerError, Error, PlatformError, PlatformResult, Problem, Result};
+pub use http::rate_limit::{RateLimit, RateLimitConfigError};
 pub use module::{Controller, Module, ModuleBuilder, ModuleMember, ProviderMarker};
 
 /// Tipos que un proyecto de usuario importa normalmente.
@@ -34,8 +35,8 @@ pub mod prelude {
     pub use crate::error::{Error, Problem, Result};
     pub use crate::http::{
         AllowedMethods, Bind, Ctx, Ext, FromContainer, FromRequest, Header, HttpApp, Json, Limits,
-        Middleware, Path, PathParams, Platform, Query, Request, RequestExt, Response, RouteDef,
-        ShutdownSignal, StatusCode, compose, fn_middleware, header,
+        Middleware, Path, PathParams, Platform, Query, RateLimit, RateLimitConfigError, Request,
+        RequestExt, Response, RouteDef, ShutdownSignal, StatusCode, compose, fn_middleware, header,
     };
     pub use crate::module::{Controller, Module, ModuleBuilder, ModuleMember, ProviderMarker};
 }

@@ -4,6 +4,7 @@
 pub mod extract;
 pub mod platform;
 pub mod query;
+pub mod rate_limit;
 pub mod response;
 pub mod routes;
 pub mod types;
@@ -17,6 +18,7 @@ pub use platform::{
     DefaultPlatformFn, Platform, PlatformFuture, ShutdownSignal, default_platform,
     set_default_platform,
 };
+pub use rate_limit::{RateLimit, RateLimitConfigError};
 pub use response::{
     AllowedMethods, IntoResponse, body_to_bytes, into_response, json_response, problem_response,
 };

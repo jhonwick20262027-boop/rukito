@@ -1,24 +1,42 @@
 # ≈ package.json + tsconfig.json (§5). El MSRV lo fija `rust-version`;
 # `rust-toolchain.toml` solo declara el perfil.
+#
+# Este proyecto es miembro del workspace (RF-193), así que hereda versiones y
+# lints. Un `rdd new` fuera del workspace genera el mismo archivo con versiones
+# explícitas y la ruta a `rdd` que se le pasó por `--rdd-path`.
 [package]
 name = "todo-app"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.94"
-description = "Mini aplicación TODO con rdd y SQLite."
+description = "Demo de §26: TODO con JWT, roles, CORS y rate limit sobre SQLite."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
+
+[lints]
+workspace = true
 
 [dependencies]
 # RA-013: el proyecto depende de la fachada, nunca de `rdd-core`.
-rdd = { path = "../../crates/rdd" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-uuid = { version = "1", features = ["v4", "serde"] }
+rdd.workspace = true
+# Paquete externo que lee su propia sección de `rdd.toml` (§11.5, RF-151).
+rdd-cors.workspace = true
+# `Error::internal` recibe un `anyhow::Error`; lo usan los adaptadores (§10.3).
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# El id del agregado es un UUID (§7.2); `serde` lo serializa como texto.
+uuid.workspace = true
+# Autenticación a nivel de aplicación, no del framework (§2.2, §26.3).
+argon2.workspace = true
+# Solo habilita `rand_core/getrandom` para que `argon2` pueda generar la sal.
+password-hash.workspace = true
+jsonwebtoken.workspace = true
+# El middleware avisa de un token inválido sin rechazar la petición (§26.3).
+tracing.workspace = true
 
 [dev-dependencies]
-bytes = "1"
-http = "1"
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-
-[workspace]
+bytes.workspace = true
+http.workspace = true
+tokio.workspace = true

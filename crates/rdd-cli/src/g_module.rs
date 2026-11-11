@@ -15,9 +15,9 @@ use crate::new_project::module_files;
 pub struct GModuleArgs {
     /// Nombre del módulo; se normaliza a `snake_case` (RF-142).
     ///
-    /// Se conserva tal cual para `controllers/`, `services/`, `repositories/` y
-    /// `constants/`, y se singulariza para `entities/`, `dto/`, `interfaces/` y
-    /// `mappers/` (RF-005). `tasks` y `task` producen el mismo árbol.
+    /// El nombre singular se usa para el agregado de `domain/`; las capas
+    /// `application/`, `infrastructure/` y `presentation/` conservan el plural
+    /// (RF-005). `tasks` y `task` producen el mismo árbol.
     pub name: String,
 
     /// Sobrescribe archivos existentes (RF-140).

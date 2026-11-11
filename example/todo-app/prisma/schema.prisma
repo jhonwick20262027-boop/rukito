@@ -3,14 +3,13 @@
 // produce nada y `src/generated/` queda vacío.
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 model Task {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title     String
-  done      Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+  id    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title String
+  done  Boolean @default(false)
 
   @@map("tasks")
 }

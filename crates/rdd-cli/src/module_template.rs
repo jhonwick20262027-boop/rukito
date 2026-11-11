@@ -1,4 +1,4 @@
-//! El árbol de módulo de §5: nueve carpetas, cada una con su `mod.rs` (RF-001).
+//! El árbol modular mínimo de §5: domain, application, infrastructure y presentation.
 //!
 //! Lo usan por igual `rdd new` (módulo de ejemplo `tasks`) y `rdd g module`, así
 //! que el módulo de ejemplo no es un caso especial: es este mismo generador.
@@ -14,7 +14,7 @@ use crate::templates::render;
 pub struct ModuleNames {
     /// Directorio y plural: `tasks`, `task_items`.
     pub dir: String,
-    /// Singular para entities/dto/interfaces/mappers: `task`, `task_item`.
+    /// Singular del agregado: `task`, `task_item`.
     pub single: String,
     /// `Tasks`, `TaskItems`.
     pub plural_ty: String,
@@ -49,27 +49,16 @@ pub fn files(names: &ModuleNames) -> Vec<GeneratedFile> {
     let vars = names.vars();
     let raw = [
         ("mod.rs", MOD_RS),
-        ("controllers/mod.rs", CONTROLLERS_MOD),
-        ("controllers/@plural@_controller.rs", CONTROLLER),
-        ("services/mod.rs", SERVICES_MOD),
-        ("services/@plural@_service.rs", SERVICE),
-        ("repositories/mod.rs", REPOSITORIES_MOD),
-        ("repositories/@plural@_repository.rs", REPOSITORY),
-        ("dto/mod.rs", DTO_MOD),
-        ("dto/create_@single@_dto.rs", CREATE_DTO),
-        ("dto/update_@single@_dto.rs", UPDATE_DTO),
-        ("dto/query_@single@_dto.rs", QUERY_DTO),
-        ("entities/mod.rs", ENTITIES_MOD),
-        ("entities/@single@_entity.rs", ENTITY),
-        ("interfaces/mod.rs", INTERFACES_MOD),
-        ("interfaces/@single@_interface.rs", INTERFACE),
-        ("mappers/mod.rs", MAPPERS_MOD),
-        ("mappers/@single@_mapper.rs", MAPPER),
-        ("constants/mod.rs", CONSTANTS_MOD),
-        ("constants/@plural@_constants.rs", CONSTANTS),
-        ("tests/mod.rs", TESTS_MOD),
-        ("tests/@plural@_service_test.rs", SERVICE_TEST),
-        ("tests/@plural@_controller_test.rs", CONTROLLER_TEST),
+        ("domain/mod.rs", DOMAIN_MOD),
+        ("domain/@single@.rs", DOMAIN),
+        ("domain/@plural@_repository.rs", DOMAIN_REPOSITORY),
+        ("application/mod.rs", APPLICATION_MOD),
+        ("application/@plural@_use_cases.rs", USE_CASES),
+        ("infrastructure/mod.rs", INFRASTRUCTURE_MOD),
+        ("infrastructure/@plural@_repository.rs", REPOSITORY),
+        ("presentation/mod.rs", PRESENTATION_MOD),
+        ("presentation/dto.rs", DTO),
+        ("presentation/@plural@_controller.rs", CONTROLLER),
     ];
 
     raw.iter()
@@ -79,28 +68,47 @@ pub fn files(names: &ModuleNames) -> Vec<GeneratedFile> {
 
 const MOD_RS: &str = r#"//! Módulo `@plural@` (≈ `@plural@.module.ts`, §5).
 //!
-//! Punto de montaje del dominio: `App::module(modules::@plural@::module())`.
-//! En 0.2 los services entran por `providers` con `#[service]` y DI (§9);
-//! mientras tanto `providers` va vacío y el controller construye el service
-//! (RF-006).
+//! Raíz de composición: declara las cuatro capas, fija el adaptador concreto del
+//! caso de uso y escribe las dos impls de DI que `#[service]` generará (§6.3).
+//! Al no estar dentro de ninguna capa, es el único archivo del módulo que puede
+//! nombrarlas a todas sin violar RA-001 a RA-003 (§17).
 
-pub mod constants;
-pub mod controllers;
-pub mod dto;
-pub mod entities;
-pub mod interfaces;
-pub mod mappers;
-pub mod repositories;
-pub mod services;
-
-#[cfg(test)]
-mod tests;
+pub mod application;
+pub mod domain;
+pub mod infrastructure;
+pub mod presentation;
 
 use rdd::module;
+use rdd::prelude::*;
 
-use self::controllers::@plural@_controller::@Plural@Controller;
+use self::application::@plural@_use_cases::@Plural@UseCases;
+use self::domain::@Single@;
+use self::infrastructure::@plural@_repository::@Plural@Repository;
+use self::presentation::@plural@_controller::@Plural@Controller;
+
+/// El caso de uso con su adaptador real. La capa HTTP importa este alias en vez
+/// del adaptador, que RA-003 le prohíbe (§14.2).
+pub type @Plural@Service = @Plural@UseCases<@Plural@Repository>;
+
+impl FromContainer for @Plural@Service {
+    const NAME: &'static str = "@Plural@Service";
+
+    fn from_container(container: &Container) -> Result<Self> {
+        let repo = container.resolve::<Repo<@Single@>>("@Plural@Service", "repo")?;
+        Ok(Self::with_repository(@Plural@Repository::new(repo)))
+    }
+}
+
+impl FromRequest for @Plural@Service {
+    async fn from_request(ctx: &Ctx, _bind: Bind) -> Result<Self> {
+        ctx.resolve::<Self>()
+    }
+}
 
 /// El módulo listo para montar (§6.2).
+///
+/// `providers:` va vacío: `App::build()` registra el valor `Db` y `Repo<T>` lo lee
+/// del contenedor (§12.1), así que no hay que declarar el repositorio como provider.
 pub fn module() -> rdd::Module {
     module! {
         providers: [],
@@ -108,30 +116,76 @@ pub fn module() -> rdd::Module {
         middlewares: [],
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+
+    /// Cada test recibe su propio backend: no hay estado global que compartir
+    /// entre tests (RF-160). Aquí sí se puede nombrar el adaptador, porque este
+    /// archivo es la raíz de composición y no una capa (§17).
+    fn service() -> @Plural@Service {
+        let repo = Repo::<@Single@>::new(Arc::new(MemoryBackend::new()));
+        @Plural@Service::with_repository(@Plural@Repository::new(repo))
+    }
+
+    #[tokio::test]
+    async fn creates_and_retrieves_an_item() {
+        let svc = service();
+        let created = svc.create("pan".to_owned(), None).await.unwrap();
+        assert_eq!(svc.get(created.id).await.unwrap().title, "pan");
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_titles() {
+        let err = service().create("  ".to_owned(), None).await.unwrap_err();
+        assert_eq!(err.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn filters_items() {
+        let svc = service();
+        svc.create("pan".to_owned(), None).await.unwrap();
+        svc.create("café".to_owned(), Some(true)).await.unwrap();
+
+        let found = svc.list(Some("ca".to_owned()), Some(true)).await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "café");
+    }
+
+    #[tokio::test]
+    async fn updates_and_removes_an_item() {
+        let svc = service();
+        let created = svc.create("pan".to_owned(), None).await.unwrap();
+        let updated = svc.update(created.id, None, Some(true)).await.unwrap();
+        assert!(updated.done);
+        assert_eq!(updated.title, "pan");
+
+        svc.remove(created.id).await.unwrap();
+        assert_eq!(
+            svc.get(created.id).await.unwrap_err().status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+}
 "#;
 
-const CONTROLLERS_MOD: &str = r#"//! Adaptadores HTTP de `@plural@` (§5.1, RA-003).
+const CONTROLLER: &str = r#"//! Controller de `@plural@` (§8.2, RA-003).
 //!
-//! Un controller extrae parámetros, llama al service y devuelve; no decide
-//! negocio. Lo cubre `#[controller]` con los verbos `#[get]`, `#[post]`,
-//! `#[put]`, `#[patch]` y `#[delete]` (§8).
-
-pub mod @plural@_controller;
-"#;
-
-const CONTROLLER: &str = r#"//! Controller de `@plural@` (§8.2).
-//!
-//! En 0.2 el service llega por DI (`req.resolve::<T>()`, RF-084); en 0.1 se
-//! construye por petición porque el estado vive en el repositorio (RF-006).
+//! Traduce HTTP a llamadas de aplicación y convierte el resultado del dominio
+//! al DTO de respuesta. Usa el alias público del módulo, nunca el adaptador de
+//! persistencia (§14.2).
 
 use rdd::controller;
 use rdd::prelude::*;
+use uuid::Uuid;
 
-use crate::modules::@plural@::dto::create_@single@_dto::Create@Single@Dto;
-use crate::modules::@plural@::dto::query_@single@_dto::Query@Single@Dto;
-use crate::modules::@plural@::dto::update_@single@_dto::Update@Single@Dto;
-use crate::modules::@plural@::entities::@single@_entity::@Single@;
-use crate::modules::@plural@::services::@plural@_service::@Plural@Service;
+use crate::modules::@plural@::@Plural@Service;
+use crate::modules::@plural@::presentation::dto::{
+    Create@Single@Dto, Query@Single@Dto, @Single@Response, Update@Single@Dto,
+};
 
 pub struct @Plural@Controller;
 
@@ -139,478 +193,396 @@ pub struct @Plural@Controller;
 impl @Plural@Controller {
     /// `GET /@plural@` — lista, con filtro opcional por texto y estado.
     #[get("/")]
-    async fn list(query: Query<Query@Single@Dto>) -> Result<Vec<@Single@>> {
-        @Plural@Service::new().list(query.into_inner())
+    async fn list(
+        svc: @Plural@Service,
+        query: Query<Query@Single@Dto>,
+    ) -> Result<Vec<@Single@Response>> {
+        let query = query.into_inner();
+        Ok(svc
+            .list(query.q, query.done)
+            .await?
+            .into_iter()
+            .map(@Single@Response::from)
+            .collect())
     }
 
     /// `GET /@plural@/:id` — 404 en Problem Details si no existe (§10.3).
     #[get("/:id")]
-    async fn get(id: Path<u32>) -> Result<@Single@> {
-        @Plural@Service::new().get(*id)
+    async fn get(svc: @Plural@Service, id: Path<Uuid>) -> Result<@Single@Response> {
+        svc.get(*id).await.map(@Single@Response::from)
     }
 
     /// `POST /@plural@` — 201 con el recurso creado (RF-053).
     #[post("/", status = 201)]
-    async fn create(body: Json<Create@Single@Dto>) -> Result<@Single@> {
-        @Plural@Service::new().create(body.into_inner())
+    async fn create(
+        svc: @Plural@Service,
+        body: Json<Create@Single@Dto>,
+    ) -> Result<@Single@Response> {
+        let body = body.into_inner();
+        svc.create(body.title, body.done)
+            .await
+            .map(@Single@Response::from)
     }
 
     /// `PUT /@plural@/:id` — actualización parcial.
     #[put("/:id")]
-    async fn update(id: Path<u32>, body: Json<Update@Single@Dto>) -> Result<@Single@> {
-        @Plural@Service::new().update(*id, body.into_inner())
+    async fn update(
+        svc: @Plural@Service,
+        id: Path<Uuid>,
+        body: Json<Update@Single@Dto>,
+    ) -> Result<@Single@Response> {
+        let body = body.into_inner();
+        svc.update(*id, body.title, body.done)
+            .await
+            .map(@Single@Response::from)
     }
 
     /// `DELETE /@plural@/:id` — 204 sin cuerpo (RF-053).
     #[delete("/:id")]
-    async fn remove(id: Path<u32>) -> Result<()> {
-        @Plural@Service::new().remove(*id)
+    async fn remove(svc: @Plural@Service, id: Path<Uuid>) -> Result<()> {
+        svc.remove(*id).await
     }
 }
 "#;
 
-const SERVICES_MOD: &str = r#"//! Casos de uso y reglas de negocio de `@plural@` (§5.1, RA-002).
+const APPLICATION_MOD: &str = r#"//! Casos de uso de `@plural@` (§5.1, RA-002).
 //!
-//! En 0.2 `#[service]` registra el tipo en el contenedor y permite inyectarlo
-//! (§9); en 0.1 es Rust plano y se construye a mano (RF-006).
+//! Coordina dominio y puertos; no contiene reglas de negocio.
 
-pub mod @plural@_service;
+pub mod @plural@_use_cases;
 "#;
 
-const SERVICE: &str = r#"//! Reglas de negocio de `@plural@`.
+const USE_CASES: &str = r#"//! Casos de uso de `@plural@` (§5.1, RA-002).
 //!
-//! El controller no decide nada: aquí se valida y se traduce a `Error`, que el
-//! núcleo convierte en Problem Details (§10.3).
+//! Coordina operaciones de dominio y expone una API independiente de HTTP.
 
 use rdd::prelude::*;
+use uuid::Uuid;
 
-use crate::modules::@plural@::constants::@plural@_constants::MAX_TITLE_LEN;
-use crate::modules::@plural@::dto::create_@single@_dto::Create@Single@Dto;
-use crate::modules::@plural@::dto::query_@single@_dto::Query@Single@Dto;
-use crate::modules::@plural@::dto::update_@single@_dto::Update@Single@Dto;
-use crate::modules::@plural@::entities::@single@_entity::@Single@;
-use crate::modules::@plural@::interfaces::@single@_interface::@Single@Store;
-use crate::modules::@plural@::mappers::@single@_mapper::@Single@Mapper;
-use crate::modules::@plural@::repositories::@plural@_repository::@Plural@Repository;
+use crate::modules::@plural@::domain::@Single@Repository;
+use crate::modules::@plural@::domain::{@Single@, @Single@Error};
 
-/// El service depende del puerto `@Single@Store`, no de la implementación
-/// (§5.1, RA-001). El parámetro por defecto es el repositorio de la app; los
-/// tests pasan uno aislado. En 0.2 esto lo inyecta el contenedor (§9).
-pub struct @Plural@Service<R: @Single@Store = @Plural@Repository> {
+/// Orquesta los casos de uso; las invariantes pertenecen al agregado.
+///
+/// Sin tipo por defecto: nombrar el adaptador aquí violaría RA-002. Quien lo fija
+/// es la raíz de composición del módulo con el alias `@Plural@Service` (§14.2).
+pub struct @Plural@UseCases<R: @Single@Repository> {
     repo: R,
 }
 
-impl @Plural@Service {
-    /// Service sobre el almacén compartido de la app.
-    pub fn new() -> Self {
-        Self::with_repository(@Plural@Repository::shared())
-    }
-}
-
-impl<R: @Single@Store> @Plural@Service<R> {
-    /// Almacén propio: es lo que usan los tests, sin estado global.
+impl<R: @Single@Repository> @Plural@UseCases<R> {
+    /// Constructor sobre cualquier implementación del puerto del dominio.
     pub fn with_repository(repo: R) -> Self {
         Self { repo }
     }
 
-    pub fn list(&self, query: Query@Single@Dto) -> Result<Vec<@Single@>> {
+    pub async fn list(&self, q: Option<String>, done: Option<bool>) -> Result<Vec<@Single@>> {
         Ok(self
             .repo
-            .all()
+            .list()
+            .await?
             .into_iter()
-            .filter(|row| match &query.q {
+            .filter(|row| match &q {
                 Some(text) => row.title.contains(text.as_str()),
                 None => true,
             })
-            .filter(|row| query.done.is_none_or(|done| row.done == done))
+            .filter(|row| done.is_none_or(|done| row.done == done))
             .collect())
     }
 
-    pub fn get(&self, id: u32) -> Result<@Single@> {
-        self.repo
-            .find(id)
-            .ok_or_else(|| Error::not_found(format!("@Single@ {id} no existe")))
+    pub async fn get(&self, id: Uuid) -> Result<@Single@> {
+        self.repo.get(id).await
     }
 
-    pub fn create(&self, dto: Create@Single@Dto) -> Result<@Single@> {
-        let title = validate_title(&dto.title)?;
-        let id = self.repo.next_id();
-        let row = @Single@Mapper::from_create(id, title, dto.done.unwrap_or(false));
-        Ok(self.repo.insert(row))
+    pub async fn create(&self, title: String, done: Option<bool>) -> Result<@Single@> {
+        let item = @Single@::new(title, done.unwrap_or(false)).map_err(domain_error)?;
+        self.repo.save(&item).await?;
+        Ok(item)
     }
 
-    pub fn update(&self, id: u32, dto: Update@Single@Dto) -> Result<@Single@> {
-        let current = self.get(id)?;
-        let title = match dto.title {
-            Some(title) => validate_title(&title)?,
-            None => current.title.clone(),
-        };
-        let row = @Single@Mapper::apply_update(current, title, dto.done);
-        self.repo
-            .update(row)
-            .ok_or_else(|| Error::not_found(format!("@Single@ {id} no existe")))
+    pub async fn update(
+        &self,
+        id: Uuid,
+        title: Option<String>,
+        done: Option<bool>,
+    ) -> Result<@Single@> {
+        let mut current = self.repo.get(id).await?;
+        current.update(title, done).map_err(domain_error)?;
+        self.repo.save(&current).await?;
+        Ok(current)
     }
 
-    pub fn remove(&self, id: u32) -> Result<()> {
-        if self.repo.remove(id) {
-            Ok(())
-        } else {
-            Err(Error::not_found(format!("@Single@ {id} no existe")))
+    pub async fn remove(&self, id: Uuid) -> Result<()> {
+        self.repo.remove(id).await
+    }
+}
+
+fn domain_error(error: @Single@Error) -> Error {
+    match error {
+        @Single@Error::EmptyTitle => Error::bad_request("el título no puede estar vacío"),
+        @Single@Error::TitleTooLong { max } => {
+            Error::invalid(format!("el título no puede pasar de {max} caracteres"))
         }
     }
 }
-
-/// El título no va vacío ni pasa de `MAX_TITLE_LEN`.
-///
-/// Vacío es 400 (petición mal formada); demasiado largo es 422 (`Invalid`), que
-/// es la distinción que hace §10.3.
-fn validate_title(title: &str) -> Result<String> {
-    let trimmed = title.trim();
-    if trimmed.is_empty() {
-        return Err(Error::bad_request("el título no puede estar vacío"));
-    }
-    if trimmed.chars().count() > MAX_TITLE_LEN {
-        return Err(Error::invalid(format!(
-            "el título no puede pasar de {MAX_TITLE_LEN} caracteres"
-        )));
-    }
-    Ok(trimmed.to_owned())
-}
 "#;
 
-const REPOSITORIES_MOD: &str = r#"//! Acceso a datos de `@plural@` (§5.1).
+const INFRASTRUCTURE_MOD: &str = r#"//! Adaptadores técnicos del módulo `@plural@` (§5.1, RA-007).
 //!
-//! Implementa el puerto de `interfaces/` y habla con `infrastructure/`. En 0.2
-//! envuelve `Repo<T>` (§12.1) sobre memoria o PostgreSQL; en 0.1 el almacén es
-//! un `Vec` en memoria porque todavía no hay persistencia (RF-006).
+//! Implementan los puertos definidos por el dominio.
 
 pub mod @plural@_repository;
 "#;
 
-const REPOSITORY: &str = r#"//! Implementación en memoria de `@Single@Store`.
+const REPOSITORY: &str = r#"//! Adaptador de persistencia de `@Single@` sobre `Repo<T>` (§12.1, RA-007).
 //!
-//! `shared()` es el almacén de la app y `new()` uno vacío y aislado para tests.
-//! En 0.2 esto pasa a `Repo<T>` sobre `MemoryBackend` o `SqlxBackend` (§12.1)
-//! sin tocar el service.
+//! No conoce ningún driver: el motor lo decide la URL en el arranque (§12.6), así
+//! que cambiar de PostgreSQL a otro no toca este archivo ni el caso de uso
+//! (RF-185). Tampoco tiene almacén propio ni `static`: el `Repo` se inyecta.
 
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+use rdd::prelude::*;
+use uuid::Uuid;
 
-use crate::modules::@plural@::entities::@single@_entity::@Single@;
-use crate::modules::@plural@::interfaces::@single@_interface::@Single@Store;
+use crate::modules::@plural@::domain::@Single@Repository;
+use crate::modules::@plural@::domain::@Single@;
 
-/// Las filas del módulo, en memoria y bajo un mutex.
-type Rows = Arc<Mutex<Vec<@Single@>>>;
-
-static SHARED: LazyLock<Rows> = LazyLock::new(|| Arc::new(Mutex::new(Vec::new())));
-
-#[derive(Clone, Default)]
+/// Implementa el puerto del dominio con el handle agnóstico del núcleo.
 pub struct @Plural@Repository {
-    rows: Rows,
+    repo: Repo<@Single@>,
 }
 
 impl @Plural@Repository {
-    /// Almacén vacío y aislado.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Almacén compartido por toda la app.
-    pub fn shared() -> Self {
-        Self {
-            rows: Arc::clone(&SHARED),
-        }
-    }
-
-    fn lock(&self) -> MutexGuard<'_, Vec<@Single@>> {
-        // Un handler que entra en pánico no debe envenenar el almacén: el 500 ya
-        // lo devuelve el núcleo (RF-073).
-        self.rows.lock().unwrap_or_else(|err| err.into_inner())
+    /// Recibe el `Repo` ya resuelto del contenedor (§12.1).
+    pub fn new(repo: Repo<@Single@>) -> Self {
+        Self { repo }
     }
 }
 
-impl @Single@Store for @Plural@Repository {
-    fn all(&self) -> Vec<@Single@> {
-        self.lock().clone()
+impl @Single@Repository for @Plural@Repository {
+    async fn list(&self) -> Result<Vec<@Single@>> {
+        self.repo.all().await
     }
 
-    fn find(&self, id: u32) -> Option<@Single@> {
-        self.lock().iter().find(|row| row.id == id).cloned()
+    async fn get(&self, id: Uuid) -> Result<@Single@> {
+        self.repo.get(id).await
     }
 
-    fn next_id(&self) -> u32 {
-        self.lock().iter().map(|row| row.id).max().unwrap_or(0) + 1
+    async fn save(&self, item: &@Single@) -> Result<()> {
+        self.repo.save(item).await
     }
 
-    fn insert(&self, row: @Single@) -> @Single@ {
-        self.lock().push(row.clone());
-        row
-    }
-
-    fn update(&self, row: @Single@) -> Option<@Single@> {
-        let mut rows = self.lock();
-        let slot = rows.iter_mut().find(|item| item.id == row.id)?;
-        *slot = row.clone();
-        Some(row)
-    }
-
-    fn remove(&self, id: u32) -> bool {
-        let mut rows = self.lock();
-        let before = rows.len();
-        rows.retain(|row| row.id != id);
-        rows.len() != before
+    async fn remove(&self, id: Uuid) -> Result<()> {
+        self.repo.delete(id).await
     }
 }
 "#;
 
-const DTO_MOD: &str = r#"//! Contratos de entrada de `@plural@` (§5.1).
+const DOMAIN_MOD: &str = r#"//! Modelo y puertos del dominio `@plural@` (§5.1, RA-001).
+
+pub mod @single@;
+pub mod @plural@_repository;
+
+pub use @single@::{@Single@, @Single@Error};
+pub use @plural@_repository::@Single@Repository;
+"#;
+
+const DOMAIN_REPOSITORY: &str = r#"//! Puerto de persistencia del agregado `@Single@` (§5.1, RA-001).
 //!
-//! Un DTO por caso de uso. La validación de forma (tipos, campos requeridos) la
-//! hacen `Json<T>` y `Query<T>` (§10); la de negocio vive en `services/`.
+//! Async con `impl Future + Send`, la misma forma de `FromRequest` (§6.3): un
+//! `async fn` en el trait no garantiza que el futuro sea `Send`, y los handlers de
+//! la plataforma sí lo exigen. El adaptador lo implementa con `async fn`.
 
-pub mod create_@single@_dto;
-pub mod query_@single@_dto;
-pub mod update_@single@_dto;
+use std::future::Future;
+
+use rdd::Result;
+use uuid::Uuid;
+
+use crate::modules::@plural@::domain::@Single@;
+
+pub trait @Single@Repository: Send + Sync + 'static {
+    fn list(&self) -> impl Future<Output = Result<Vec<@Single@>>> + Send;
+    fn get(&self, id: Uuid) -> impl Future<Output = Result<@Single@>> + Send;
+    fn save(&self, item: &@Single@) -> impl Future<Output = Result<()>> + Send;
+    fn remove(&self, id: Uuid) -> impl Future<Output = Result<()>> + Send;
+}
 "#;
 
-const CREATE_DTO: &str = r#"//! Cuerpo de `POST /@plural@`.
+const DOMAIN: &str = r#"//! Agregado `@Single@` e invariantes del dominio (§7.1, §12.2).
+//!
+//! `Aggregate` y `Persist` se escriben a mano hasta que `#[aggregate]` exista
+//! (RF-006); la macro las sustituirá sin tocar el resto del módulo. El agregado no
+//! deriva `Deserialize` (RF-031): la entrada HTTP son los DTOs, no él.
+
+use rdd::db::{Persist, Row, Value};
+use rdd::domain::Aggregate;
+use uuid::Uuid;
+
+pub const MAX_TITLE_LEN: usize = 200;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct @Single@ {
+    pub id: Uuid,
+    pub title: String,
+    pub done: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum @Single@Error {
+    EmptyTitle,
+    TitleTooLong { max: usize },
+}
+
+impl @Single@ {
+    /// Crea el agregado con un id nuevo, validando las invariantes.
+    pub fn new(title: String, done: bool) -> Result<Self, @Single@Error> {
+        Ok(Self {
+            id: Uuid::new_v4(),
+            title: validate_title(title)?,
+            done,
+        })
+    }
+
+    pub fn update(
+        &mut self,
+        title: Option<String>,
+        done: Option<bool>,
+    ) -> Result<(), @Single@Error> {
+        if let Some(title) = title {
+            self.title = validate_title(title)?;
+        }
+        if let Some(done) = done {
+            self.done = done;
+        }
+        Ok(())
+    }
+}
+
+impl Aggregate for @Single@ {
+    type Id = Uuid;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+}
+
+impl Persist for @Single@ {
+    const TABLE: &'static str = "@plural@";
+    const COLUMNS: &'static [&'static str] = &["id", "title", "done"];
+
+    fn to_values(&self) -> Vec<Value> {
+        vec![
+            Value::Uuid(self.id),
+            Value::from(self.title.clone()),
+            Value::Bool(self.done),
+        ]
+    }
+
+    fn from_row(row: &Row) -> rdd::Result<Self> {
+        // Por nombre y no por posición: el orden de `Row` no es contractual (§12.1).
+        Ok(Self {
+            id: row.value("id")?.as_uuid()?,
+            title: row.value("title")?.as_text()?.to_owned(),
+            done: row.value("done")?.as_bool()?,
+        })
+    }
+}
+
+fn validate_title(title: String) -> Result<String, @Single@Error> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(@Single@Error::EmptyTitle);
+    }
+    if title.chars().count() > MAX_TITLE_LEN {
+        return Err(@Single@Error::TitleTooLong {
+            max: MAX_TITLE_LEN,
+        });
+    }
+    Ok(title.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trims_the_title_and_rejects_an_empty_one() {
+        let item = @Single@::new("  pan  ".to_owned(), false).unwrap();
+        assert_eq!(item.title, "pan");
+        assert_eq!(
+            @Single@::new("   ".to_owned(), false).unwrap_err(),
+            @Single@Error::EmptyTitle
+        );
+    }
+
+    #[test]
+    fn rejects_a_title_over_the_limit() {
+        let long = "x".repeat(MAX_TITLE_LEN + 1);
+        assert_eq!(
+            @Single@::new(long, false).unwrap_err(),
+            @Single@Error::TitleTooLong {
+                max: MAX_TITLE_LEN
+            }
+        );
+    }
+
+    #[test]
+    fn survives_a_round_trip_through_a_row() {
+        let item = @Single@::new("pan".to_owned(), true).unwrap();
+        let row = Row::zip(<@Single@ as Persist>::COLUMNS, &item.to_values()).unwrap();
+        assert_eq!(<@Single@ as Persist>::from_row(&row).unwrap(), item);
+    }
+}
+"#;
+
+const PRESENTATION_MOD: &str = r#"//! Adaptadores de entrada HTTP y DTOs del módulo `@plural@` (§5.1, RA-003).
+
+pub mod dto;
+pub mod @plural@_controller;
+"#;
+
+const DTO: &str = r#"//! Tipos de entrada y salida HTTP para `@plural@`.
+//!
+//! El agregado no se deserializa desde la petición (RF-031): estos DTOs son la
+//! única forma de entrada, y `@Single@Response` la de salida.
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+use crate::modules::@plural@::domain::@Single@;
+
+#[derive(Debug, Deserialize)]
+pub struct Query@Single@Dto {
+    pub q: Option<String>,
+    pub done: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Create@Single@Dto {
     pub title: String,
     pub done: Option<bool>,
 }
-"#;
 
-const UPDATE_DTO: &str = r#"//! Cuerpo de `PUT /@plural@/:id`: todo opcional, actualización parcial.
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct Update@Single@Dto {
     pub title: Option<String>,
     pub done: Option<bool>,
 }
-"#;
 
-const QUERY_DTO: &str = r#"//! Query string de `GET /@plural@` (`Query<T>`, RF-054).
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct Query@Single@Dto {
-    /// Substring del título.
-    pub q: Option<String>,
-    /// Filtra por estado.
-    pub done: Option<bool>,
-}
-"#;
-
-const ENTITIES_MOD: &str = r#"//! Agregados y value objects de `@plural@` (§5.1, RA-001).
-//!
-//! En 0.2 `#[aggregate]` añade `Persist` (§12.2) y las reglas de dominio; en 0.1
-//! es una estructura plana con `serde` (RF-006).
-
-pub mod @single@_entity;
-"#;
-
-const ENTITY: &str = r#"//! Agregado `@Single@`.
-//!
-//! Los campos JSON conservan el nombre Rust (RF-071). El `id` lo asigna el
-//! repositorio; en 0.4 Prisma pasa a `Uuid` (§15.2).
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct @Single@ {
-    pub id: u32,
+#[derive(Debug, Serialize)]
+pub struct @Single@Response {
+    pub id: Uuid,
     pub title: String,
     pub done: bool,
 }
-"#;
 
-const INTERFACES_MOD: &str = r#"//! Traits del dominio `@plural@` (§5.1, RA-001).
-//!
-//! El service depende del puerto, nunca de la implementación; así cambiar de
-//! backend no toca las reglas de negocio.
-
-pub mod @single@_interface;
-"#;
-
-const INTERFACE: &str = r#"//! Puerto de persistencia de `@plural@`.
-//!
-//! En 0.2 lo cubre `Repo<T>` (§12.1) y pasa a ser async; esta forma síncrona es
-//! provisional a propósito, porque en 0.1 todavía no hay backend (RF-006).
-
-use crate::modules::@plural@::entities::@single@_entity::@Single@;
-
-pub trait @Single@Store {
-    fn all(&self) -> Vec<@Single@>;
-    fn find(&self, id: u32) -> Option<@Single@>;
-    fn next_id(&self) -> u32;
-    fn insert(&self, row: @Single@) -> @Single@;
-    fn update(&self, row: @Single@) -> Option<@Single@>;
-    fn remove(&self, id: u32) -> bool;
-}
-"#;
-
-const MAPPERS_MOD: &str = r#"//! Transformación entidad ↔ DTO ↔ fila de `@plural@` (§5.1).
-//!
-//! Único sitio donde se decide qué campos viajan en cada dirección. En 0.4
-//! entra aquí la fila que genera Prisma (`src/generated/`).
-
-pub mod @single@_mapper;
-"#;
-
-const MAPPER: &str = r#"//! Mapper de `@Single@`.
-
-use crate::modules::@plural@::entities::@single@_entity::@Single@;
-
-pub struct @Single@Mapper;
-
-impl @Single@Mapper {
-    /// DTO de creación → agregado. El título ya viene validado del service.
-    pub fn from_create(id: u32, title: String, done: bool) -> @Single@ {
-        @Single@ { id, title, done }
-    }
-
-    /// Aplica una actualización parcial sobre el agregado actual.
-    pub fn apply_update(current: @Single@, title: String, done: Option<bool>) -> @Single@ {
-        @Single@ {
-            title,
-            done: done.unwrap_or(current.done),
-            ..current
+impl From<@Single@> for @Single@Response {
+    fn from(item: @Single@) -> Self {
+        Self {
+            id: item.id,
+            title: item.title,
+            done: item.done,
         }
     }
-}
-"#;
-
-const CONSTANTS_MOD: &str = r#"//! Constantes del módulo `@plural@` (§5.1).
-//!
-//! Nombres en plural, como la carpeta: aquí van los valores del dominio, no los
-//! de la app entera (esos están en `src/config/`).
-
-pub mod @plural@_constants;
-"#;
-
-const CONSTANTS: &str = r#"//! Constantes de `@plural@`.
-
-/// Máximo de caracteres del título; lo aplica el service.
-pub const MAX_TITLE_LEN: usize = 200;
-"#;
-
-const TESTS_MOD: &str = r#"//! Tests unitarios de `@plural@` (§5).
-//!
-//! Una capa por archivo: el service con un almacén aislado y el controller sobre
-//! su tabla de rutas. Los tests de la app entera viven en `tests/acceptance.rs`,
-//! en la raíz del proyecto.
-
-mod @plural@_controller_test;
-mod @plural@_service_test;
-"#;
-
-const SERVICE_TEST: &str = r#"//! Reglas de negocio de `@Plural@Service`, con un almacén aislado por test.
-
-use rdd::prelude::*;
-
-use crate::modules::@plural@::constants::@plural@_constants::MAX_TITLE_LEN;
-use crate::modules::@plural@::dto::create_@single@_dto::Create@Single@Dto;
-use crate::modules::@plural@::dto::query_@single@_dto::Query@Single@Dto;
-use crate::modules::@plural@::dto::update_@single@_dto::Update@Single@Dto;
-use crate::modules::@plural@::repositories::@plural@_repository::@Plural@Repository;
-use crate::modules::@plural@::services::@plural@_service::@Plural@Service;
-
-fn service() -> @Plural@Service {
-    @Plural@Service::with_repository(@Plural@Repository::new())
-}
-
-fn dto(title: &str) -> Create@Single@Dto {
-    Create@Single@Dto {
-        title: title.to_owned(),
-        done: None,
-    }
-}
-
-#[test]
-fn crea_y_recupera() {
-    let service = service();
-    let created = service.create(dto("pan")).unwrap();
-    assert_eq!(created.id, 1);
-    assert_eq!(service.get(created.id).unwrap().title, "pan");
-}
-
-#[test]
-fn titulo_vacio_es_400() {
-    let err = service().create(dto("   ")).unwrap_err();
-    assert_eq!(err.status(), StatusCode::BAD_REQUEST);
-}
-
-#[test]
-fn titulo_largo_es_422() {
-    let err = service()
-        .create(dto(&"x".repeat(MAX_TITLE_LEN + 1)))
-        .unwrap_err();
-    assert_eq!(err.status(), StatusCode::UNPROCESSABLE_ENTITY);
-}
-
-#[test]
-fn id_inexistente_es_404() {
-    let err = service().get(99).unwrap_err();
-    assert_eq!(err.status(), StatusCode::NOT_FOUND);
-}
-
-#[test]
-fn lista_filtra_por_texto() {
-    let service = service();
-    service.create(dto("pan")).unwrap();
-    service.create(dto("café")).unwrap();
-    let query = Query@Single@Dto {
-        q: Some("ca".to_owned()),
-        done: None,
-    };
-    let found = service.list(query).unwrap();
-    assert_eq!(found.len(), 1);
-    assert_eq!(found[0].title, "café");
-}
-
-#[test]
-fn actualiza_y_borra() {
-    let service = service();
-    let created = service.create(dto("pan")).unwrap();
-    let changes = Update@Single@Dto {
-        title: None,
-        done: Some(true),
-    };
-    let updated = service.update(created.id, changes).unwrap();
-    assert!(updated.done);
-    assert_eq!(updated.title, "pan");
-    service.remove(created.id).unwrap();
-    let err = service.get(created.id).unwrap_err();
-    assert_eq!(err.status(), StatusCode::NOT_FOUND);
-}
-"#;
-
-const CONTROLLER_TEST: &str = r#"//! Tabla de rutas que genera `#[controller]` (RF-051, RF-056).
-
-use crate::modules::@plural@::controllers::@plural@_controller::@Plural@Controller;
-
-#[test]
-fn expone_las_rutas_del_modulo() {
-    let table: Vec<String> = @Plural@Controller::routes()
-        .iter()
-        .map(|route| format!("{} {}", route.method, route.path))
-        .collect();
-    assert_eq!(
-        table,
-        [
-            "GET /@plural@",
-            "GET /@plural@/:id",
-            "POST /@plural@",
-            "PUT /@plural@/:id",
-            "DELETE /@plural@/:id",
-        ]
-    );
 }
 "#;
 
@@ -619,16 +591,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generates_the_nine_folders() {
+    fn generates_only_the_four_module_layers() {
         let names = ModuleNames::new("Tasks");
         let paths: Vec<String> = files(&names)
             .iter()
             .map(|file| file.path.display().to_string().replace('\\', "/"))
             .collect();
-        assert_eq!(paths.len(), 22);
-        for folder in [
+        assert_eq!(paths.len(), 11);
+        for folder in ["domain", "application", "infrastructure", "presentation"] {
+            assert!(
+                paths.contains(&format!("{folder}/mod.rs")),
+                "falta {folder}/mod.rs"
+            );
+        }
+        for removed in [
             "controllers",
-            "services",
             "repositories",
             "dto",
             "entities",
@@ -638,13 +615,16 @@ mod tests {
             "tests",
         ] {
             assert!(
-                paths.contains(&format!("{folder}/mod.rs")),
-                "falta {folder}/mod.rs (RF-003)"
+                !paths
+                    .iter()
+                    .any(|path| path.starts_with(&format!("{removed}/")))
             );
         }
-        assert!(paths.contains(&"dto/create_task_dto.rs".to_owned()));
-        assert!(paths.contains(&"entities/task_entity.rs".to_owned()));
-        assert!(paths.contains(&"controllers/tasks_controller.rs".to_owned()));
+        assert!(paths.contains(&"domain/task.rs".to_owned()));
+        assert!(paths.contains(&"application/tasks_use_cases.rs".to_owned()));
+        assert!(paths.contains(&"infrastructure/tasks_repository.rs".to_owned()));
+        assert!(paths.contains(&"presentation/dto.rs".to_owned()));
+        assert!(paths.contains(&"presentation/tasks_controller.rs".to_owned()));
     }
 
     #[test]
@@ -658,8 +638,9 @@ mod tests {
             .iter()
             .map(|file| file.path.display().to_string().replace('\\', "/"))
             .collect();
-        assert!(paths.contains(&"dto/create_task_item_dto.rs".to_owned()));
-        assert!(paths.contains(&"services/task_items_service.rs".to_owned()));
+        assert!(paths.contains(&"presentation/dto.rs".to_owned()));
+        assert!(paths.contains(&"presentation/task_items_controller.rs".to_owned()));
+        assert!(paths.contains(&"application/task_items_use_cases.rs".to_owned()));
     }
 
     #[test]
@@ -672,5 +653,70 @@ mod tests {
                 file.path.display()
             );
         }
+    }
+
+    /// RA-001 a RA-003 sobre las rutas que de verdad importan, no sobre la prosa
+    /// de las cabeceras. El cableado legal vive en `mod.rs` (§17).
+    #[test]
+    fn keeps_the_layers_inside_their_import_rules() {
+        let names = ModuleNames::new("tasks");
+        let generated = files(&names);
+        let find = |path: &str| {
+            generated
+                .iter()
+                .find(|file| file.path.display().to_string().replace('\\', "/") == path)
+                .unwrap_or_else(|| panic!("falta {path}"))
+                .contents
+                .clone()
+        };
+        let assert_absent = |body: &str, needles: &[&str]| {
+            for needle in needles {
+                assert!(!body.contains(needle), "importa `{needle}`:\n{body}");
+            }
+        };
+
+        let domain = find("domain/task.rs");
+        let port = find("domain/tasks_repository.rs");
+        for body in [&domain, &port] {
+            assert_absent(
+                body,
+                &[
+                    "crate::modules::tasks::application",
+                    "crate::modules::tasks::infrastructure",
+                    "crate::modules::tasks::presentation",
+                    "rdd::http",
+                    "axum",
+                    "sqlx",
+                ],
+            );
+        }
+
+        assert_absent(
+            &find("application/tasks_use_cases.rs"),
+            &[
+                "crate::modules::tasks::infrastructure",
+                "crate::modules::tasks::presentation",
+                "rdd::http",
+                "axum",
+                "sqlx",
+            ],
+        );
+        assert_absent(
+            &find("presentation/tasks_controller.rs"),
+            &[
+                "crate::modules::tasks::infrastructure",
+                "Repo<",
+                "axum",
+                "sqlx",
+            ],
+        );
+
+        let root = find("mod.rs");
+        assert!(
+            root.contains("impl FromContainer for TasksService"),
+            "{root}"
+        );
+        assert!(root.contains("impl FromRequest for TasksService"), "{root}");
+        assert!(root.contains("MemoryBackend"), "{root}");
     }
 }

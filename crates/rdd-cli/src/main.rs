@@ -23,7 +23,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Crea un proyecto nuevo con el árbol completo de §5.
+    /// Crea un proyecto nuevo con el árbol funcional mínimo de §5.
     New(new_project::NewArgs),
     /// Generadores de código (`rdd g …`).
     #[command(subcommand)]

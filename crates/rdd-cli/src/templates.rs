@@ -8,6 +8,47 @@
 
 use crate::files::GeneratedFile;
 
+/// Motor predeterminado del proyecto (§14.1, RF-189).
+///
+/// Solo los que tienen feature en la fachada (§12.6); la lista crece con cada
+/// crate de motor que pase la suite de conformidad (RA-016).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum Database {
+    #[default]
+    Sqlite,
+    Postgres,
+}
+
+impl Database {
+    /// Feature de la fachada que trae el adaptador. Es también el `provider` de
+    /// `rdd.toml` (§15.1), que no usa el token de Prisma.
+    pub fn feature(self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgres => "postgres",
+        }
+    }
+
+    /// Token del `datasource` de Prisma (§15.2): PostgreSQL se llama
+    /// `postgresql` ahí, no `postgres`.
+    pub fn prisma_provider(self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgres => "postgresql",
+        }
+    }
+
+    /// URL de respaldo de `main.rs`, `.env` y `.env.example` (§14.3). La de
+    /// PostgreSQL lleva un marcador por contraseña: no hay servidor que adivinar
+    /// y RF-063 prohíbe inventar credenciales.
+    pub fn default_url(self, package: &str, database: &str) -> String {
+        match self {
+            Self::Sqlite => format!("sqlite://{package}.db"),
+            Self::Postgres => format!("postgres://postgres:CAMBIAR@localhost:5432/{database}"),
+        }
+    }
+}
+
 /// Datos del proyecto que ya vienen normalizados (RF-142).
 pub struct ProjectContext<'a> {
     /// Nombre del paquete Cargo, en `kebab-case`.
@@ -16,6 +57,8 @@ pub struct ProjectContext<'a> {
     pub database: &'a str,
     /// Dependencia TOML de `rdd`: versión publicada o ruta local.
     pub rdd_dependency: &'a str,
+    /// Motor predeterminado (RF-189).
+    pub engine: Database,
 }
 
 /// Sustituye `@clave@` por su valor.
@@ -29,8 +72,21 @@ pub fn render(template: &str, vars: &[(&str, &str)]) -> String {
 
 /// Todos los archivos del proyecto, salvo el módulo de ejemplo.
 pub fn project_files(ctx: &ProjectContext<'_>, with_example: bool) -> Vec<GeneratedFile> {
-    let vars = [("package", ctx.package), ("database", ctx.database)];
-    let mut files = vec![
+    let url = ctx.engine.default_url(ctx.package, ctx.database);
+    let hint = match ctx.engine {
+        Database::Sqlite => "# SQLite local: no necesita servidor.",
+        Database::Postgres => {
+            "# Sustituye `CAMBIAR` por la contraseña real: PostgreSQL necesita un servidor."
+        }
+    };
+    let vars = [
+        ("package", ctx.package),
+        ("provider", ctx.engine.feature()),
+        ("prisma_provider", ctx.engine.prisma_provider()),
+        ("database_url", url.as_str()),
+        ("database_hint", hint),
+    ];
+    let files = vec![
         GeneratedFile::new("Cargo.toml", cargo_toml(ctx)),
         GeneratedFile::new("rdd.toml", render(RDD_TOML, &vars)),
         GeneratedFile::new("rust-toolchain.toml", RUST_TOOLCHAIN_TOML),
@@ -39,227 +95,35 @@ pub fn project_files(ctx: &ProjectContext<'_>, with_example: bool) -> Vec<Genera
         GeneratedFile::new("Dockerfile", render(DOCKERFILE, &vars)),
         GeneratedFile::new(".env", render(DOTENV, &vars)),
         GeneratedFile::new(".env.example", render(DOTENV_EXAMPLE, &vars)),
-        GeneratedFile::new(".gitignore", GITIGNORE),
-        GeneratedFile::new("docs/.gitkeep", ""),
-        GeneratedFile::new("migrations/.gitkeep", ""),
-        GeneratedFile::new("prisma/schema.prisma", schema_prisma(with_example)),
-        GeneratedFile::new("prisma/migrations/.gitkeep", ""),
+        GeneratedFile::new(".gitignore", gitignore(ctx.engine)),
+        // RF-003/RF-192: con módulo de ejemplo la carpeta ya tiene contenido real.
+        // `.gitkeep` solo hace falta sin él, porque git no trackea directorios vacíos.
+        if with_example {
+            GeneratedFile::new("migrations/0001_tasks.sql", TASKS_MIGRATION)
+        } else {
+            GeneratedFile::new("migrations/.gitkeep", "")
+        },
+        GeneratedFile::new(
+            "prisma/schema.prisma",
+            render(&schema_prisma(with_example), &vars),
+        ),
         GeneratedFile::new("tests/acceptance.rs", acceptance_rs(with_example)),
-        GeneratedFile::new("tests/e2e/.gitkeep", ""),
-        GeneratedFile::new("tests/fixtures/.gitkeep", ""),
-        GeneratedFile::new("src/main.rs", main_rs(ctx, with_example)),
+        GeneratedFile::new("src/main.rs", main_rs(with_example)),
         GeneratedFile::new("src/app_module.rs", APP_MODULE_RS),
         GeneratedFile::new("src/app_controller.rs", APP_CONTROLLER_RS),
         GeneratedFile::new("src/app_service.rs", APP_SERVICE_RS),
         GeneratedFile::new("src/config/mod.rs", CONFIG_MOD),
         GeneratedFile::new("src/config/app_config.rs", render(APP_CONFIG_RS, &vars)),
-        GeneratedFile::new("src/config/database_config.rs", DATABASE_CONFIG_RS),
-        GeneratedFile::new("src/config/jwt_config.rs", JWT_CONFIG_RS),
-        GeneratedFile::new("src/config/redis_config.rs", REDIS_CONFIG_RS),
+        GeneratedFile::new(
+            "src/config/database_config.rs",
+            render(DATABASE_CONFIG_RS, &vars),
+        ),
         GeneratedFile::new("src/modules/mod.rs", modules_mod(with_example)),
         GeneratedFile::new("src/generated/mod.rs", GENERATED_MOD),
     ];
 
-    for (parent, doc, children) in FOLDERS {
-        files.push(GeneratedFile::new(
-            format!("src/{parent}/mod.rs"),
-            folder_index(doc, children),
-        ));
-        for (name, what, api) in *children {
-            files.push(GeneratedFile::new(
-                format!("src/{parent}/{name}/mod.rs"),
-                folder_mod(what, api),
-            ));
-        }
-    }
-
     files
 }
-
-/// Subcarpeta transversal: (nombre, qué va ahí, API de rdd que la cubre).
-type Folder = (&'static str, &'static str, &'static str);
-
-/// Carpeta de §5: (nombre, doc de su índice, subcarpetas).
-type FolderGroup = (&'static str, &'static str, &'static [Folder]);
-
-/// Índice de una carpeta transversal: declara sus submódulos.
-fn folder_index(doc: &str, children: &[Folder]) -> String {
-    let mut out = format!(
-        "//! {doc}\n//!\n//! Cada subcarpeta documenta qué va ahí y qué API de rdd lo cubre (RF-004).\n\n"
-    );
-    // rustfmt reordena los `mod` alfabéticamente: se emiten ya ordenados para
-    // que el proyecto nazca limpio y `cargo fmt --check` no proponga nada.
-    let mut names: Vec<&str> = children.iter().map(|(name, _, _)| *name).collect();
-    names.sort_unstable();
-    for name in names {
-        out.push_str(&format!("pub mod {name};\n"));
-    }
-    out
-}
-
-/// `mod.rs` de una carpeta que todavía no tiene contenido (RF-003, RF-004).
-fn folder_mod(what: &str, api: &str) -> String {
-    format!("//! {what}\n//!\n//! API de rdd: {api}\n")
-}
-
-/// Carpetas transversales de §5: (carpeta, doc del índice, subcarpetas).
-///
-/// Cada subcarpeta es (nombre, qué va ahí, qué API de rdd lo cubre). Se generan
-/// como placeholder compilable porque su soporte llega en fases posteriores.
-const FOLDERS: &[FolderGroup] = &[
-    (
-        "common",
-        "Componentes transversales propios del proyecto (§5.1). Lo que es de un solo dominio va en ese módulo, no aquí (RA-004).",
-        COMMON,
-    ),
-    (
-        "infrastructure",
-        "Servicios técnicos: pool, caché, colas, almacenamiento (§5.1). Los repositories de cada módulo hablan con esta carpeta, nunca al revés.",
-        INFRASTRUCTURE,
-    ),
-    (
-        "integrations",
-        "Clientes de sistemas externos (§5.1). Un crate externo por integración (`rdd add`, §14.1) registrado como provider; aquí no se decide negocio.",
-        INTEGRATIONS,
-    ),
-    (
-        "shared",
-        "Tipos, interfaces y contratos que usan varios módulos (§5.1). Si solo los usa un módulo, viven en él (RA-004).",
-        SHARED,
-    ),
-];
-
-const COMMON: &[Folder] = &[
-    (
-        "decorators",
-        "Decoradores propios del proyecto.",
-        "los atributos de macro (`#[controller]`, `#[middleware]`, §8); aquí van los que añada el proyecto.",
-    ),
-    (
-        "filters",
-        "Filtros de excepción: mapean un error propio a la respuesta HTTP.",
-        "`Error` y Problem Details (§10.3); un error de dominio se convierte a `Error` antes de salir del handler.",
-    ),
-    (
-        "guards",
-        "Guardas de autorización: cortan la petición antes del handler.",
-        "middlewares que devuelven `Error::Unauthorized` o `Error::Forbidden` (§11, RF-082).",
-    ),
-    (
-        "interceptors",
-        "Interceptores: envuelven la respuesta para transformar, medir o cachear.",
-        "middlewares que llaman `next.run(req)` y post-procesan (§11.2).",
-    ),
-    (
-        "middleware",
-        "Middlewares transversales de la app.",
-        "`Middleware`, `fn_middleware` y `.middleware(…)` en app, módulo, controller y ruta (§11.3).",
-    ),
-    (
-        "pipes",
-        "Transformación y validación de la entrada.",
-        "la forma la validan los extractores `Json<T>`, `Query<T>` y `Path<T>` (§10); el negocio, el service.",
-    ),
-    (
-        "constants",
-        "Constantes transversales de la app.",
-        "Rust plano; las de un dominio van en `modules/<m>/constants/`.",
-    ),
-    (
-        "enums",
-        "Enums compartidos por varios módulos.",
-        "Rust plano con `serde` cuando viajan en JSON (RF-071).",
-    ),
-    (
-        "interfaces",
-        "Traits transversales que no pertenecen a un dominio concreto.",
-        "Rust plano; los puertos de un dominio van en `modules/<m>/interfaces/`.",
-    ),
-    (
-        "exceptions",
-        "Errores propios de la app.",
-        "`Error` (§10.3): `BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`, `Invalid`, `Internal`.",
-    ),
-    (
-        "utils",
-        "Funciones auxiliares sin estado.",
-        "Rust plano; si dependen de un dominio, van en ese módulo.",
-    ),
-];
-
-const INFRASTRUCTURE: &[Folder] = &[
-    (
-        "database",
-        "Pool y acceso técnico a datos.",
-        "`App::database(url)`, `Repo<T>` y `SqlxBackend` (§12.1). Llega en la fase 0.2.",
-    ),
-    (
-        "cache",
-        "Caché (Redis u otra).",
-        "provider del contenedor (§9); la conexión se lee en `config/redis_config.rs`. El núcleo no trae cliente.",
-    ),
-    (
-        "queue",
-        "Colas de trabajos en segundo plano.",
-        "providers (§9) y `ShutdownSignal` para vaciarlas al apagar (RF-013).",
-    ),
-    (
-        "storage",
-        "Almacenamiento de archivos: disco, S3 o equivalente.",
-        "provider propio (§9); el cliente concreto va en `integrations/`.",
-    ),
-    (
-        "messaging",
-        "Publicación y suscripción interna entre módulos.",
-        "providers (§9); los contratos de los mensajes van en `shared/contracts/`.",
-    ),
-    (
-        "external_services",
-        "Clientes HTTP de servicios externos.",
-        "providers (§9); la configuración va en `src/config/`.",
-    ),
-];
-
-const INTEGRATIONS: &[Folder] = &[
-    (
-        "aws",
-        "SDK de AWS (S3, SES, SQS…).",
-        "crate externo añadido con `rdd add` (§14.1) y registrado como provider (§9).",
-    ),
-    (
-        "telegram",
-        "Bot de Telegram.",
-        "crate externo (`rdd add`, §14.1) como provider; los handlers entran por un controller.",
-    ),
-    (
-        "email",
-        "Envío de correo por SMTP o API.",
-        "crate externo (`rdd add`, §14.1) como provider (§9).",
-    ),
-    (
-        "payment_gateways",
-        "Pasarelas de pago.",
-        "crate externo (`rdd add`, §14.1) como provider; las reglas de negocio van en el service del módulo.",
-    ),
-];
-
-const SHARED: &[Folder] = &[
-    (
-        "types",
-        "Tipos compartidos: newtypes, identificadores, envolventes.",
-        "Rust plano con `serde` cuando viajan en JSON (RF-071).",
-    ),
-    (
-        "interfaces",
-        "Traits que implementan varios módulos.",
-        "Rust plano; `FromContainer` (§9) cuando el tipo se resuelve por DI.",
-    ),
-    (
-        "contracts",
-        "Contratos de los mensajes y eventos que cruzan módulos.",
-        "Rust plano con `serde`; el transporte vive en `infrastructure/messaging/`.",
-    ),
-];
 
 fn cargo_toml(ctx: &ProjectContext<'_>) -> String {
     format!(
@@ -278,6 +142,8 @@ fn cargo_toml(ctx: &ProjectContext<'_>) -> String {
          rdd = {dependency}\n\
          serde = {{ version = \"1\", features = [\"derive\"] }}\n\
          serde_json = \"1\"\n\
+         # El id del agregado es un UUID (§7.2); `serde` lo serializa como texto.\n\
+         uuid = {{ version = \"1\", features = [\"v4\", \"serde\"] }}\n\
          \n\
          [dev-dependencies]\n\
          bytes = \"1\"\n\
@@ -289,13 +155,7 @@ fn cargo_toml(ctx: &ProjectContext<'_>) -> String {
 }
 
 fn schema_prisma(with_example: bool) -> String {
-    let mut out = String::from(
-        "// Fuente de verdad del esquema de datos (§15.2).\n\
-         // Prisma se conecta en la fase 0.4; hasta entonces `rdd db generate` no\n\
-         // produce nada y `src/generated/` queda vacío.\n\
-         \n\
-         datasource db {\n  provider = \"postgresql\"\n}\n",
-    );
+    let mut out = String::from(SCHEMA_PRISMA);
     if with_example {
         out.push_str(PRISMA_TASK);
     }
@@ -310,16 +170,13 @@ fn modules_mod(with_example: bool) -> String {
     out
 }
 
-fn main_rs(ctx: &ProjectContext<'_>, with_example: bool) -> String {
+fn main_rs(with_example: bool) -> String {
     let lines = if with_example {
         "        .module(modules::tasks::module())\n"
     } else {
         ""
     };
-    render(
-        MAIN_RS,
-        &[("package", ctx.package), ("module_lines", lines)],
-    )
+    render(MAIN_RS, &[("module_lines", lines)])
 }
 
 fn acceptance_rs(with_example: bool) -> String {
@@ -346,11 +203,13 @@ port = 3000
 body_limit_bytes = 2_097_152
 
 [database]
-provider = "sqlite"            # motor predeterminado
-url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL
+# El motor lo decide el esquema de la URL (RF-111); `provider` es orientativo y
+# lo lee `rdd doctor`. Salió de `rdd new --database` (RF-189).
+provider = "@provider@"
+url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL (RF-063)
 max_connections = 10
 acquire_timeout_secs = 5
-migrations_dir = \"migrations\"
+migrations_dir = "migrations"  # lo lee `rdd migrate` (§14.1)
 
 [prisma]
 schema        = "prisma/schema.prisma"
@@ -416,7 +275,9 @@ APP_NAME=@package@
 HOST=0.0.0.0
 PORT=3000
 RUST_LOG=info
-DATABASE_URL=sqlite://@package@.db
+
+@database_hint@
+DATABASE_URL=@database_url@
 "#;
 
 const DOTENV_EXAMPLE: &str = r#"# Plantilla versionable de `.env` (RF-063). Nunca poner aquí credenciales reales.
@@ -426,27 +287,42 @@ HOST=0.0.0.0
 PORT=3000
 RUST_LOG=info
 
-# SQLite local. La URL va en el entorno, nunca en `rdd.toml` (§15.1).
-DATABASE_URL=sqlite://@package@.db
+# La URL va en el entorno, nunca en `rdd.toml` (§15.1). El motor lo decide su
+# esquema (RF-111); este valor salió de `rdd new --database` (RF-189).
+@database_hint@
+DATABASE_URL=@database_url@
 
-# Reservadas: rdd 0.x no trae autenticación ni caché (ver `src/config/`).
-JWT_SECRET=
-JWT_EXPIRES_IN_SECS=3600
-REDIS_URL=
 "#;
 
-const GITIGNORE: &str = r#"# RF-063: `.env` lleva credenciales y no se versiona.
-/target
-.env
-*.log
+fn gitignore(engine: Database) -> String {
+    let mut out = String::from(
+        "# RF-063: `.env` lleva credenciales y no se versiona.\n/target\n.env\n*.log\n",
+    );
+    if engine == Database::Sqlite {
+        out.push_str(
+            "\n# La base local la crea `rdd migrate` y lleva datos de usuario (RF-063).\n\
+             *.db\n*.db-shm\n*.db-wal\n",
+        );
+    }
+    out
+}
+
+const SCHEMA_PRISMA: &str = r#"// Fuente de verdad del esquema de datos (§15.2).
+// Prisma se conecta en la fase 0.4; hasta entonces `rdd db generate` no
+// produce nada y `src/generated/` queda vacío.
+
+datasource db {
+  provider = "@prisma_provider@"
+}
 "#;
 
+// Sin `createdAt`: `Value` no tiene variante temporal (V15) y el adaptador la
+// rechazaría al leer (RF-187), rompiendo el round-trip de `Persist` (§12.2).
 const PRISMA_TASK: &str = r#"
 model Task {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title     String
-  done      Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+  id    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title String
+  done  Boolean @default(false)
 
   @@map("tasks")
 }
@@ -457,8 +333,8 @@ const MAIN_RS: &str = r#"//! Punto de entrada de la app (≈ main.ts, §8.4).
 //! `#[rdd::main]` carga `.env`, monta `tracing` con `RUST_LOG` y crea el runtime
 //! Tokio; el `main` solo describe la app.
 
-// El scaffold reserva carpetas para fases posteriores (§5, RF-004): parte de su
-// contenido todavía no se llama y el proyecto tiene que compilar sin avisos.
+// Parte del scaffold todavía no se llama y el proyecto tiene que compilar sin
+// avisos (RF-143); no hay carpetas placeholder que silenciar (RF-004).
 #![allow(dead_code)]
 
 use rdd::prelude::*;
@@ -466,13 +342,9 @@ use rdd::prelude::*;
 mod app_controller;
 mod app_module;
 mod app_service;
-mod common;
 mod config;
 mod generated;
-mod infrastructure;
-mod integrations;
 mod modules;
-mod shared;
 
 #[rdd::main]
 async fn main() -> Result<()> {
@@ -485,8 +357,9 @@ async fn main() -> Result<()> {
         // rdd:modules
 @module_lines@        .module(app_module::module());
 
-    let app = app.database(config::database_config::url()
-        .unwrap_or_else(|| "sqlite://@package@.db".to_owned()));
+    // La URL viene solo del entorno (RF-063); el respaldo lo puso
+    // `rdd new --database` en `config/database_config.rs` (RF-189).
+    let app = app.database(config::database_config::url());
 
     // `rdd run --memory` deja `RDD_MEMORY=1` para elegir el backend en memoria
     // sin base de datos (§14.1, RF-015).
@@ -544,7 +417,7 @@ impl AppController {
 const APP_SERVICE_RS: &str = r#"//! Servicio de la raíz (≈ app.service.ts).
 //!
 //! Sin reglas de dominio: los casos de uso reales viven en
-//! `src/modules/<m>/services/` (§5.1).
+//! `src/modules/<m>/application/` (§5.1).
 
 pub struct AppService;
 
@@ -564,8 +437,6 @@ const CONFIG_MOD: &str = r#"//! Configuración por dominio, centralizada (≈ co
 
 pub mod app_config;
 pub mod database_config;
-pub mod jwt_config;
-pub mod redis_config;
 
 /// Variable de entorno con valor por defecto; la usan los archivos de al lado.
 pub(crate) fn env_or(key: &str, fallback: &str) -> String {
@@ -592,47 +463,15 @@ pub fn load() -> rdd::AppConfig {
 
 const DATABASE_CONFIG_RS: &str = r#"//! URL de la base de datos (§15.1, sección `[database]`).
 //!
-//! La URL vive en `DATABASE_URL`, nunca en `rdd.toml` (RF-063). `main.rs` usa
-//! SQLite local si no se configura otra URL; `App::database(url)` elige el motor
-//! por su esquema (RF-111).
+//! La URL vive en `DATABASE_URL`, nunca en `rdd.toml` (RF-063). `App::database(url)`
+//! elige el motor por su esquema (RF-111).
 
-/// `None` cuando no está puesta o está vacía.
-pub fn url() -> Option<String> {
-    super::env_opt("DATABASE_URL")
-}
-"#;
+/// Respaldo del motor que eligió `rdd new --database` (§14.3, RF-189).
+const FALLBACK_URL: &str = "@database_url@";
 
-const JWT_CONFIG_RS: &str = r#"//! Firma y caducidad de JWT.
-//!
-//! rdd 0.x no trae paquete de autenticación: esta carpeta reserva el sitio y lee
-//! las variables para que no queden dispersas por los módulos (RF-004).
-
-/// Valores que leerá el middleware de autenticación cuando el proyecto lo añada.
-pub struct JwtConfig {
-    pub secret: String,
-    pub expires_in_secs: u64,
-}
-
-impl JwtConfig {
-    pub fn from_env() -> Self {
-        Self {
-            secret: super::env_or("JWT_SECRET", ""),
-            expires_in_secs: super::env_or("JWT_EXPIRES_IN_SECS", "3600")
-                .parse()
-                .unwrap_or(3600),
-        }
-    }
-}
-"#;
-
-const REDIS_CONFIG_RS: &str = r#"//! Conexión de caché (§5, `infrastructure/cache/`).
-//!
-//! El núcleo no trae cliente Redis: se conecta como provider (§9) cuando el
-//! proyecto lo necesite. Aquí solo se centraliza la lectura de `REDIS_URL`.
-
-/// `None` cuando no está puesta o está vacía.
-pub fn url() -> Option<String> {
-    super::env_opt("REDIS_URL")
+/// La URL del entorno o, si no está puesta o está vacía, la de respaldo.
+pub fn url() -> String {
+    super::env_opt("DATABASE_URL").unwrap_or_else(|| FALLBACK_URL.to_owned())
 }
 "#;
 
@@ -644,10 +483,80 @@ const MODULES_MOD: &str = r#"//! Módulos de dominio de la app (§5).
 // rdd:mods
 "#;
 
+/// Migración inicial del módulo de ejemplo (RF-192). La aplica `rdd migrate`.
+///
+/// El DDL sirve para SQLite y PostgreSQL. `UUID` y `BOOLEAN` son obligatorios
+/// aunque SQLite los guarde como texto y 0/1: `rdd-sqlite` decodifica por el
+/// nombre de tipo declarado, así que con `TEXT`/`INTEGER` el `from_row` del
+/// agregado recibiría `Value::Text`/`Value::I64` en vez de `Uuid`/`Bool`.
+const TASKS_MIGRATION: &str = r#"-- Migración inicial del módulo de ejemplo (RF-192).
+-- La aplica `rdd migrate` (RF-188); el servidor no migra al arrancar (RF-117).
+-- Los tipos declarados son los que esperan los adaptadores: SQLite guarda el id
+-- como texto y el booleano como 0/1, pero decodifica por el nombre del tipo.
+CREATE TABLE IF NOT EXISTS tasks (
+    id    UUID PRIMARY KEY NOT NULL,
+    title TEXT NOT NULL,
+    done  BOOLEAN NOT NULL DEFAULT FALSE
+);
+"#;
+
+/// `src/generated/mod.rs` (RF-004).
+///
+/// El código de verdad llega en 0.4 con `rdd db generate`. Hasta entonces el
+/// archivo lleva un snippet **documental** en un bloque `ignore`: cumple «ningún
+/// archivo en blanco» sin generar código que dependa de una API sin implementar
+/// (RF-006), y el bloque no se compila ni rompe `cargo test` (RF-007).
 const GENERATED_MOD: &str = r#"//! Código que genera `rdd db generate` (§13.3). NO se edita a mano.
 //!
-//! En 0.4 Prisma produce aquí los tipos de fila y `Persist` (§12.2). Hasta
-//! entonces está vacío a propósito y el comando lo sobrescribe.
+//! En 0.4 Prisma produce aquí los tipos de fila y sus `impl Persist` (§12.2) a
+//! partir de `prisma/schema.prisma`. Este snippet es documental: muestra la forma
+//! exacta de lo que va a llegar, y está marcado `ignore` porque el generador
+//! todavía no existe (RF-004, RF-006).
+//!
+//! Mientras tanto, el agregado del módulo de ejemplo implementa `Aggregate` y
+//! `Persist` a mano en `modules/tasks/domain/task.rs` (§14.2). Cuando el
+//! generador entre, ese impl se sustituye por el de aquí y el dominio se queda
+//! solo con las invariantes.
+//!
+//! ```rust,ignore
+//! // Lo emitirá `rdd db generate` (RF-133: determinista, mismo esquema → mismo archivo).
+//! #[derive(Debug, Clone, serde::Serialize)]
+//! pub struct TaskRow {
+//!     pub id: uuid::Uuid,
+//!     pub title: String,
+//!     pub done: bool,
+//! }
+//!
+//! impl rdd::Aggregate for TaskRow {
+//!     type Id = uuid::Uuid;
+//!
+//!     fn id(&self) -> &Self::Id {
+//!         &self.id
+//!     }
+//! }
+//!
+//! impl rdd::Persist for TaskRow {
+//!     const TABLE: &'static str = "tasks";
+//!     const COLUMNS: &'static [&'static str] = &["id", "title", "done"];
+//!
+//!     fn to_values(&self) -> Vec<rdd::Value> {
+//!         vec![
+//!             rdd::Value::Uuid(self.id),
+//!             rdd::Value::from(self.title.clone()),
+//!             rdd::Value::Bool(self.done),
+//!         ]
+//!     }
+//!
+//!     fn from_row(row: &rdd::Row) -> rdd::Result<Self> {
+//!         // Por nombre y no por posición: el orden de `Row` no es contractual (§12.1).
+//!         Ok(Self {
+//!             id: row.value("id")?.as_uuid()?,
+//!             title: row.value("title")?.as_text()?.to_owned(),
+//!             done: row.value("done")?.as_bool()?,
+//!         })
+//!     }
+//! }
+//! ```
 "#;
 
 const ACCEPTANCE_RS: &str = r#"//! Aceptación de 0.1 (§21, RF-007): el proyecto compila, responde en `/health`
@@ -814,7 +723,11 @@ async fn crud_del_modulo_de_ejemplo() {
 
     let resp = send(&http, Method::POST, "/tasks", r#"{"title":"pan"}"#).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
-    let id = json(&resp)["id"].as_u64().expect("el id debe ser numérico");
+    let id = json(&resp)["id"]
+        .as_str()
+        .expect("el id debe ser un UUID en texto")
+        .to_owned();
+    uuid::Uuid::parse_str(&id).expect("el id debe ser un UUID válido (§7.2)");
 
     let resp = send(&http, Method::GET, &format!("/tasks/{id}"), "").await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -840,7 +753,7 @@ async fn crud_del_modulo_de_ejemplo() {
 
 #[tokio::test]
 async fn validacion_del_modulo_de_ejemplo() {
-    use crate::modules::tasks::constants::tasks_constants::MAX_TITLE_LEN;
+    use crate::modules::tasks::domain::task::MAX_TITLE_LEN;
 
     let http = app();
 

@@ -1,7 +1,7 @@
 //! Servicio de la raíz (≈ app.service.ts).
 //!
 //! Sin reglas de dominio: los casos de uso reales viven en
-//! `src/modules/<m>/services/` (§5.1).
+//! `src/modules/<m>/application/` (§5.1).
 
 pub struct AppService;
 

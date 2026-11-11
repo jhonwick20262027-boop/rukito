@@ -168,8 +168,49 @@ fn project(name: &str) -> PathBuf {
     dir.join("todo-app")
 }
 
+/// RF-189: el flag llega hasta los archivos, y un motor sin feature en la
+/// fachada se rechaza antes de escribir nada.
 #[test]
-fn new_generates_the_nestjs_tree() {
+fn new_database_flag_reaches_the_files_and_rejects_unsupported_engines() {
+    let dir = temp_dir("database");
+    let default = run(&dir, &["new", "default-app"]);
+    assert!(default.status.success());
+    let manifest = std::fs::read_to_string(dir.join("default-app/Cargo.toml")).unwrap();
+    assert!(
+        manifest.contains("rdd = \"0.1\""),
+        "sin el flag la fachada va con sus features por defecto: {manifest}"
+    );
+
+    let pg = run(&dir, &["new", "pg-app", "--database", "postgres"]);
+    assert!(
+        pg.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&pg.stderr)
+    );
+    let manifest = std::fs::read_to_string(dir.join("pg-app/Cargo.toml")).unwrap();
+    assert!(manifest.contains("features = [\"postgres\"]"), "{manifest}");
+    let config = std::fs::read_to_string(dir.join("pg-app/rdd.toml")).unwrap();
+    assert!(config.contains("provider = \"postgres\""), "{config}");
+
+    let bad = run(&dir, &["new", "mysql-app", "--database", "mysql"]);
+    assert!(
+        !bad.status.success(),
+        "mysql todavía no tiene feature en la fachada"
+    );
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(
+        stderr.contains("postgres") && stderr.contains("sqlite"),
+        "debe nombrar los motores disponibles: {stderr}"
+    );
+    assert!(
+        !dir.join("mysql-app").exists(),
+        "un flag inválido no debe escribir nada"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn new_generates_the_minimal_functional_tree() {
     let dir = temp_dir("tree");
     assert!(run(&dir, &["new", "todo-app"]).status.success());
     let root = dir.join("todo-app");
@@ -177,26 +218,55 @@ fn new_generates_the_nestjs_tree() {
         "src/main.rs",
         "src/app_module.rs",
         "src/config/mod.rs",
-        "src/common/guards/mod.rs",
-        "src/common/middleware/mod.rs",
-        "src/infrastructure/database/mod.rs",
-        "src/integrations/payment_gateways/mod.rs",
-        "src/shared/contracts/mod.rs",
+        "src/config/app_config.rs",
+        "src/config/database_config.rs",
         "src/generated/mod.rs",
-        "src/modules/tasks/controllers/tasks_controller.rs",
-        "src/modules/tasks/services/tasks_service.rs",
-        "src/modules/tasks/repositories/tasks_repository.rs",
-        "src/modules/tasks/dto/create_task_dto.rs",
-        "src/modules/tasks/entities/task_entity.rs",
-        "src/modules/tasks/interfaces/task_interface.rs",
-        "src/modules/tasks/mappers/task_mapper.rs",
-        "src/modules/tasks/constants/tasks_constants.rs",
-        "src/modules/tasks/tests/tasks_service_test.rs",
+        "src/modules/tasks/mod.rs",
+        "src/modules/tasks/domain/task.rs",
+        "src/modules/tasks/domain/tasks_repository.rs",
+        "src/modules/tasks/application/mod.rs",
+        "src/modules/tasks/application/tasks_use_cases.rs",
+        "src/modules/tasks/infrastructure/mod.rs",
+        "src/modules/tasks/infrastructure/tasks_repository.rs",
+        "src/modules/tasks/presentation/mod.rs",
+        "src/modules/tasks/presentation/dto.rs",
+        "src/modules/tasks/presentation/tasks_controller.rs",
         "tests/acceptance.rs",
         "prisma/schema.prisma",
-        "docs/.gitkeep",
     ] {
         assert!(root.join(path).is_file(), "falta {path} (RF-002, RF-003)");
+    }
+    for path in [
+        "src/common",
+        "src/infrastructure",
+        "src/integrations",
+        "src/shared",
+        "src/config/jwt_config.rs",
+        "src/config/redis_config.rs",
+        "tests/e2e",
+        "tests/fixtures",
+        "docs",
+    ] {
+        assert!(
+            !root.join(path).exists(),
+            "no debe generar el placeholder {path}"
+        );
+    }
+    for folder in [
+        "controllers",
+        "repositories",
+        "dto",
+        "entities",
+        "interfaces",
+        "mappers",
+        "constants",
+        "tests",
+        "services",
+    ] {
+        assert!(
+            !root.join(format!("src/modules/tasks/{folder}")).exists(),
+            "no debe generar la carpeta redundante {folder}"
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -213,20 +283,33 @@ fn g_module_generates_the_same_tree_and_registers_it() {
 
     for path in [
         "src/modules/users/mod.rs",
-        "src/modules/users/controllers/users_controller.rs",
-        "src/modules/users/services/users_service.rs",
-        "src/modules/users/repositories/users_repository.rs",
-        "src/modules/users/dto/create_user_dto.rs",
-        "src/modules/users/dto/update_user_dto.rs",
-        "src/modules/users/dto/query_user_dto.rs",
-        "src/modules/users/entities/user_entity.rs",
-        "src/modules/users/interfaces/user_interface.rs",
-        "src/modules/users/mappers/user_mapper.rs",
-        "src/modules/users/constants/users_constants.rs",
-        "src/modules/users/tests/users_service_test.rs",
-        "src/modules/users/tests/users_controller_test.rs",
+        "src/modules/users/domain/user.rs",
+        "src/modules/users/domain/users_repository.rs",
+        "src/modules/users/application/mod.rs",
+        "src/modules/users/application/users_use_cases.rs",
+        "src/modules/users/infrastructure/mod.rs",
+        "src/modules/users/infrastructure/users_repository.rs",
+        "src/modules/users/presentation/mod.rs",
+        "src/modules/users/presentation/dto.rs",
+        "src/modules/users/presentation/users_controller.rs",
     ] {
         assert!(root.join(path).is_file(), "falta {path} (RF-001)");
+    }
+    for folder in [
+        "controllers",
+        "repositories",
+        "dto",
+        "entities",
+        "interfaces",
+        "mappers",
+        "constants",
+        "tests",
+        "services",
+    ] {
+        assert!(
+            !root.join(format!("src/modules/users/{folder}")).exists(),
+            "no debe generar la carpeta redundante {folder}"
+        );
     }
 
     let mods = std::fs::read_to_string(root.join("src/modules/mod.rs")).unwrap();
@@ -247,17 +330,17 @@ fn g_module_normalizes_and_singularizes() {
     assert!(run(&root, &["g", "module", "TaskItems"]).status.success());
     assert!(root.join("src/modules/task_items/mod.rs").is_file());
     assert!(
-        root.join("src/modules/task_items/dto/create_task_item_dto.rs")
+        root.join("src/modules/task_items/presentation/dto.rs")
             .is_file(),
-        "RF-005: el singular va en dto/"
+        "los DTO se agrupan en presentation/"
     );
     assert!(
-        root.join("src/modules/task_items/services/task_items_service.rs")
+        root.join("src/modules/task_items/application/task_items_use_cases.rs")
             .is_file(),
-        "RF-005: el plural se conserva en services/"
+        "el nombre plural se conserva en application/"
     );
     let controller = std::fs::read_to_string(
-        root.join("src/modules/task_items/controllers/task_items_controller.rs"),
+        root.join("src/modules/task_items/presentation/task_items_controller.rs"),
     )
     .unwrap();
     assert!(

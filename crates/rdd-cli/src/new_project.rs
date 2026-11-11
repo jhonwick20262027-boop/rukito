@@ -11,13 +11,17 @@ use clap::Args;
 use crate::files::{self, GeneratedFile};
 use crate::module_template::{self, ModuleNames};
 use crate::naming::{kebab_case, snake_case};
-use crate::templates::{self, ProjectContext};
+use crate::templates::{self, Database, ProjectContext};
 
 /// Argumentos de `rdd new`.
 #[derive(Args)]
 pub struct NewArgs {
     /// Nombre del proyecto; se normaliza a `kebab-case` (RF-142).
     pub name: String,
+
+    /// Motor predeterminado del proyecto (RF-189).
+    #[arg(long, value_enum, default_value_t = Database::Sqlite)]
+    pub database: Database,
 
     /// No genera el módulo de ejemplo `tasks`.
     #[arg(long)]
@@ -47,11 +51,12 @@ pub fn execute(args: NewArgs) -> Result<()> {
         bail!("`{package}` no es un nombre de paquete Cargo válido: debe empezar por una letra");
     }
 
-    let dependency = rdd_dependency(args.rdd_path.as_deref());
+    let dependency = rdd_dependency(args.rdd_path.as_deref(), args.database);
     let ctx = ProjectContext {
         package: &package,
         database: &database,
         rdd_dependency: &dependency,
+        engine: args.database,
     };
 
     let with_example = !args.no_example;
@@ -69,6 +74,9 @@ pub fn execute(args: NewArgs) -> Result<()> {
     }
 
     println!("proyecto `{package}` creado en ./{package}");
+    if args.database == Database::Postgres {
+        println!("edita .env: la URL lleva `CAMBIAR` por contraseña y apunta a localhost:5432");
+    }
     println!("siguiente paso:");
     println!("  cd {package}");
     println!("  rdd migrate");
@@ -87,18 +95,30 @@ pub fn module_files(name: &str) -> Vec<GeneratedFile> {
         .collect()
 }
 
-/// Dependencia TOML de `rdd`: versión publicada o ruta local para desarrollo.
-fn rdd_dependency(local: Option<&Path>) -> String {
-    match local {
+/// Dependencia TOML de `rdd`: versión publicada o ruta local para desarrollo,
+/// más la feature del motor cuando no viene ya en `default` (RF-189).
+fn rdd_dependency(local: Option<&Path>, engine: Database) -> String {
+    let source = match local {
         Some(path) => {
             let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
             let display = resolved.display().to_string();
             // `canonicalize` en Windows devuelve `\\?\C:\…`; cargo acepta la ruta
             // normal, así que se quita el prefijo verbatim.
             let display = display.strip_prefix(r"\\?\").unwrap_or(&display);
-            format!("{{ path = \"{}\" }}", display.replace('\\', "/"))
+            format!("path = \"{}\"", display.replace('\\', "/"))
         }
-        None => "\"0.1\"".to_owned(),
+        None => "version = \"0.1\"".to_owned(),
+    };
+    // `sqlite` está en `default` de la fachada (§12.6): nombrarlo no añade nada.
+    let features = if engine == Database::Sqlite {
+        String::new()
+    } else {
+        format!(", features = [\"{}\"]", engine.feature())
+    };
+    if local.is_none() && features.is_empty() {
+        "\"0.1\"".to_owned()
+    } else {
+        format!("{{ {source}{features} }}")
     }
 }
 
@@ -112,16 +132,29 @@ mod tests {
             package: "todo-app",
             database: "todo_app",
             rdd_dependency: "\"0.1\"",
+            engine: Database::Sqlite,
         }
     }
 
-    fn all_files(with_example: bool) -> Vec<GeneratedFile> {
-        let ctx = context();
-        let mut generated = templates::project_files(&ctx, with_example);
+    fn files_for(ctx: &ProjectContext<'_>, with_example: bool) -> Vec<GeneratedFile> {
+        let mut generated = templates::project_files(ctx, with_example);
         if with_example {
             generated.extend(module_files("tasks"));
         }
         generated
+    }
+
+    fn all_files(with_example: bool) -> Vec<GeneratedFile> {
+        files_for(&context(), with_example)
+    }
+
+    fn contents<'a>(files: &'a [GeneratedFile], path: &str) -> &'a str {
+        files
+            .iter()
+            .find(|file| file.path == Path::new(path))
+            .unwrap_or_else(|| panic!("falta {path}"))
+            .contents
+            .as_str()
     }
 
     fn paths(with_example: bool) -> Vec<String> {
@@ -132,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn generates_the_tree_of_section_five() {
+    fn generates_a_minimal_functional_project_tree() {
         let paths = paths(true);
         for expected in [
             "Cargo.toml",
@@ -144,77 +177,119 @@ mod tests {
             ".env",
             ".env.example",
             ".gitignore",
-            "docs/.gitkeep",
-            "migrations/.gitkeep",
+            "migrations/0001_tasks.sql",
             "prisma/schema.prisma",
-            "prisma/migrations/.gitkeep",
             "tests/acceptance.rs",
-            "tests/e2e/.gitkeep",
-            "tests/fixtures/.gitkeep",
             "src/main.rs",
             "src/app_module.rs",
             "src/app_controller.rs",
             "src/app_service.rs",
             "src/config/app_config.rs",
             "src/config/database_config.rs",
-            "src/config/jwt_config.rs",
-            "src/config/redis_config.rs",
-            "src/common/decorators/mod.rs",
-            "src/common/filters/mod.rs",
-            "src/common/guards/mod.rs",
-            "src/common/interceptors/mod.rs",
-            "src/common/middleware/mod.rs",
-            "src/common/pipes/mod.rs",
-            "src/common/constants/mod.rs",
-            "src/common/enums/mod.rs",
-            "src/common/interfaces/mod.rs",
-            "src/common/exceptions/mod.rs",
-            "src/common/utils/mod.rs",
             "src/modules/mod.rs",
             "src/modules/tasks/mod.rs",
-            "src/modules/tasks/controllers/tasks_controller.rs",
-            "src/modules/tasks/dto/create_task_dto.rs",
-            "src/modules/tasks/entities/task_entity.rs",
-            "src/modules/tasks/interfaces/task_interface.rs",
-            "src/modules/tasks/mappers/task_mapper.rs",
-            "src/modules/tasks/tests/tasks_service_test.rs",
-            "src/infrastructure/database/mod.rs",
-            "src/infrastructure/external_services/mod.rs",
-            "src/integrations/aws/mod.rs",
-            "src/integrations/payment_gateways/mod.rs",
-            "src/shared/types/mod.rs",
-            "src/shared/contracts/mod.rs",
+            "src/modules/tasks/domain/mod.rs",
+            "src/modules/tasks/domain/task.rs",
+            "src/modules/tasks/domain/tasks_repository.rs",
+            "src/modules/tasks/application/mod.rs",
+            "src/modules/tasks/application/tasks_use_cases.rs",
+            "src/modules/tasks/infrastructure/mod.rs",
+            "src/modules/tasks/infrastructure/tasks_repository.rs",
+            "src/modules/tasks/presentation/mod.rs",
+            "src/modules/tasks/presentation/dto.rs",
+            "src/modules/tasks/presentation/tasks_controller.rs",
             "src/generated/mod.rs",
         ] {
             assert!(paths.contains(&expected.to_owned()), "falta {expected}");
         }
+
+        for placeholder in [
+            "docs/.gitkeep",
+            "prisma/migrations/.gitkeep",
+            "tests/e2e/.gitkeep",
+            "tests/fixtures/.gitkeep",
+            "src/config/jwt_config.rs",
+            "src/config/redis_config.rs",
+            "src/common/mod.rs",
+            "src/infrastructure/mod.rs",
+            "src/integrations/mod.rs",
+            "src/shared/mod.rs",
+        ] {
+            assert!(
+                !paths.contains(&placeholder.to_owned()),
+                "no debe generar el placeholder {placeholder}"
+            );
+        }
+    }
+
+    /// RF-004: ningún `.rs` vacío ni solo cabecera. Las dos excepciones que
+    /// nombra el spec se reconocen por su contenido, no por su nombre: un snippet
+    /// documental (bloque cercado) o el marcador donde inserta `rdd g module`.
+    fn assert_no_blank_rust(with_example: bool) {
+        for file in all_files(with_example) {
+            if !file.path.extension().is_some_and(|ext| ext == "rs") {
+                continue;
+            }
+            let path = file.path.display();
+            assert!(
+                !file.contents.trim().is_empty(),
+                "{path} está vacío (RF-004)"
+            );
+
+            let has_code = file
+                .contents
+                .lines()
+                .map(str::trim)
+                .any(|line| !line.is_empty() && !line.starts_with("//"));
+            let has_snippet = file.contents.contains("```");
+            let has_marker = file.contents.contains("// rdd:mods");
+            assert!(
+                has_code || has_snippet || has_marker,
+                "{path} es solo cabecera (RF-004)"
+            );
+        }
+    }
+
+    #[test]
+    fn no_rust_file_is_blank_or_header_only() {
+        assert_no_blank_rust(true);
+        assert_no_blank_rust(false);
+    }
+
+    /// RF-192: `rdd-sqlite` decodifica por el nombre de tipo declarado, así que
+    /// `TEXT`/`INTEGER` —que SQLite aceptaría— harían llegar `Value::Text` y
+    /// `Value::I64` a un `from_row` que espera `Uuid` y `Bool`.
+    #[test]
+    fn the_initial_migration_declares_the_types_the_adapters_decode() {
+        let generated = all_files(true);
+        let sql = contents(&generated, "migrations/0001_tasks.sql");
+        assert!(sql.contains("id    UUID PRIMARY KEY NOT NULL"), "{sql}");
+        assert!(
+            sql.contains("done  BOOLEAN NOT NULL DEFAULT FALSE"),
+            "{sql}"
+        );
+        assert!(sql.contains("CREATE TABLE IF NOT EXISTS tasks"), "{sql}");
+        assert!(!sql.contains("created_at"), "RF-187 y V15 siguen abiertas");
+    }
+
+    /// RF-003: sin módulo de ejemplo no hay migración que generar, y git no
+    /// trackea directorios vacíos, así que `.gitkeep` es la única excepción.
+    #[test]
+    fn without_the_example_migrations_only_keeps_a_gitkeep() {
+        let generated = all_files(false);
+        let declared: BTreeSet<&Path> = generated.iter().map(|file| file.path.as_path()).collect();
+        assert!(declared.contains(Path::new("migrations/.gitkeep")));
+        assert!(!declared.contains(Path::new("migrations/0001_tasks.sql")));
     }
 
     #[test]
     fn no_folder_is_left_empty() {
         let generated = all_files(true);
-        for file in &generated {
-            if file.path.extension().is_some_and(|ext| ext == "rs") {
-                assert!(
-                    !file.contents.trim().is_empty(),
-                    "{} está vacío (RF-003)",
-                    file.path.display()
-                );
-            }
-        }
-
         let declared: BTreeSet<&Path> = generated.iter().map(|file| file.path.as_path()).collect();
 
-        // RF-003: las carpetas que no son módulos Rust llevan `.gitkeep`.
-        for keep in [
-            "docs/.gitkeep",
-            "migrations/.gitkeep",
-            "prisma/migrations/.gitkeep",
-            "tests/e2e/.gitkeep",
-            "tests/fixtures/.gitkeep",
-        ] {
-            assert!(declared.contains(Path::new(keep)), "falta {keep} (RF-003)");
-        }
+        // RF-192: con módulo de ejemplo la carpeta ya tiene contenido real.
+        assert!(declared.contains(Path::new("migrations/0001_tasks.sql")));
+        assert!(!declared.contains(Path::new("migrations/.gitkeep")));
 
         // RF-003: toda carpeta Rust bajo `src/` lleva `mod.rs`; `src/` lo indexa
         // main.rs y `prisma/` ya tiene schema.prisma, así que no queda vacía.
@@ -301,5 +376,163 @@ mod tests {
             .find(|file| file.path == Path::new("src/modules/mod.rs"))
             .unwrap();
         assert!(modules.contents.contains("// rdd:mods\npub mod tasks;\n"));
+    }
+
+    /// RF-190: los dos TOML que generan tienen que poder leerse. La plantilla de
+    /// `rdd.toml` escapaba las comillas dentro de un raw string y emitía
+    /// `migrations_dir = \"migrations\"`, que `rdd migrate` rechazaba.
+    #[test]
+    fn generated_toml_files_parse() {
+        for engine in [Database::Sqlite, Database::Postgres] {
+            let dependency = rdd_dependency(None, engine);
+            let ctx = ProjectContext {
+                engine,
+                rdd_dependency: &dependency,
+                ..context()
+            };
+            let generated = files_for(&ctx, true);
+            for path in ["rdd.toml", "Cargo.toml"] {
+                let text = contents(&generated, path);
+                toml::from_str::<toml::Value>(text)
+                    .unwrap_or_else(|err| panic!("{path} con {engine:?} no es TOML válido: {err}"));
+            }
+            let config = toml::from_str::<toml::Value>(contents(&generated, "rdd.toml")).unwrap();
+            assert_eq!(
+                config["database"]["migrations_dir"].as_str(),
+                Some("migrations")
+            );
+            assert_eq!(
+                config["database"]["provider"].as_str(),
+                Some(engine.feature())
+            );
+        }
+    }
+
+    /// RF-189: el motor tiene que quedar coherente en los cinco sitios que lo
+    /// nombran, o el proyecto no arranca sin edición manual (RF-143).
+    #[test]
+    fn postgres_is_consistent_across_the_generated_files() {
+        let dependency = rdd_dependency(None, Database::Postgres);
+        let ctx = ProjectContext {
+            engine: Database::Postgres,
+            rdd_dependency: &dependency,
+            ..context()
+        };
+        let generated = files_for(&ctx, true);
+        let url = "postgres://postgres:CAMBIAR@localhost:5432/todo_app";
+
+        assert!(contents(&generated, "Cargo.toml").contains("features = [\"postgres\"]"));
+        assert!(contents(&generated, "rdd.toml").contains("provider = \"postgres\""));
+        assert!(contents(&generated, "prisma/schema.prisma").contains("provider = \"postgresql\""));
+        for path in [".env", ".env.example", "src/config/database_config.rs"] {
+            assert!(
+                contents(&generated, path).contains(url),
+                "{path} no lleva la URL de respaldo de PostgreSQL"
+            );
+        }
+        assert!(contents(&generated, "src/main.rs").contains("config::database_config::url()"));
+    }
+
+    #[test]
+    fn sqlite_is_the_default_and_needs_no_extra_feature() {
+        let generated = all_files(true);
+        assert!(contents(&generated, "Cargo.toml").contains("rdd = \"0.1\""));
+        assert!(contents(&generated, "rdd.toml").contains("provider = \"sqlite\""));
+        assert!(contents(&generated, "prisma/schema.prisma").contains("provider = \"sqlite\""));
+        assert!(
+            contents(&generated, "src/config/database_config.rs").contains("sqlite://todo-app.db")
+        );
+    }
+
+    /// RF-063: `rdd migrate` crea `<paquete>.db` en la raíz (RF-192) con cuentas
+    /// y tareas dentro; sin estas líneas la base queda versionable.
+    #[test]
+    fn the_gitignore_excludes_secrets_and_the_local_sqlite_database() {
+        for engine in [Database::Sqlite, Database::Postgres] {
+            let dependency = rdd_dependency(None, engine);
+            let ctx = ProjectContext {
+                engine,
+                rdd_dependency: &dependency,
+                ..context()
+            };
+            let generated = files_for(&ctx, true);
+            let ignored = contents(&generated, ".gitignore");
+            for pattern in ["/target", ".env", "*.log"] {
+                assert!(
+                    ignored.lines().any(|line| line == pattern),
+                    "{engine:?}: falta `{pattern}` en el .gitignore"
+                );
+            }
+            for pattern in ["*.db", "*.db-shm", "*.db-wal"] {
+                let expected = engine == Database::Sqlite;
+                assert_eq!(
+                    ignored.lines().any(|line| line == pattern),
+                    expected,
+                    "{engine:?}: `{pattern}` debería estar excluido = {expected}"
+                );
+            }
+        }
+    }
+
+    /// RF-187 / V15: una columna temporal en el esquema generaría código que el
+    /// adaptador rechaza al leer (§15.2).
+    #[test]
+    fn the_prisma_model_has_no_temporal_column() {
+        let generated = all_files(true);
+        let schema = contents(&generated, "prisma/schema.prisma");
+        assert!(schema.contains("model Task"));
+        assert!(!schema.contains("createdAt"), "{schema}");
+        assert!(!schema.contains("DateTime"), "{schema}");
+    }
+
+    /// Un `@` suelto es legítimo —Prisma lo usa en `@id`/`@@map` y la URL de
+    /// PostgreSQL en el separador de credenciales—, así que solo cuenta el par
+    /// `@nombre@` con nombre de token.
+    fn unreplaced_token(text: &str) -> Option<String> {
+        let mut rest = text;
+        while let Some(start) = rest.find('@') {
+            let after = &rest[start + 1..];
+            if let Some(end) = after.find('@') {
+                let name = &after[..end];
+                if !name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+                    return Some(format!("@{name}@"));
+                }
+            }
+            rest = after;
+        }
+        None
+    }
+
+    #[test]
+    fn leaves_no_project_token_unreplaced() {
+        for engine in [Database::Sqlite, Database::Postgres] {
+            let dependency = rdd_dependency(None, engine);
+            let ctx = ProjectContext {
+                engine,
+                rdd_dependency: &dependency,
+                ..context()
+            };
+            for file in files_for(&ctx, true) {
+                assert_eq!(
+                    unreplaced_token(&file.contents),
+                    None,
+                    "quedó un token sin sustituir en {} con {engine:?}",
+                    file.path.display()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_dependency_names_the_feature_only_when_it_is_not_default() {
+        assert_eq!(rdd_dependency(None, Database::Sqlite), "\"0.1\"");
+        assert_eq!(
+            rdd_dependency(None, Database::Postgres),
+            "{ version = \"0.1\", features = [\"postgres\"] }"
+        );
+        let local = rdd_dependency(Some(Path::new(".")), Database::Postgres);
+        assert!(local.starts_with("{ path = \""), "{local}");
+        assert!(local.ends_with(", features = [\"postgres\"] }"), "{local}");
+        assert!(!local.contains("version"), "{local}");
     }
 }

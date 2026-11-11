@@ -33,6 +33,8 @@ rdd-postgres = { workspace = true, optional = true }
 # Hub de salas y presencia (§10.5). No necesita registro: la feature solo lo trae
 # y lo re-exporta.
 rdd-socket = { workspace = true, optional = true }
+# Servidor MCP por stdio (§10.6). Tampoco necesita registro.
+rdd-mcp = { workspace = true, optional = true }
 
 [features]
 default = ["axum", "sqlite"]
@@ -45,6 +47,8 @@ postgres = ["dep:rdd-postgres"]
 # plataforma si aún no lo estaba; el puerto `.socket` vive en el núcleo y existe
 # con o sin esta feature.
 socket   = ["dep:rdd-socket", "rdd-axum/ws"]
+# §12.6: MCP es opcional; trae el crate y no registra nada en `run_main`.
+mcp      = ["dep:rdd-mcp"]
 
 [dev-dependencies]
 bytes.workspace = true

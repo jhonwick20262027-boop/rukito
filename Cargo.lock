@@ -1361,6 +1361,7 @@ dependencies = [
  "rdd-axum",
  "rdd-core",
  "rdd-macros",
+ "rdd-mcp",
  "rdd-postgres",
  "rdd-socket",
  "rdd-sqlite",
@@ -1454,6 +1455,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "rdd-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rdd-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -2193,6 +2207,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",

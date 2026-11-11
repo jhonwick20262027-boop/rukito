@@ -4,7 +4,7 @@
   RDD.config = {
     repo: "https://github.com/jhonwick20262027-boop/rukito",
     version: "v0.1.0",
-    specVersion: "0.6.0",
+    specVersion: "0.7.0",
   };
   RDD.searchIndex = [
     { title: "Guía rápida", section: "Inicio", keywords: "rdd, rust, api, empezar", url: "guide/inicio-rapido.html" },

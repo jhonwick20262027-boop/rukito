@@ -2,4 +2,5 @@
 
 pub mod dto;
 pub mod task_feed;
+pub mod task_tools;
 pub mod tasks_controller;

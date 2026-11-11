@@ -34,6 +34,10 @@ async fn main() -> Result<()> {
     // tocar el entorno (§26.3).
     let tokens = modules::users::tokens();
 
+    // El mismo hub para el canal y para el controller: los eventos nacen en el
+    // REST y salen por `/ws/tasks` (§10.4, §10.5).
+    let feed = modules::tasks::TaskFeed::new();
+
     // `rdd g module` inserta debajo del marcador; no quitar el comentario (§14.3).
     let app = App::new()
         .config(config)
@@ -45,6 +49,10 @@ async fn main() -> Result<()> {
             RateLimit::new(100, Duration::from_secs(60), rate_key)
                 .map_err(|err| Error::Internal(err.into()))?,
         )
+        // El canal corre la cadena global en el handshake: el JWT deja la
+        // sesión y `TaskFeed::authorize` exige que exista (RF-198, §26.7).
+        .provide(feed.clone())
+        .socket("/ws/tasks", feed)
         // rdd:modules
         .module(modules::users::module(tokens))
         .module(modules::tasks::module())

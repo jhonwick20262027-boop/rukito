@@ -79,6 +79,14 @@ pub trait Platform: Send + Sync + 'static {
     /// Nombre de la plataforma, registrado al arrancar (RP-013, RN-042).
     fn name(&self) -> &'static str;
 
+    /// Cierto si la plataforma transporta canales de actualización (RP-027).
+    ///
+    /// El tiempo real es opcional por plataforma: quien devuelva `false`
+    /// responde 501 y queda exento de C-13 a C-16.
+    fn supports_upgrades(&self) -> bool {
+        false
+    }
+
     /// Sirve `app` sobre el `listener` hasta que `shutdown` se active.
     fn serve(
         self: Arc<Self>,

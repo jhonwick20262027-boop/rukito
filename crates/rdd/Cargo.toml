@@ -30,6 +30,9 @@ rdd-axum = { workspace = true, optional = true }
 # lo registra. `sqlite` va por defecto; el resto lo activa `rdd new --database`.
 rdd-sqlite = { workspace = true, optional = true }
 rdd-postgres = { workspace = true, optional = true }
+# Hub de salas y presencia (§10.5). No necesita registro: la feature solo lo trae
+# y lo re-exporta.
+rdd-socket = { workspace = true, optional = true }
 
 [features]
 default = ["axum", "sqlite"]
@@ -38,6 +41,10 @@ default = ["axum", "sqlite"]
 axum     = ["dep:rdd-axum", "rdd-core/default-platform"]
 sqlite   = ["dep:rdd-sqlite"]
 postgres = ["dep:rdd-postgres"]
+# §12.6: el hub y el transporte WS son opcionales. `rdd-axum/ws` habilita la
+# plataforma si aún no lo estaba; el puerto `.socket` vive en el núcleo y existe
+# con o sin esta feature.
+socket   = ["dep:rdd-socket", "rdd-axum/ws"]
 
 [dev-dependencies]
 bytes.workspace = true

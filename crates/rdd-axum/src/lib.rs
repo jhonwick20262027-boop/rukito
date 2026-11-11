@@ -19,5 +19,7 @@
 
 mod platform;
 mod shim;
+#[cfg(feature = "ws")]
+mod ws;
 
 pub use platform::AxumPlatform;

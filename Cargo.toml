@@ -10,6 +10,7 @@ members = [
     "crates/rdd-macros",
     "crates/rdd-platform-tests",
     "crates/rdd-postgres",
+    "crates/rdd-socket",
     "crates/rdd-sqlite",
     # RF-193: el demo de §26 pasa la misma puerta que los crates del framework.
     "example/todo-app",
@@ -41,6 +42,7 @@ rdd-postgres       = { path = "crates/rdd-postgres",       version = "0.1.0" }
 rdd-sqlite         = { path = "crates/rdd-sqlite",         version = "0.1.0" }
 rdd-cors           = { path = "crates/rdd-cors",           version = "0.1.0" }
 rdd-logger         = { path = "crates/rdd-logger",         version = "0.1.0" }
+rdd-socket         = { path = "crates/rdd-socket",         version = "0.1.0" }
 
 anyhow             = "1.0"
 # Solo las usa el demo de §26: ni el núcleo ni rdd-cors las arrastran (RA-011, RA-014).
@@ -69,6 +71,7 @@ sqlx               = { version = "0.9", default-features = false, features = ["r
 syn                = { version = "2.0", features = ["full"] }
 thiserror          = "2.0"
 tokio              = { version = "1.54", features = ["full"] }
+tokio-tungstenite  = "0.29"
 tokio-util         = "0.7"
 toml               = "0.9"
 tower              = { version = "0.5", features = ["util"] }

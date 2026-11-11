@@ -24,15 +24,24 @@ mod middleware;
 #[path = "../src/modules/mod.rs"]
 mod modules;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rdd::http::{Method, header, into_response};
+use futures::StreamExt;
+use rdd::AxumPlatform;
+use rdd::http::{Method, Platform, ShutdownSignal, header, into_response};
 use rdd::prelude::*;
 use rdd::{controller, module};
 use rdd_cors::Cors;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use crate::middleware::JwtMiddleware;
+use crate::modules::tasks::TaskFeed;
 use crate::modules::users::domain::{PasswordHasher, User};
 use crate::modules::users::infrastructure::argon2_hasher::Argon2Hasher;
 use crate::modules::users::{JwtTokens, Role, Session, TokenCodec};
@@ -48,11 +57,13 @@ const PASSWORD: &str = "contrasena-de-prueba";
 struct Demo {
     http: HttpApp,
     backend: Arc<MemoryBackend>,
+    feed: TaskFeed,
 }
 
 fn demo(limit: u32) -> Demo {
     let backend = Arc::new(MemoryBackend::new());
     let tokens = JwtTokens::new(SECRET, Duration::from_secs(3600));
+    let feed = TaskFeed::new();
     let http = App::new()
         .middleware(cors())
         .middleware(JwtMiddleware::new(Arc::new(tokens.clone())))
@@ -60,6 +71,8 @@ fn demo(limit: u32) -> Demo {
             RateLimit::new(limit, Duration::from_secs(60), rate_key)
                 .expect("el límite de prueba es válido"),
         )
+        .provide(feed.clone())
+        .socket("/ws/tasks", feed.clone())
         .module(modules::users::module(tokens))
         .module(modules::tasks::module())
         .module(app_module::module())
@@ -67,7 +80,11 @@ fn demo(limit: u32) -> Demo {
         .build()
         .expect("la app debe construirse")
         .http;
-    Demo { http, backend }
+    Demo {
+        http,
+        backend,
+        feed,
+    }
 }
 
 /// La misma sección `[cors]` del `rdd.toml` del demo, escrita aquí para que la
@@ -581,4 +598,137 @@ async fn validacion_del_modulo_de_ejemplo() {
     let resp = send_as(&demo, Method::GET, "/tasks/abc", "", &token).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert_eq!(problem(&resp)["status"], 400);
+}
+
+/// Aceptación de la fase 0.8 (§21): dos clientes, 401 sin token y 1001 al apagar.
+mod canal {
+    use super::*;
+
+    type Client = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+    const DRAIN: Duration = Duration::from_secs(15);
+
+    fn ws_request(addr: SocketAddr, token: Option<&str>) -> http::Request<()> {
+        let mut request = format!("ws://{addr}/ws/tasks")
+            .into_client_request()
+            .expect("la petición WS debe ser válida");
+        if let Some(token) = token {
+            request.headers_mut().insert(
+                header::AUTHORIZATION,
+                format!("Bearer {token}").parse().expect("cabecera válida"),
+            );
+        }
+        request
+    }
+
+    async fn next(ws: &mut Client) -> Message {
+        tokio::time::timeout(Duration::from_secs(10), ws.next())
+            .await
+            .unwrap_or_else(|_| panic!("el canal no envió nada en 10s"))
+            .unwrap_or_else(|| panic!("el canal se cerró sin mensaje"))
+            .unwrap_or_else(|err| panic!("error de trama: {err}"))
+    }
+
+    async fn next_close(ws: &mut Client) -> u16 {
+        for _ in 0..64 {
+            if let Message::Close(frame) = next(ws).await {
+                return frame.map(|frame| u16::from(frame.code)).unwrap_or(1000);
+            }
+        }
+        panic!("no llegó un cierre");
+    }
+
+    /// POST con `Connection: close`: la respuesta se lee completa hasta EOF.
+    async fn post_task(addr: SocketAddr, token: &str, title: &str) -> String {
+        let body = format!("{{\"title\":\"{title}\"}}");
+        let request = format!(
+            "POST /tasks HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer {token}\r\n\
+             Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let mut stream = TcpStream::connect(addr).await.expect("conexión HTTP");
+        stream.write_all(request.as_bytes()).await.expect("envío");
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await.expect("lectura");
+        response
+    }
+
+    #[tokio::test]
+    async fn dos_clientes_reciben_el_mismo_evento_y_sin_token_no_hay_101() {
+        let demo = demo(100);
+        let token = seed(&demo, "canal@example.com", Role::User).await;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("puerto efímero");
+        listener
+            .set_nonblocking(true)
+            .expect("listener no bloqueante");
+        let addr = listener.local_addr().expect("socket vinculado");
+        let listener = TcpListener::from_std(listener).expect("listener de Tokio");
+        let shutdown = ShutdownSignal::new();
+        let future = Arc::new(AxumPlatform::new())
+            .serve(demo.http, listener, shutdown.clone())
+            .expect("la plataforma debe arrancar");
+        let server = tokio::spawn(async move {
+            if let Err(err) = future.await {
+                panic!("la plataforma terminó con error: {err}");
+            }
+        });
+
+        // Sin token: el middleware no identifica y `authorize` rechaza antes del 101.
+        match tokio_tungstenite::connect_async(ws_request(addr, None)).await {
+            Ok((_, response)) => panic!("sin token no debe haber 101, llegó {}", response.status()),
+            Err(tokio_tungstenite::tungstenite::Error::Http(response)) => {
+                assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+                assert_eq!(
+                    response
+                        .headers()
+                        .get(header::CONTENT_TYPE)
+                        .and_then(|value| value.to_str().ok()),
+                    Some("application/problem+json"),
+                    "el rechazo es Problem Details (RF-198)"
+                );
+            }
+            Err(err) => panic!("error inesperado del handshake: {err}"),
+        }
+
+        let (mut a, response_a) = tokio_tungstenite::connect_async(ws_request(addr, Some(&token)))
+            .await
+            .expect("el cliente A debe conectar");
+        let (mut b, response_b) = tokio_tungstenite::connect_async(ws_request(addr, Some(&token)))
+            .await
+            .expect("el cliente B debe conectar");
+        assert_eq!(response_a.status(), 101);
+        assert_eq!(response_b.status(), 101);
+        let _ready_a = next(&mut a).await;
+        let _ready_b = next(&mut b).await;
+
+        let response = post_task(addr, &token, "pan").await;
+        assert!(
+            response.contains("201"),
+            "la tarea debe crearse: {response}"
+        );
+
+        let mut events = Vec::new();
+        for ws in [&mut a, &mut b] {
+            match next(ws).await {
+                Message::Text(text) => events.push(text.to_string()),
+                other => panic!("se esperaba el evento del canal, llegó {other:?}"),
+            }
+        }
+        assert_eq!(
+            events[0], events[1],
+            "ambos clientes reciben el mismo evento"
+        );
+        assert!(events[0].contains("\"type\":\"created\""), "{}", events[0]);
+        assert!(events[0].contains("\"title\":\"pan\""), "{}", events[0]);
+
+        shutdown.trigger();
+        assert_eq!(next_close(&mut a).await, 1001, "apagado ordenado del canal");
+        assert_eq!(next_close(&mut b).await, 1001, "apagado ordenado del canal");
+        drop((a, b));
+        tokio::time::timeout(DRAIN, server)
+            .await
+            .expect("la plataforma no cerró dentro del plazo")
+            .expect("la tarea del servidor entró en pánico");
+    }
 }

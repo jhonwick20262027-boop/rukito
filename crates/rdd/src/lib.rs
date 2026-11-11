@@ -26,6 +26,11 @@ pub use rdd_sqlite::SqliteAdapter;
 #[cfg(feature = "postgres")]
 pub use rdd_postgres::PostgresAdapter;
 
+/// Hub de salas y presencia del tiempo real (§10.5); lo activa la feature
+/// `socket`. El puerto `.socket(...)` viene del núcleo y no depende de esto.
+#[cfg(feature = "socket")]
+pub use rdd_socket::{Hub, Lagged, Payload, Subscription};
+
 /// Puebla el registro de adaptadores del núcleo (RF-191).
 ///
 /// Los seis motores se declaran siempre, aunque su feature esté apagada: es lo

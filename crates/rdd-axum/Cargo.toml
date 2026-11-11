@@ -10,6 +10,11 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Transporte de canales de actualización (§10.4). La fachada la activa con su
+# feature `socket`; sin ella, la plataforma declara `supports_upgrades() == false`.
+ws = ["axum/ws"]
+
 [dependencies]
 # RA-012: esta plataforma no depende de `rdd-hyper` ni de ninguna otra plataforma.
 rdd-core.workspace = true

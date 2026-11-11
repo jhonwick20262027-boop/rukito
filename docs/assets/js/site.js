@@ -4,7 +4,7 @@
   RDD.config = {
     repo: "https://github.com/jhonwick20262027-boop/rukito",
     version: "v0.1.0",
-    specVersion: "0.4.4",
+    specVersion: "0.5.0",
   };
   RDD.searchIndex = [
     { title: "Guía rápida", section: "Inicio", keywords: "rdd, rust, api, empezar", url: "guide/inicio-rapido.html" },
@@ -115,12 +115,25 @@
   RDD.copyText = copyText;
 
   RDD.enhanceCode = function (scope) {
-    (scope || document).querySelectorAll("pre[data-lang] > code, pre > code[data-lang]").forEach((code) => {
-      const pre = code.closest("pre");
+    // Todo `pre` se mejora: el atributo de lenguaje es opcional porque se
+    // deduce del contenido. Antes el selector exigía `data-lang` y los bloques
+    // sin atributo quedaban sin resaltar y sin botón de copiar.
+    (scope || document).querySelectorAll("pre").forEach((pre) => {
       if (pre.dataset.enhanced) return;
       pre.dataset.enhanced = "1";
-      const lang = pre.dataset.lang || code.dataset.lang || "";
+
+      let code = pre.querySelector("code");
+      if (!code) {
+        code = document.createElement("code");
+        code.textContent = pre.textContent;
+        pre.textContent = "";
+        pre.appendChild(code);
+      }
+
+      const fromClass = (code.className.match(/language-([\w-]+)/) || [])[1] || "";
+      const declared = pre.dataset.lang || code.dataset.lang || fromClass;
       const raw = code.textContent.replace(/^\n+|\s+$/g, "");
+      const lang = declared ? RDD.normalizeLang(declared) : RDD.detectLang(raw);
       code.innerHTML = RDD.highlight(raw, lang);
 
       const wrap = document.createElement("div");
@@ -128,12 +141,11 @@
       pre.parentNode.insertBefore(wrap, pre);
       wrap.appendChild(pre);
 
-      if (lang) {
-        const label = document.createElement("span");
-        label.className = "code-lang";
-        label.textContent = lang;
-        wrap.appendChild(label);
-      }
+      const label = document.createElement("span");
+      label.className = "code-lang";
+      label.textContent = lang;
+      wrap.appendChild(label);
+
       const btn = document.createElement("button");
       btn.className = "code-copy";
       btn.dataset.label = "1";

@@ -50,6 +50,44 @@ window.RDD = window.RDD || {};
       ["\\bHTTP\\/[\\d.]+\\b", "attr"],
       ["\\b\\d{3}\\b", "num"],
     ],
+    sql: [
+      ["--[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/", "com"],
+      ["'(?:[^'\\\\]|'')*'", "str"],
+      ['"(?:\\\\.|[^"\\\\])*"', "str"],
+      ["\\b(?:CREATE|ALTER|DROP|TABLE|INDEX|VIEW|IF|NOT|EXISTS|PRIMARY|FOREIGN|KEY|UNIQUE|CHECK|DEFAULT|REFERENCES|CONSTRAINT|COLUMN|ADD|INSERT|INTO|VALUES|SELECT|FROM|WHERE|UPDATE|SET|DELETE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP|BY|ORDER|LIMIT|OFFSET|AND|OR|NULL|AS|BEGIN|COMMIT|ROLLBACK|RETURNING|CASCADE)\\b", "kw"],
+      ["\\b(?:UUID|BOOLEAN|BOOL|TEXT|INTEGER|BIGINT|SMALLINT|SERIAL|VARCHAR|CHAR|TIMESTAMP|TIMESTAMPTZ|DATE|NUMERIC|DECIMAL|REAL|DOUBLE|BLOB|JSONB|JSON)\\b", "type"],
+      ["\\b\\d[\\d_]*(?:\\.\\d+)?\\b", "num"],
+    ],
+    prisma: [
+      ["\\/\\/[^\\n]*", "com"],
+      ['"(?:\\\\.|[^"\\\\])*"', "str"],
+      ["^\\s*(?:model|datasource|generator|enum|type|view)\\b", "kw"],
+      ["@@?[a-zA-Z_][\\w.]*", "attr"],
+      ["^\\s*[a-zA-Z_][\\w-]*(?=\\s+[A-Z])", "key"],
+      ["\\b(?:String|Boolean|Int|BigInt|Float|Decimal|DateTime|Json|Bytes)\\b", "type"],
+    ],
+  };
+
+  // Alias usados en las páginas y lenguajes que se muestran sin colorear.
+  const ALIAS = { shell: "bash", sh: "bash", console: "bash", ps1: "bash", plain: "text", txt: "text", markdown: "text", md: "text", tree: "text" };
+  RDD.normalizeLang = (lang) => {
+    const name = String(lang || "").trim().toLowerCase();
+    return ALIAS[name] || name;
+  };
+
+  // Sin `data-lang` el bloque se clasifica por su contenido. Sin esto, un
+  // `<pre>` al que se le olvidó el atributo quedaba sin resaltar.
+  RDD.detectLang = function (text) {
+    const body = String(text || "");
+    if (/[│├└─]/.test(body)) return "text";
+    if (/^\s*(?:\$|>)\s/m.test(body) || /^(?:rdd|cargo|curl|git|docker|psql|rustup|mkdir|export|cd)(?:\s|$)/m.test(body)) return "bash";
+    if (/^\s*```/m.test(body)) return "text";
+    if (/^\s*\[[^\]]+\]\s*$/m.test(body) && /^[A-Za-z_][\w.-]*\s*=/m.test(body)) return "toml";
+    if (/^\s*[{[]/.test(body) && /"[^"]+"\s*:/.test(body)) return "json";
+    if (/\b(?:fn|impl|struct|enum|trait|pub|let mut|async fn|use rdd)\b/.test(body)) return "rust";
+    if (/\b(?:CREATE|ALTER|INSERT|SELECT|UPDATE|DELETE)\s+(?:TABLE|INTO|FROM|SET|INDEX)\b/i.test(body)) return "sql";
+    if (/\b(?:model|datasource|generator)\s+\w+\s*\{/.test(body)) return "prisma";
+    return "text";
   };
 
   const compiled = {};
@@ -65,8 +103,9 @@ window.RDD = window.RDD || {};
   }
 
   RDD.highlight = function (code, lang) {
-    if (!LANGS[lang]) return esc(code);
-    const { re, classes } = regexFor(lang);
+    const name = RDD.normalizeLang(lang);
+    if (!LANGS[name]) return esc(code);
+    const { re, classes } = regexFor(name);
     let out = "", last = 0, m;
     re.lastIndex = 0;
     while ((m = re.exec(code)) !== null) {

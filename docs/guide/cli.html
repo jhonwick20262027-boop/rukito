@@ -35,37 +35,37 @@
         <h2>Comandos disponibles</h2>
 
         <h3>New</h3>
-        <pre><code class="language-text">rdd new <nombre> [--no-example]</code></pre>
-        <p>Crea un proyecto nuevo con el árbol completo de secciones (§5).</p>
+        <pre data-lang="bash"><code>rdd new &lt;nombre&gt; [--database sqlite|postgres] [--no-example]</code></pre>
+        <p>Crea un proyecto nuevo con el árbol funcional mínimo de §5.</p>
         <ul>
-          <li>Configura SQLite local por defecto en <code>DATABASE_URL</code>; el archivo se crea al iniciar la app</li>
+          <li>Motor predeterminado SQLite local (<code>--database</code> cambia la feature de la fachada, <code>[database].provider</code> y las URLs de respaldo)</li>
           <li>Genera: <code>Cargo.toml</code>, <code>rdd.toml</code>, <code>rust-toolchain.toml</code>, <code>rustfmt.toml</code>, <code>clippy.toml</code></li>
-          <li>Estructura de carpetas completa (§5)</li>
-          <li>Módulo <code>tasks</code> de ejemplo</li>
-          <li>Archivos de configuración <code>.env</code> y <code>.gitignore</code></li>
+          <li>Árbol funcional mínimo, sin capas placeholder (§5)</li>
+          <li>Módulo <code>tasks</code> de ejemplo y su migración <code>migrations/0001_tasks.sql</code></li>
+          <li>Archivos de configuración <code>.env</code>, <code>.env.example</code> y <code>.gitignore</code></li>
           <li>Opcional: <code>--no-example</code> para omitir el módulo de ejemplo</li>
         </ul>
-        <p><strong>RF-002:</rf-002> `rdd new` DEBE generar el árbol completo de §5, incluido el módulo de ejemplo <code>tasks</code>, salvo <code>--no-example</code>.</p>
+        <p><strong>RF-002:</strong> <code>rdd new</code> DEBE generar el árbol funcional mínimo de §5, incluido el módulo de ejemplo <code>tasks</code>, salvo <code>--no-example</code>.</p>
       </section>
 
       <section class="section">
         <h3>G (Generate)</h3>
-        <pre><code class="language-text">rdd g module <nombre></code></pre>
-        <p>Genera un módulo con la convención NestJS (§5) y lo registra (§14.3).</p>
+        <pre data-lang="bash"><code>rdd g module &lt;nombre&gt;</code></pre>
+        <p>Genera un módulo DDD organizado en cuatro capas (<code>domain/</code>, <code>application/</code>, <code>infrastructure/</code> y <code>presentation/</code>) y lo registra (§14.3).</p>
         <ul>
-          <li>Crea nueve carpetas con su <code>mod.rs</code> y los archivos nombrados en §5</li>
+          <li>Crea solo las cuatro capas necesarias, sin carpetas placeholder; los tests unitarios quedan inline con <code>#[cfg(test)]</code></li>
           <li>Registra el módulo en <code>src/modules/mod.rs</code> y <code>src/main.rs</code></li>
-          <li>Los nombres se singularizan: <code>task-items</code> → <code>task_item</code> para entities/dto/services/repositories, plural para controllers/constants</li>
+          <li>El agregado usa el nombre singular (<code>task_item.rs</code>); las capas y los archivos de aplicación/adaptadores/presentación conservan el plural</li>
           <li>RF-001: El CLI DEBE generar el árbol de módulo y registrarlo</li>
         </ul>
       </section>
 
       <section class="section">
         <h3>Run</h3>
-        <pre><code class="language-text">rdd run</code></pre>
+        <pre data-lang="bash"><code>rdd run</code></pre>
         <p>Ejecuta la aplicación del proyecto actual.</p>
         <ul>
-          <li>Carga la configuración <code>rdd.toml</code></li>
+          <li>Carga la configuración <code>rdd.toml</code> y <code>.env</code></li>
           <li>Inicializa <code>tracing</code> con <code>RUST_LOG</code></li>
           <li>Crea el runtime Tokio</li>
           <li>Compone routes y middlewares en <code>HttpApp</code></li>
@@ -74,10 +74,22 @@
       </section>
 
       <section class="section">
+        <h3>Migrate</h3>
+        <pre data-lang="bash"><code>rdd migrate [--database-url &lt;url&gt;] [--source &lt;dir&gt;]</code></pre>
+        <p>Aplica las migraciones SQL versionadas de <code>migrations/</code> como paso explícito antes de arrancar o desplegar (RF-188). El servidor no migra al arrancar.</p>
+        <ul>
+          <li>Lee la URL de la variable indicada por <code>[database].url_env</code> en <code>rdd.toml</code> (por defecto <code>DATABASE_URL</code>) y el directorio de <code>[database].migrations_dir</code></li>
+          <li>Crea el archivo SQLite si no existe; con SQLite la base vive en la raíz del proyecto y el <code>.gitignore</code> la excluye (RF-063)</li>
+          <li>Lleva el historial en <code>_sqlx_migrations</code>: volver a ejecutarlo no repite migraciones</li>
+          <li>Si falta la URL, termina con un mensaje que nombra la variable</li>
+        </ul>
+      </section>
+
+      <section class="section">
         <h2>Scaffold y Generación de Código</h2>
 
-        <h3>Estructura generada por `rdd new`</h3>
-        <pre>
+        <h3>Estructura generada por <code>rdd new</code></h3>
+        <pre data-lang="text">
 todo-app-ddd/
 ├── Cargo.toml                    # ≈ package.json + tsconfig.json
 ├── rdd.toml                      # configuración (§15)
@@ -87,15 +99,13 @@ todo-app-ddd/
 ├── Dockerfile
 ├── .env                          # NO versionado (RF-063)
 ├── .env.example
-├── .gitignore                    # incluye .env y target/ (RF-063)
-├── docs/
+├── .gitignore                    # .env, target/ y la base SQLite local (RF-063)
 ├── prisma/
-│   ├── schema.prisma             # fuente de verdad del esquema de datos
-│   └── migrations/               # generadas por Prisma, versionadas en git
+│   └── schema.prisma             # fuente de verdad del esquema de datos
+├── migrations/
+│   └── 0001_tasks.sql            # `rdd migrate` la aplica (RF-192)
 ├── tests/
-│   ├── acceptance.rs             # recorre §10.3; aceptación de 0.1
-│   ├── e2e/
-│   └── fixtures/
+│   └── acceptance.rs             # recorre §10.3; aceptación de 0.1
 └── src/
     ├── main.rs                   # ≈ main.ts
     ├── app_module.rs             # ≈ app.module.ts
@@ -104,75 +114,25 @@ todo-app-ddd/
     ├── config/
     │   ├── mod.rs                # ≈ configuration.ts
     │   ├── app_config.rs
-    │   ├── database_config.rs
-    │   ├── jwt_config.rs
-    │   └── redis_config.rs
-    ├── common/
-    │   ├── mod.rs
-    │   ├── decorators/mod.rs
-    │   ├── filters/mod.rs
-    │   ├── guards/mod.rs
-    │   ├── interceptors/mod.rs
-    │   ├── middleware/mod.rs
-    │   ├── pipes/mod.rs
-    │   ├── constants/mod.rs
-    │   ├── enums/mod.rs
-    │   ├── interfaces/mod.rs
-    │   ├── exceptions/mod.rs
-    │   └── utils/mod.rs
+    │   └── database_config.rs
     ├── modules/
     │   ├── mod.rs                # marcador // rdd:mods (§14.3)
     │   └── tasks/                # módulo de ejemplo; nombre fijo (§14.1)
     │       ├── mod.rs            # ≈ tasks.module.ts
-    │       ├── controllers/
+    │       ├── domain/
     │       │   ├── mod.rs
-    │       │   └── tasks_controller.rs
-    │       ├── services/
+    │       │   ├── task.rs
+    │       │   └── tasks_repository.rs
+    │       ├── application/
     │       │   ├── mod.rs
-    │       │   └── tasks_service.rs
-    │       ├── repositories/
+    │       │   └── tasks_use_cases.rs
+    │       ├── infrastructure/
     │       │   ├── mod.rs
     │       │   └── tasks_repository.rs
-    │       ├── dto/
+    │       └── presentation/
     │       │   ├── mod.rs
-    │       │   ├── create_task_dto.rs
-    │       │   ├── update_task_dto.rs
-    │       │   └── query_task_dto.rs
-    │       ├── entities/
-    │       │   ├── mod.rs
-    │       │   └── task_entity.rs
-    │       ├── interfaces/
-    │       │   ├── mod.rs
-    │       │   └── task_interface.rs
-    │       ├── mappers/
-    │       │   ├── mod.rs
-    │       │   └── task_mapper.rs
-    │       ├── constants/
-    │       │   ├── mod.rs
-    │       │   └── tasks_constants.rs
-    │       └── tests/
-    │           ├── mod.rs
-    │           ├── tasks_service_test.rs
-    │           └── tasks_controller_test.rs
-    ├── infrastructure/
-    │   ├── mod.rs
-    │   ├── database/mod.rs
-    │   ├── cache/mod.rs
-    │   ├── queue/mod.rs
-    │   ├── storage/mod.rs
-    │   ├── messaging/mod.rs
-    │   └── external_services/mod.rs
-    ├── integrations/
-    │   ├── mod.rs
-    │   ├── aws/mod.rs
-    │   ├── telegram/mod.rs
-    │   ├── email/mod.rs
-    │   └── payment_gateways/mod.rs
-    ├── shared/
-    │   ├── mod.rs
-    │   ├── types/mod.rs
-    │   ├── interfaces/mod.rs
-    │   └── contracts/mod.rs
+    │       │   ├── dto.rs
+    │       │   └── tasks_controller.rs
     └── generated/                # generado por `rdd db generate`; NO se edita
         └── mod.rs
         </pre>
@@ -180,13 +140,13 @@ todo-app-ddd/
         <h3>Scaffold y requisitos (RF-001 a RF-007)</h3>
         <table>
           <tr><th>ID</th><th>Requisito</th></tr>
-          <tr><td>RF-001</td><td>`rdd g module <name>` DEBE generar el árbol de módulo de §5 y registrarlo en <code>src/modules/mod.rs</code> y <code>src/main.rs</code> (§14.3)</td></tr>
-          <tr><td>RF-002</td><td>`rdd new <name>` DEBE generar el árbol completo de §5, incluido el módulo de ejemplo <code>tasks</code>, salvo <code>--no-example</code></td></tr>
-          <tr><td>RF-003</td><td>Cada carpeta scaffold que sea un módulo Rust DEBE llevar un <code>mod.rs</code>; las que no lo son (<code>docs/</code>, <code>prisma/migrations/</code>, etc.) DEBEN llevar <code>.gitkeep</code>. Ninguna carpeta queda vacía.</td></tr>
-          <tr><td>RF-004</td><code>Cada `mod.rs` generado DEBE documentar en su cabecera qué va ahí y qué API de `rdd` lo cubre. Las carpetas cuyo soporte llega en una fase posterior se generan como placeholder compilable, nunca como código que no compila.</td></tr>
+          <tr><td>RF-001</td><td><code>rdd g module &lt;name&gt;</code> DEBE generar solo las cuatro capas funcionales del módulo (§5) y registrarlo en <code>src/modules/mod.rs</code> y <code>src/main.rs</code> (§14.3)</td></tr>
+          <tr><td>RF-002</td><td><code>rdd new &lt;name&gt;</code> DEBE generar el árbol funcional mínimo de §5, incluido el módulo de ejemplo <code>tasks</code>, salvo <code>--no-example</code></td></tr>
+          <tr><td>RF-003</td><td>Cada carpeta scaffold que sea un módulo Rust DEBE llevar un <code>mod.rs</code>; <code>migrations/</code>, usada por <code>rdd migrate</code>, DEBE llevar <code>.gitkeep</code> sin el módulo de ejemplo. No se generan carpetas vacías ni capas placeholder.</td></tr>
+          <tr><td>RF-004</td><td>Cada <code>mod.rs</code> generado documenta en su cabecera la responsabilidad de su capa. El generador NO DEBE crear carpetas vacías ni capas placeholder.</td></tr>
           <tr><td>RF-005</td><td>El singular de los nombres de archivo se calcula con regla fija: <code>ies</code>→<code>y</code>; <code>ses</code>/<code>xes</code>/<code>zes</code>/<code>ches</code>/<code>shes</code>→quita <code>es</code>; <code>s</code> final (salvo <code>ss</code>)→quita <code>s</code>; en otro caso, igual.</td></tr>
-          <tr><td>RF-006</td><td>El scaffold NO DEBE generar código que dependa de macros o APIs aún no implementadas. En 0.1 <code>services/</code> y <code>entities/</code> son Rust plano; <code>#[service]</code> y <code>#[aggregate]</code> llegan en 0.2.</td></tr>
-          <tr><td>RF-007</td><td>`rdd new` y `rdd g module` DEBEN producir un proyecto que pasa <code>cargo check</code> sin edits manuales, y <code>tests/acceptance.rs</code> DEBE pasar. Además <code>cargo clippy --all-targets -- -D warnings</code> y <code>cargo fmt --all -- --check</code> sin diffs.</td></tr>
+          <tr><td>RF-006</td><td>El scaffold NO DEBE depender de macros o APIs aún no implementadas. Las invariantes viven en <code>domain/</code>, los casos de uso en <code>application/</code>, los adaptadores en <code>infrastructure/</code> y HTTP en <code>presentation/</code>.</td></tr>
+          <tr><td>RF-007</td><td><code>rdd new</code> y <code>rdd g module</code> DEBEN producir un proyecto que pasa <code>cargo check</code> sin edits manuales, y <code>tests/acceptance.rs</code> DEBE pasar. Además <code>cargo clippy --all-targets -- -D warnings</code> y <code>cargo fmt --all -- --check</code> sin diffs.</td></tr>
         </table>
       </section>
       <nav class="doc-pager" aria-label="Navegación de la guía">

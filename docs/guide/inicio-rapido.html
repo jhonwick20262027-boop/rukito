@@ -83,10 +83,10 @@ impl TaskController {
 #[rdd::main]
 async fn main() -> Result<()> {
     App::new()
-        .module(TaskModule::module())
+        .module(modules::tasks::module())
         .run("0.0.0.0:3000")
         .await
-      }
+}
 </code></pre>
             </div>
           </div>
@@ -106,14 +106,14 @@ async fn main() -> Result<()> {
           <div class="step-card">
             <div class="step-num">2</div>
             <h3>Crear un proyecto</h3>
-            <pre><code>rdd new mi-api
+            <pre data-lang="bash"><code>rdd new mi-api
 cd mi-api</code></pre>
           </div>
 
           <div class="step-card">
             <div class="step-num">3</div>
             <h3>Generar un módulo</h3>
-            <pre><code>rdd g module tasks</code></pre>
+            <pre data-lang="bash"><code>rdd g module tasks</code></pre>
           </div>
 
           <div class="step-card">
@@ -124,19 +124,20 @@ cd mi-api</code></pre>
 
           <div class="step-card">
             <div class="step-num">5</div>
-            <h3>Ejecutar</h3>
-            <pre><code>cargo run</code></pre>
+            <h3>Migrar y ejecutar</h3>
+            <pre data-lang="bash"><code>rdd migrate
+cargo run</code></pre>
           </div>
         </div>
 
         <h2>Ejemplo completo</h2>
         <p>El comando <code>rdd new</code> genera una estructura completa como la descrita en la <a href="../especificacion.html">especificación técnica</a>, incluyendo:</p>
         <ul>
-          <li>Módulo <code>tasks</code> con controller, service, repository y entidades</li>
+          <li>Módulo <code>tasks</code> con dominio, casos de uso, adaptador y controller en cuatro capas</li>
           <li>Controlador HTTP con rutas <code>GET /tasks</code> y <code>POST /tasks</code></li>
-          <li>Configuración de CORS, logging y health check</li>
-          <li>SQLite local como base de datos predeterminada; usa <code>--memory</code> si quieres desactivarla</li>
-          <li>Integración con Prisma para migraciones de base de datos</li>
+          <li><code>/health</code> y middleware CORS listo para configurar con <code>rdd-cors</code></li>
+          <li>SQLite local como base de datos predeterminada y <code>migrations/0001_tasks.sql</code>; <code>rdd migrate</code> crea la base, o usa <code>--memory</code> para no tener ninguna</li>
+          <li><code>tests/acceptance.rs</code> que recorre los códigos de error de §10.3</li>
         </ul>
       </section>
 

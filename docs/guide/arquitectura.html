@@ -27,6 +27,7 @@
         <a href="#dependencias">Dependencias entre crates</a>
         <a href="#stack">Stack tecnológico</a>
         <a href="#interfaz">Interfaz de plataforma</a>
+        <a href="#rate-limit">Rate limiting</a>
       </div>
     </aside>
 
@@ -38,87 +39,34 @@
       <h1>Arquitectura del Framework rdd</h1>
 
       <section class="arch-section">
-        <div class="arch-grid">
-          <div class="arch-diagram">
-            <svg class="arch-workspace-diagram" viewBox="0 0 800 390" role="img" aria-labelledby="diagram-title">
-              <title id="diagram-title">Arquitectura del framework rdd</title>
-              <defs>
-                <marker id="arch-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-                  <path d="M0 0 8 4 0 8Z" fill="#ff7a45"/>
-                </marker>
-              </defs>
-              <g fill="none" stroke="#6f5435" stroke-width="2" marker-end="url(#arch-arrow)">
-                <path d="M195 72h34"/>
-                <path d="M375 72h34"/>
-                <path d="M555 72h34"/>
-                <path d="M319 156v44H340v40"/>
-                <path d="M500 156v44h-95v40"/>
-                <path d="M680 156v44H470v40"/>
-              </g>
-              <g class="arch-node">
-                <rect x="15" y="24" width="180" height="96" rx="12"/>
-                <text x="105" y="64" text-anchor="middle"><tspan x="105">Workspace</tspan><tspan x="105" dy="24">Cargo.toml</tspan></text>
-              </g>
-              <g class="arch-node">
-                <rect x="225" y="24" width="150" height="96" rx="12"/>
-                <text x="300" y="64" text-anchor="middle"><tspan x="300">rdd-core</tspan><tspan x="300" dy="24">Núcleo</tspan></text>
-              </g>
-              <g class="arch-node">
-                <rect x="405" y="24" width="150" height="96" rx="12"/>
-                <text x="480" y="64" text-anchor="middle"><tspan x="480">rdd-axum</tspan><tspan x="480" dy="24">Plataforma HTTP</tspan></text>
-              </g>
-              <g class="arch-node">
-                <rect x="585" y="24" width="180" height="96" rx="12"/>
-                <text x="675" y="64" text-anchor="middle"><tspan x="675">rdd</tspan><tspan x="675" dy="24">Fachada pública</tspan></text>
-              </g>
-              <g class="arch-node arch-node-secondary">
-                <rect x="195" y="156" width="165" height="72" rx="12"/>
-                <text x="277" y="186" text-anchor="middle"><tspan x="277">rdd-cli</tspan><tspan x="277" dy="22">Herramientas CLI</tspan></text>
-              </g>
-              <g class="arch-node arch-node-secondary">
-                <rect x="405" y="156" width="190" height="72" rx="12"/>
-                <text x="500" y="186" text-anchor="middle"><tspan x="500">Pruebas de plataforma</tspan><tspan x="500" dy="22">Conformidad</tspan></text>
-              </g>
-              <g class="arch-node arch-node-secondary">
-                <rect x="625" y="156" width="155" height="72" rx="12"/>
-                <text x="702" y="186" text-anchor="middle"><tspan x="702">Adaptadores</tspan><tspan x="702" dy="22">Postgres y otros</tspan></text>
-              </g>
-              <g class="arch-node arch-node-app">
-                <rect x="280" y="240" width="240" height="100" rx="14"/>
-                <text x="400" y="281" text-anchor="middle"><tspan x="400">Tu aplicación</tspan><tspan x="400" dy="25">Usa la fachada rdd</tspan></text>
-              </g>
-            </svg>
+        <div class="arch-info">
+          <h3>Principios Fundamentales</h3>
+          <p>El framework rdd sigue un diseño limpiamente separado entre núcleo y plataformas:</p>
+
+          <div class="golden-rule">
+            <b>Regla de oro (RA-001):</b> Las reglas de negocio viven en el aggregate. El controller nunca decide.
           </div>
 
-          <div class="arch-info">
-            <h3>Principios Fundamentales</h3>
-            <p>El framework rdd sigue un diseño limpiamente separado entre núcleo y plataformas:</p>
-            
-            <div class="golden-rule">
-              <b>Regla de oro (RA-001):</b> Las reglas de negocio viven en el aggregate. El controller nunca decide.
-            </div>
-            
-            <h4>Rasgos clave:</h4>
-            <ul>
-              <li><strong>Core HTTP neutral:</strong> Tipos HTTP basados en crate `http`, no en Axum ni hyper directamente</li>
-              <li><strong>Plataforma adaptador:</strong> Axum es la plataforma por defecto, hyper es alternativa intercambiable</li>
-              <li><strong>Sin dependencias circulares:</strong> rdd-core conoce nada de HTTP; las plataformas dependen solo del núcleo</li>
-              <li><strong>DI limitada:</strong> Sin reflexión en tiempo de ejecución; las macros generan constructores tipados</li>
-              <li><strong>Errores Problem Details:</strong> Todas las respuestas siguen RFC 9457 (problem+json)</li>
-            </ul>
-            
-            <h4>Workspace estructura:</h4>
-            <pre>
+          <h4>Rasgos clave:</h4>
+          <ul>
+            <li><strong>Core HTTP neutral:</strong> Tipos HTTP basados en crate `http`, no en Axum ni hyper directamente</li>
+            <li><strong>Plataforma adaptador:</strong> Axum es la plataforma por defecto, hyper es alternativa intercambiable</li>
+            <li><strong>Sin dependencias circulares:</strong> rdd-core no conoce Axum ni hyper; las plataformas dependen solo del núcleo</li>
+            <li><strong>DI limitada:</strong> Sin reflexión en tiempo de ejecución; las macros generan constructores tipados</li>
+            <li><strong>Errores Problem Details:</strong> Todas las respuestas siguen RFC 9457 (problem+json)</li>
+          </ul>
+
+          <h4>Workspace estructura:</h4>
+          <pre data-lang="text">
 crates/
-├── rdd/            # FACHADA: re-exporta rdd-core + macros + feature axum
+├── rdd/            # FACHADA: re-exporta rdd-core + macros + plataforma por feature
 ├── rdd-core/       # Núcleo: App, DI, middlewares, RouteDef, trait Platform
 ├── rdd-axum/       # Plataforma por defecto
-├── rdd/            # Fachada de usuario
-├── rdd-cli/        # Binario `rdd`
-└── todo-app-ddd/   # Aplicación ejemplo
+├── rdd-cors/       # Middleware CORS (RF-090 a RF-099)
+├── rdd-sqlite/     # Adaptador SQLite (sqlx)
+├── rdd-postgres/   # Adaptador PostgreSQL (sqlx)
+└── rdd-cli/        # Binario `rdd`
 </pre>
-          </div>
-        </div>
       </section>
 
       <section id="workspace" class="section">
@@ -139,7 +87,7 @@ crates/
 
       <section id="dependencias" class="section">
         <h2>Dependencias entre Crates</h2>
-        <pre>
+        <pre data-lang="text">
 rdd-macros ────┐
                 ├── rdd-core ──┐
                 │               ├── rdd (fachada) ──► [feature axum] → rdd-axum
@@ -173,7 +121,7 @@ rdd-cli ────────┘
           <tr><td>IDs</td><td>uuid</td><td>núcleo</td><td>Estándar</td></tr>
           <tr><td>Macros</td><td>syn, quote, proc-macro2</td><td>rdd-macros</td><td>Diagnósticos claros</td></tr>
           <tr><td>CLI</td><td>clap</td><td>rdd-cli</td><td>Estándar</td></tr>
-          <tr><td>Esquema/migraciones</td><td>Prisma CLI (Node)</td><td>herramienta externa</td><td>Ver §13</td></tr>
+          <tr><td>Esquema/migraciones</td><td><code>rdd migrate</code> (sqlx)</td><td>rdd-cli</td><td>Migraciones SQL versionadas (RF-188, RF-192); Prisma llega en 0.4</td></tr>
         </table>
       </section>
 
@@ -182,7 +130,7 @@ rdd-cli ────────┘
         <p>El núcleo define <strong>qué</strong> es una aplicación HTTP (rutas como datos, middlewares compuestos). La plataforma solo sabe <strong>servirla</strong>.</p>
         
         <h3>Tipo HttpApp:</h3>
-        <pre>
+        <pre data-lang="rust">
 // rdd-core
 pub type Request   = http::Request<bytes::Bytes>;
 pub type Response  = http::Response<bytes::Bytes>;
@@ -205,7 +153,7 @@ impl HttpApp {
 </pre>
 
         <h3>Trait Platform:</h3>
-        <pre>
+        <pre data-lang="rust">
 // rdd-core
 pub trait Platform: Send + 'static {
     fn name(&self) -> &'static str;
@@ -215,6 +163,31 @@ pub trait Platform: Send + 'static {
 </pre>
 
         <p>El núcleo provee <code>App::run(addr)</code> usando la plataforma por defecto (Axum), o <code>App::run_on(plataforma, addr)</code> para cualquiera implementada.</p>
+      </section>
+
+      <section id="rate-limit" class="section">
+        <h2>Rate limiting</h2>
+        <p><code>RateLimit</code> es un middleware del núcleo, compatible con todas las plataformas. Define el máximo de peticiones por cliente y ventana; la aplicación proporciona la función que identifica al cliente.</p>
+        <pre><code class="language-rust">use std::time::Duration;
+use rdd::prelude::*;
+
+struct AuthenticatedUser { id: u64 }
+
+let limiter = RateLimit::new(60, Duration::from_secs(60), |req| {
+    req.extensions()
+        .get::&lt;AuthenticatedUser&gt;()
+        .map(|user| format!("user:{}", user.id))
+        .unwrap_or_else(|| "anonymous".to_owned())
+}).expect("configuración válida");
+
+let app = App::new().middleware(limiter);</code></pre>
+        <ul>
+          <li>Al exceder el límite responde <code>429 Too Many Requests</code> como Problem Details e incluye <code>Retry-After</code> y cabeceras <code>RateLimit-*</code>.</li>
+          <li>El estado es local al proceso, con un máximo predeterminado de 10 000 claves; ajusta la capacidad con <code>with_max_keys</code>.</li>
+          <li>La autenticación debe validar las credenciales e insertar la identidad en las extensiones de la petición antes de este middleware. No uses una cabecera arbitraria ni confíes en <code>X-Forwarded-For</code> salvo que un proxy confiable la establezca.</li>
+          <li>Para varias réplicas, usa rate limiting compartido en el proxy o almacenamiento común.</li>
+        </ul>
+        <p>Consulta los requisitos RF-105 a RF-109 en la especificación (§11.7).</p>
       </section>
       <nav class="doc-pager" aria-label="Navegación de la guía">
         <a class="pager-link prev" href="inicio-rapido.html"><span class="dir">← Anterior</span><span class="title">Guía rápida</span></a>

@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.4.6-draft |
-| Fecha | 2026-11-07 |
+| Versión del documento | 0.5.0-draft |
+| Fecha | 2026-11-10 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
 
@@ -64,7 +64,7 @@
 | Capas Tower por ruta, o dentro de `App` | Solo como opción de `AxumPlatform` (RF-089). |
 | Runtimes distintos de Tokio | El núcleo y las plataformas asumen Tokio (ADR-11). |
 | OpenAPI automático | Candidato post-0.4. |
-| Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. |
+| Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. §26 muestra cómo escribir JWT y roles **a nivel de aplicación** con ese mecanismo, que es lo único que el framework promete hoy. |
 | Motores sin adaptador publicado | El puerto `DbAdapter` (§12) es la vía de extensión. SQLite está implementado en `rdd-sqlite` y es el adaptador predeterminado; Oracle, Cassandra y DynamoDB no están previstos. |
 | Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
 | Transacciones declarativas (`#[transactional]`) | Candidato post-0.4. |
@@ -77,7 +77,7 @@
 |---|---|---|
 | **Aggregate** | Entidad raíz que protege invariantes. Se modifica solo mediante sus métodos. | `domain.rs` |
 | **Value Object** | Tipo inmutable validado al construirse (ej. `Title`). Sin identidad. | `domain.rs` |
-| **Service** | Caso de uso (application service): carga, ejecuta reglas del aggregate, guarda. No contiene reglas de negocio. | `service.rs` |
+| **Caso de uso** | Operación de aplicación que coordina repositorios y aggregates; no contiene reglas de negocio. | `application/<use_case>.rs` |
 | **Repository** | Abstracción de persistencia de aggregates. En `rdd` es `Repo<T>`. | Framework / `repository.rs` |
 | **Controller** | Adaptador HTTP: traduce petición a llamada de servicio y resultado a respuesta. No decide nada. | `routes.rs` |
 | **Module** | Carpeta que agrupa un contexto (`tasks/`) y se registra con `.module(...)`. | `<modulo>/mod.rs` |
@@ -150,7 +150,7 @@ rdd-prisma ──► rdd-cli
 | `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-axum` | `rdd-core`, `axum`, `tower`, `tower-http` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
-| `rdd-cors`, `rdd-logger` | `rdd-core` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
+| `rdd-cors`, `rdd-logger` | `rdd-core`, `http`, `bytes`, `serde`, `thiserror`, `toml`, `tracing` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
 | `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
 | `rdd-redis` | `rdd-core`, cliente Redis, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
@@ -165,6 +165,15 @@ rdd-prisma ──► rdd-cli
 texto. La suite de conformidad va en la dirección contraria a la que sugería su
 nombre: **cada adaptador depende de `rdd-db-tests` como `dev-dependency`**, nunca al
 revés, para que la suite no arrastre ningún driver.
+
+`serde`, `toml` y `tracing` entran en `rdd-cors` y `rdd-logger` porque RF-151 les
+manda leer **su propia sección** de `rdd.toml`: sin un parser de TOML no pueden
+hacerlo, y el núcleo no lleva uno (§4.2, RA-014). `tracing` es además lo que exige
+RF-091. `http` y `bytes` son los tipos neutros de §4.3 —los mismos que usa el
+núcleo para `Request`/`Response`— y `thiserror` deriva el error de configuración;
+ninguno arrastra una plataforma. «Depender solo de `rdd-core`» (RF-095) se refiere
+a los crates del framework: lo que no puede entrar es ninguna plataforma ni Tower,
+que es el objetivo real de RA-011 y de ADR-13.
 
 | ID | Requisito |
 |---|---|
@@ -324,9 +333,9 @@ La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el 
 
 ## 5. Estructura de un proyecto de usuario
 
-La estructura sigue la **convención NestJS**: un módulo por dominio de negocio y
-una carpeta por responsabilidad. La adaptación a Rust es mecánica y se documenta
-aquí para que el scaffold sea determinista:
+La estructura conserva módulos por dominio y aplica una organización DDD
+minimalista. Cada módulo usa las cuatro capas estándar; la adaptación a Rust se
+documenta aquí para que el scaffold sea determinista:
 
 - `x.y.ts` → `x_y.rs`: el punto no es válido en un identificador de módulo Rust.
 - `__tests__/` → `tests/`: evita el aviso `non_snake_case` de rustc.
@@ -339,10 +348,9 @@ aquí para que el scaffold sea determinista:
 - `rust-toolchain.toml` NO fija `channel`: un canal pinned obliga a rustup a
   descargar otro toolchain y el proyecto dejaría de compilar sin red, lo que
   rompería RF-143. El mínimo soportado lo declara `rust-version` en `Cargo.toml`.
-- Los nombres en singular de NestJS (`user.entity.ts` dentro de `users/`) se
-  conservan: el CLI singulariza el nombre del módulo para `entities/`, `dto/`,
-  `interfaces/` y `mappers/`, y lo deja en plural para `controllers/`,
-  `services/`, `repositories/` y `constants/`.
+- Cada módulo se organiza en cuatro capas: `domain/`, `application/`,
+  `infrastructure/` y `presentation/`. El CLI usa el singular para el archivo
+  del agregado en `domain/` y conserva el plural para las otras capas.
 
 ```
 todo-app-ddd/
@@ -354,15 +362,12 @@ todo-app-ddd/
 ├── Dockerfile
 ├── .env                          # NO versionado (RF-063)
 ├── .env.example
-├── .gitignore                    # incluye .env y target/ (RF-063)
-├── docs/
+├── .gitignore                    # .env, target/ y la base SQLite local (RF-063)
 ├── prisma/
-│   ├── schema.prisma             # fuente de verdad del esquema de datos
-│   └── migrations/               # generadas por Prisma, versionadas en git
+│   └── schema.prisma             # fuente de verdad del esquema de datos
+├── migrations/                   # migraciones de la app
 ├── tests/                        # integración (cargo)
-│   ├── acceptance.rs             # recorre §10.3; aceptación de 0.1
-│   ├── e2e/
-│   └── fixtures/
+│   └── acceptance.rs             # recorre §10.3; aceptación de 0.1
 └── src/
     ├── main.rs                   # ≈ main.ts
     ├── app_module.rs             # ≈ app.module.ts
@@ -371,112 +376,54 @@ todo-app-ddd/
     ├── config/
     │   ├── mod.rs                # ≈ configuration.ts
     │   ├── app_config.rs
-    │   ├── database_config.rs
-    │   ├── jwt_config.rs
-    │   └── redis_config.rs
-    ├── common/
-    │   ├── mod.rs
-    │   ├── decorators/mod.rs
-    │   ├── filters/mod.rs
-    │   ├── guards/mod.rs
-    │   ├── interceptors/mod.rs
-    │   ├── middleware/mod.rs
-    │   ├── pipes/mod.rs
-    │   ├── constants/mod.rs
-    │   ├── enums/mod.rs
-    │   ├── interfaces/mod.rs
-    │   ├── exceptions/mod.rs
-    │   └── utils/mod.rs
+    │   └── database_config.rs
     ├── modules/
     │   ├── mod.rs                # marcador `// rdd:mods` (§14.3)
     │   └── tasks/                # módulo de ejemplo; nombre fijo (§14.1)
     │       ├── mod.rs            # ≈ tasks.module.ts
-    │       ├── controllers/
+    │       ├── domain/
     │       │   ├── mod.rs
-    │       │   └── tasks_controller.rs
-    │       ├── services/
+    │       │   ├── task.rs
+    │       │   └── tasks_repository.rs
+    │       ├── application/
     │       │   ├── mod.rs
-    │       │   └── tasks_service.rs
-    │       ├── repositories/
+    │       │   └── tasks_use_cases.rs
+    │       ├── infrastructure/
     │       │   ├── mod.rs
     │       │   └── tasks_repository.rs
-    │       ├── dto/
-    │       │   ├── mod.rs
-    │       │   ├── create_task_dto.rs
-    │       │   ├── update_task_dto.rs
-    │       │   └── query_task_dto.rs
-    │       ├── entities/
-    │       │   ├── mod.rs
-    │       │   └── task_entity.rs
-    │       ├── interfaces/
-    │       │   ├── mod.rs
-    │       │   └── task_interface.rs
-    │       ├── mappers/
-    │       │   ├── mod.rs
-    │       │   └── task_mapper.rs
-    │       ├── constants/
-    │       │   ├── mod.rs
-    │       │   └── tasks_constants.rs
-    │       └── tests/
+    │       └── presentation/
     │           ├── mod.rs
-    │           ├── tasks_service_test.rs
-    │           └── tasks_controller_test.rs
-    ├── infrastructure/
-    │   ├── mod.rs
-    │   ├── database/mod.rs
-    │   ├── cache/mod.rs
-    │   ├── queue/mod.rs
-    │   ├── storage/mod.rs
-    │   ├── messaging/mod.rs
-    │   └── external_services/mod.rs
-    ├── integrations/
-    │   ├── mod.rs
-    │   ├── aws/mod.rs
-    │   ├── telegram/mod.rs
-    │   ├── email/mod.rs
-    │   └── payment_gateways/mod.rs
-    ├── shared/
-    │   ├── mod.rs
-    │   ├── types/mod.rs
-    │   ├── interfaces/mod.rs
-    │   └── contracts/mod.rs
+    │           ├── dto.rs
+    │           └── tasks_controller.rs
     └── generated/                # generado por `rdd db generate`; NO se edita
         └── mod.rs
 ```
 
 ### 5.1 Responsabilidad de cada carpeta
 
-| Carpeta | Responsabilidad | Equivalente NestJS |
+| Carpeta | Responsabilidad | Referencia aproximada |
 |---|---|---|
-| `modules/<m>/controllers/` | Adaptador HTTP: extrae, llama al service, devuelve. No decide (§3, RA-003). | `controllers/` |
-| `modules/<m>/services/` | Casos de uso y reglas de negocio. | `services/` |
-| `modules/<m>/repositories/` | Acceso a datos; envuelve `Repo<T>` (§12) o consultas especiales. | `repositories/` |
-| `modules/<m>/dto/` | Contratos de entrada/salida y validación. | `dto/` |
-| `modules/<m>/entities/` | Agregados y value objects del dominio. | `entities/` |
-| `modules/<m>/interfaces/` | Traits del dominio (p. ej. el puerto del repositorio). | `interfaces/` |
-| `modules/<m>/mappers/` | Transformación entidad ↔ DTO ↔ fila. | `mappers/` |
-| `modules/<m>/constants/` | Constantes del módulo. | `constants/` |
-| `modules/<m>/tests/` | Tests unitarios del módulo (`#[cfg(test)]`). | `__tests__/` |
-| `common/` | Componentes transversales propios del proyecto. | `common/` |
-| `infrastructure/` | Servicios técnicos: pool, caché, colas, almacenamiento. | `infrastructure/` |
-| `integrations/` | Clientes de sistemas externos. | `integrations/` |
-| `shared/` | Tipos, interfaces y contratos compartidos entre módulos. | `shared/` |
+| `modules/<m>/domain/` | Agregados, value objects, invariantes y puertos de persistencia. | `entities/` + `interfaces/` |
+| `modules/<m>/application/` | Casos de uso; coordina el dominio mediante sus puertos. | `application/` |
+| `modules/<m>/infrastructure/` | Adaptadores técnicos que implementan los puertos del dominio. | Repositories |
+| `modules/<m>/presentation/` | Controllers HTTP y DTOs de entrada/salida. | `controllers/` + `dto/` |
 | `config/` | Lectura de configuración por dominio, centralizada. | `config/` |
 
-**Dependencias permitidas** (misma dirección que §3): `controllers` → `services`
-→ `entities`/`interfaces`; `repositories` implementa los `interfaces` y habla con
-`infrastructure`. Un módulo NO importa archivos internos de otro (RA-004).
+**Dependencias permitidas**: `presentation` → `application` → `domain`;
+`infrastructure` implementa puertos de `domain`. Las reglas de negocio y sus
+invariantes pertenecen a `domain`; los tests unitarios viven junto al código con
+`#[cfg(test)]`. Un módulo NO importa archivos internos de otro (RA-004).
 
 ### 5.2 Requisitos de la estructura
 
 | ID | Requisito |
 |---|---|
-| RF-001 | `rdd g module <name>` DEBE generar el árbol de módulo de §5 (nueve carpetas con su `mod.rs` y los archivos nombrados arriba) y registrarlo en `src/modules/mod.rs` y `src/main.rs` (§14.3). |
-| RF-002 | `rdd new <name>` DEBE generar el árbol completo de §5, incluido el módulo de ejemplo `tasks`, salvo `--no-example`. |
-| RF-003 | Toda carpeta del scaffold que sea un módulo Rust DEBE llevar un `mod.rs`; las que no lo son (`docs/`, `prisma/migrations/`, `tests/e2e/`, `tests/fixtures/`) DEBEN llevar `.gitkeep`. Ninguna carpeta queda vacía. |
-| RF-004 | Cada `mod.rs` generado DEBE documentar en su cabecera qué va ahí y qué API de `rdd` lo cubre. Las carpetas cuya soporte llega en una fase posterior (§21) se generan como placeholder compilable, nunca como código que no compila. |
+| RF-001 | `rdd g module <name>` DEBE generar únicamente las capas `domain/`, `application/`, `infrastructure/` y `presentation/` del árbol de módulo de §5, con sus archivos funcionales, y registrarlo en `src/modules/mod.rs` y `src/main.rs` (§14.3). |
+| RF-002 | `rdd new <name>` DEBE generar el árbol funcional y mínimo de §5, incluido el módulo de ejemplo `tasks`, salvo `--no-example`. |
+| RF-003 | Toda carpeta del scaffold que sea un módulo Rust DEBE llevar un `mod.rs`. `migrations/`, usada por `rdd migrate`, DEBE llevar la migración inicial del módulo de ejemplo (RF-192); con `--no-example` lleva `.gitkeep`, única excepción a «ningún archivo en blanco» porque git no trackea directorios vacíos. No se generan carpetas vacías como `docs/`, `tests/e2e/` o capas transversales placeholder. |
+| RF-004 | Cada `mod.rs` generado DEBE documentar en su cabecera la responsabilidad de su capa. Ningún `.rs` generado puede quedar vacío ni ser solo cabecera: o tiene código funcional —declarar submódulos cuenta—, o lleva un snippet de ejemplo. Hay dos excepciones nombradas, y solo dos. (a) `src/generated/mod.rs`, cuyo código llega en 0.4: lleva un snippet **documental** en un bloque `ignore` que muestra lo que emitirá el generador, y NO código que dependa de APIs sin implementar (RF-006). (b) `src/modules/mod.rs` con `--no-example`: su contenido es el marcador `// rdd:mods` donde `rdd g module` inserta (§14.3), que es funcional aunque todavía no declare nada; con el módulo de ejemplo sí lleva `pub mod tasks;`. El generador NO DEBE crear carpetas vacías ni capas placeholder. |
 | RF-005 | El singular de los nombres de archivo se calcula con una regla fija y documentada: `ies`→`y`; `ses`/`xes`/`zes`/`ches`/`shes`→quita `es`; `s` final (salvo `ss`)→quita `s`; en otro caso, igual. |
-| RF-006 | El scaffold NO DEBE generar código que dependa de macros o APIs aún no implementadas. En 0.1 `services/` y `entities/` son Rust plano; `#[service]` y `#[aggregate]` llegan en 0.2 y el CLI los añadirá entonces. |
+| RF-006 | El scaffold NO DEBE generar código que dependa de macros o APIs aún no implementadas. Las invariantes viven en `domain/`, los casos de uso en `application/`, los adaptadores en `infrastructure/` y el transporte HTTP en `presentation/`. |
 
 **RF-007** `rdd new` y `rdd g module` DEBEN producir un proyecto que pasa
 `cargo check` sin edits manuales (RF-143), y `tests/acceptance.rs` DEBE pasar.
@@ -486,6 +433,20 @@ y `cargo fmt --all -- --check` sin diffs, porque el proyecto ya incluye
 código que los viola. El test de aceptación (§21) lo verifica también después de
 añadir un módulo de varias palabras (`task-items`), que es donde una plantilla se
 rompe por longitud de línea o por singularización.
+
+Ninguna plantilla de texto fija cumple esto para cualquier nombre: el ancho de
+`pub fn update(&mut self, …) -> Result<(), TaskError>` crece con el nombre del
+agregado, y rustfmt parte la firma o la junta según cruce las 100 columnas.
+`tasks` y `task-items` piden layouts distintos del mismo archivo, así que escoger
+uno de los dos en la plantilla viola RF-007 con el otro. Por eso `rdd new` y
+`rdd g module` DEBEN pasar por `rustfmt` (edición 2024, `skip_children=true`, solo
+los archivos que acaban de escribir) antes de darse por terminados. Se invoca el
+binario y no `cargo fmt`: `cargo fmt` consulta el registro de crates para resolver
+el proyecto y RF-143 exige funcionar sin red. `rustfmt` es componente del toolchain
+que `rust-toolchain.toml` ya declara (§5); si no está instalado, el comando avisa y
+deja los archivos escritos —el proyecto sigue siendo usable y `cargo fmt --all` lo
+compone—, pero si `rustfmt` corre y rechaza el código, eso es un error del
+generador y el comando DEBE fallar.
 
 ---
 
@@ -578,14 +539,24 @@ del tipo concreto, y por eso el service llega al handler como `svc: TaskService`
 sin que el controller nombre el contenedor.
 
 **Mientras `#[service]` no exista (RF-006), el scaffold escribe esas dos impls a
-mano** en `services/`, con la misma forma que la macro emitirá. Un service cuya
-única dependencia es `Repo<T>` no necesita entrada en `providers:` del módulo:
+mano** en `modules/<m>/mod.rs`, con la misma forma que la macro emitirá. Un service
+cuya única dependencia es `Repo<T>` no necesita entrada en `providers:` del módulo:
 `App::build()` registra el valor `Db` y `Repo<T>: FromContainer` lo lee (§12.1),
 así que `from_container` se limita a `c.resolve::<Repo<T>>("TaskService", "repo")`.
 El singleton de RF-020 es el **adaptador** —el pool vive en `Db`— y el service es
 un handle sin estado que se reconstruye por petición a partir de él; registrar el
 service como provider sería redundante y obligaría a declarar `Repo<T>` como
 dependencia del grafo, cuando no es un valor registrado sino un tipo resoluble.
+
+**Por qué en `mod.rs` y no en la capa del service.** Las dos impls nombran a la vez
+`rdd::http` (que RA-002 prohíbe en `application/`) y el adaptador de
+`infrastructure/` (que RA-002 también prohíbe). `modules/<m>/mod.rs` es la **raíz de
+composición** del módulo —el equivalente a `tasks.module.ts`— y no está dentro de
+ninguna de las cuatro capas, así que RA-001, RA-002 y RA-003 no le aplican: puede
+importar las cuatro para cablearlas. Poner las impls allí no relaja ninguna regla;
+es el único lugar del módulo donde el cableado es legal. La regla de huérfanos lo
+permite porque el tipo es local al crate. Cuando `#[service]` llegue, emitirá las
+mismas dos impls en ese mismo archivo.
 
 ---
 
@@ -820,7 +791,7 @@ Cada diagnóstico DEBE señalar el span exacto y, cuando aplique, sugerir la cor
 | RF-060 | `Config<T>` donde `T: Deserialize` DEBE cargarse de `rdd.toml` (sección `[app.config]`) con sobreescritura por variables de entorno. |
 | RF-061 | Precedencia: **variable de entorno > `rdd.toml` > valor por defecto**. |
 | RF-062 | Variables de entorno con prefijo `RDD_` y separador `__` (ej. `RDD_DATABASE__URL`). |
-| RF-063 | Los secretos NO DEBEN guardarse en `rdd.toml`; el scaffold añade `.env` a `.gitignore`. |
+| RF-063 | Los secretos NO DEBEN guardarse en `rdd.toml`; el scaffold añade `.env` a `.gitignore`. Con `--database sqlite` DEBE excluir además `*.db`, `*.db-shm` y `*.db-wal`: `rdd migrate` crea esa base en la raíz del proyecto (RF-192) y guarda cuentas y tareas, así que versionarla sería publicar datos de usuario. Con PostgreSQL no hay archivo local que excluir. |
 
 ---
 
@@ -942,27 +913,67 @@ Response ◄──────────────────────�
 Implementación **propia** sobre el trait `Middleware` del núcleo (sin Tower), de modo que funciona igual en cualquier plataforma. Sigue el protocolo CORS del estándar Fetch.
 
 ```rust
-Cors::permissive()                          // desarrollo: cualquier origen
+// Desarrollo: cualquier origen. Infallible, pero avisa en release (RF-091).
+Cors::permissive()
+
+// Seguro por defecto: el builder acumula y `build()` valida (RF-090, RF-092).
 Cors::new()
     .allow_origin("https://miapp.com")
     .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
     .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+    .expose_headers(["x-request-id", "ratelimit-remaining"])
     .allow_credentials(true)
     .max_age(Duration::from_secs(3600))
-Cors::from_config()                         // lee [cors] de rdd.toml
+    .build()?
+
+// Lee la sección [cors] del rdd.toml del directorio actual (§15, RF-093).
+Cors::from_config()?
 ```
+
+Dos tipos, no uno: `Cors::new()` devuelve un **builder** que acumula sin validar,
+y su `build()` devuelve `Result<Cors, CorsConfigError>`. `Cors` es el middleware ya
+validado y lo único que `App::middleware` acepta. Separarlos permite encadenar los
+setters sin un `?` por línea y, a la vez, rechazar en la construcción una
+combinación que el estándar prohíbe (RF-092). `allow_origin` se puede llamar
+varias veces: cada llamada añade un origen a la lista. `permissive()` devuelve
+`Cors` directamente y `from_config()` devuelve `Result<Cors, CorsConfigError>`,
+porque en un caso no hay nada que validar y en el otro los valores vienen de un
+archivo.
+
+`from_config()` lee el `rdd.toml` del directorio actual (§15). Sin sección
+`[cors]` equivale a `Cors::new().build()`: deniega todo origen cruzado (RF-090),
+nunca abre por omisión. Un `rdd.toml` que no existe se trata igual que uno sin la
+sección; uno que existe pero no parsea es un error, porque ahí sí hay una
+intención de configurar que no se puede cumplir. Un método o una cabecera que no
+parsea produce error nombrando el valor inválido. La configuración CORS es una
+decisión de seguridad: no puede fallar en silencio ni resolverse en la primera
+petición.
+
+Tres detalles que el builder tiene que resolver para no dejar huecos:
+
+- **Sin `allow_methods`**, el preflight anuncia los métodos safelisted del
+  estándar Fetch: `GET, HEAD, POST`. **Sin `allow_headers`** anuncia
+  `accept, accept-language, content-language, content-type`, que son las
+  cabeceras safelisted. RF-096 exige que ambas cabeceras estén presentes, así que
+  omitirlas no es una opción; anunciar la lista safelisted es el mínimo honesto.
+- **`Vary: Origin` se añade también al origen denegado.** No es una cabecera
+  `Access-Control-*` ni concede nada: sin ella una caché intermedia podría servir
+  la respuesta denegada a un origen que sí estaba permitido.
+- **Una petición normal con credenciales** lleva `Access-Control-Allow-Credentials:
+  true` además del origen reflejado; sin esa cabecera el navegador descarta la
+  respuesta aunque el origen esté en la lista.
 
 | ID | Requisito |
 |---|---|
-| RF-090 | `Cors::new()` sin configuración DEBE denegar todo origen cruzado (seguro por defecto). |
+| RF-090 | `Cors::new().build()` sin configuración DEBE denegar todo origen cruzado (seguro por defecto). |
 | RF-091 | `Cors::permissive()` DEBE emitir un `tracing::warn!` en perfil `release`. |
-| RF-092 | `allow_credentials(true)` combinado con origen comodín (`*`) DEBE rechazarse en la construcción con error claro (la especificación CORS lo prohíbe). |
-| RF-093 | `from_config()` lee `allow_origins`, `allow_methods`, `allow_headers`, `allow_credentials`, `max_age_secs` de la sección `[cors]`. |
+| RF-092 | `allow_credentials(true)` combinado con origen comodín (`*`) DEBE rechazarse en `build()` y en `from_config()` con error claro (la especificación CORS lo prohíbe). |
+| RF-093 | `from_config()` lee `allow_origins`, `allow_methods`, `allow_headers`, `expose_headers`, `allow_credentials`, `max_age_secs` de la sección `[cors]`. Sin la sección, el resultado es el de RF-090. |
 | RF-094 | El preflight `OPTIONS` DEBE responder 204 sin ejecutar middlewares internos ni handlers. |
-| RF-095 | `rdd-cors` DEBE depender solo de `rdd-core` (RA-011). |
-| RF-096 | **Preflight** = `OPTIONS` con cabeceras `Origin` y `Access-Control-Request-Method`. Si el origen está permitido, DEBE responder 204 con `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`, `Access-Control-Max-Age` (y `Access-Control-Allow-Credentials` si aplica), más `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers`. |
-| RF-097 | **Petición normal** con origen permitido: DEBE añadir `Access-Control-Allow-Origin` (el origen reflejado, o `*` solo si no hay credenciales), `Vary: Origin` y, si está configurado, `Access-Control-Expose-Headers`. |
-| RF-098 | **Origen no permitido:** NO DEBE añadir cabeceras CORS ni bloquear la petición (el bloqueo lo ejecuta el navegador). Un preflight de origen no permitido responde sin cabeceras CORS. |
+| RF-095 | `rdd-cors` NO DEBE depender de ninguna plataforma ni de Tower; entre los crates del framework, solo de `rdd-core` (RA-011, ADR-13). `http`, `bytes`, `serde`, `thiserror`, `toml` y `tracing` están permitidos por §4.2. |
+| RF-096 | **Preflight** = `OPTIONS` con cabeceras `Origin` y `Access-Control-Request-Method`. Si el origen está permitido, DEBE responder 204 con `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`, `Access-Control-Max-Age` (y `Access-Control-Allow-Credentials` si aplica), más `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers`. Sin `allow_methods`/`allow_headers` configurados, anuncia las listas safelisted de §11.5. |
+| RF-097 | **Petición normal** con origen permitido: DEBE añadir `Access-Control-Allow-Origin` (el origen reflejado, o `*` solo si no hay credenciales), `Vary: Origin`, `Access-Control-Allow-Credentials: true` si hay credenciales y, si está configurado, `Access-Control-Expose-Headers`. |
+| RF-098 | **Origen no permitido:** NO DEBE añadir ninguna cabecera `Access-Control-*` ni bloquear la petición (el bloqueo lo ejecuta el navegador). Un preflight de origen no permitido responde 204 sin cabeceras CORS. `Vary: Origin` sí se añade, por la razón de caché de §11.5. |
 | RF-099 | Las peticiones sin cabecera `Origin` no son CORS y DEBEN pasar intactas. |
 
 ### 11.6 Crate `rdd-logger`
@@ -974,6 +985,39 @@ Cors::from_config()                         // lee [cors] de rdd.toml
 | RF-102 | El nivel DEBE ser `INFO` para 2xx/3xx, `WARN` para 4xx y `ERROR` para 5xx. |
 | RF-103 | NO DEBE registrar cuerpos ni cabeceras `Authorization`/`Cookie`. |
 | RF-104 | Formato configurable: `Logger::default()` (legible) o `Logger::json()`. |
+
+### 11.7 Rate limiting
+
+El núcleo incluye `RateLimit`, un middleware de ventana fija que puede
+registrarse globalmente, por módulo, controller o ruta. La aplicación provee
+una función que obtiene la clave de cada petición; el núcleo no presupone que
+una cabecera de proxy identifique al cliente de forma confiable.
+
+```rust
+struct AuthenticatedUser {
+    id: u64,
+}
+
+let limiter = RateLimit::new(60, Duration::from_secs(60), |req| {
+    req.extensions()
+        .get::<AuthenticatedUser>()
+        .map(|user| format!("user:{}", user.id))
+        .unwrap_or_else(|| "anonymous".to_owned())
+})?;
+
+App::new().middleware(limiter);
+```
+
+El middleware de autenticación debe validar las credenciales e insertar la
+identidad en las extensiones de la petición antes de ejecutar el limitador.
+
+| ID | Requisito |
+|---|---|
+| RF-105 | `RateLimit::new` DEBE rechazar límites cero o ventanas de duración cero. El contador DEBE ser independiente por clave y reiniciarse al terminar la ventana fija. |
+| RF-106 | Las peticiones dentro del límite DEBEN continuar por la cadena y llevar `RateLimit-Limit`, `RateLimit-Remaining` y `RateLimit-Reset`. |
+| RF-107 | Una petición sobre el límite DEBE cortocircuitarse con `429 Too Many Requests`, cuerpo Problem Details y cabeceras `Retry-After` y `RateLimit-*`. |
+| RF-108 | El almacenamiento del middleware es local al proceso y acotado (10 000 claves por defecto). Si se alcanza la capacidad sin claves expiradas que liberar, DEBE responder `503 Service Unavailable` y emitir un aviso `tracing`; `with_max_keys` permite ajustar la capacidad. |
+| RF-109 | La función de clave DEBE ser proporcionada por la aplicación. No se debe confiar en `X-Forwarded-For` u otras cabeceras de identidad si el proxy que las establece no es confiable. El middleware no coordina límites entre réplicas; para ello se requiere un proxy o almacenamiento compartido. |
 
 ---
 
@@ -1161,10 +1205,20 @@ solo para los compilados. Así el mensaje de un esquema no instalado nombra crat
 feature exactos, y **añadir un motor nuevo no toca el núcleo** (RF-185): basta su
 crate y una línea en la fachada.
 
+Las features de la fachada son `axum` y `sqlite` por defecto, más una por motor
+opcional (`postgres`, y las que se añadan con cada crate). Activar la feature trae
+el crate como dependencia `optional`, re-exporta su adaptador y hace que
+`rdd::run_main` llame a su `register()`. Es `run_main` —el código que expande
+`#[rdd::main]`— y no un inicializador global, porque la fachada solo puede ejecutar
+código en el camino que ella misma genera, igual que RP-012 con la plataforma.
+`register()` es idempotente y hace ambas cosas: `declare` para sus esquemas e
+`install` de su factoría.
+
 | ID | Requisito |
 |---|---|
 | RF-118 | `App::build()` DEBE seguir siendo **síncrono**: compone rutas, middlewares y contenedor sin I/O (RF-012). Con una URL pendiente de conectar DEBE fallar diciendo que se llame a `App::connect().await` o se use `.run()`. |
 | RF-119 | `App::connect(self) -> Result<Self>` DEBE resolver la URL por el registro, conectar y dejar el adaptador en el builder. `.run()`/`.run_on()` lo llaman antes de componer, así que un esquema sin adaptador o una conexión rechazada fallan **antes** de abrir el socket (RF-111). `.adapter(Arc<dyn DbAdapter>)` inyecta uno ya conectado y salta el registro. |
+| RF-191 | `rdd::run_main` DEBE poblar el registro antes de ejecutar el `main` del usuario: `declare` para los seis esquemas de RF-111 estén o no compilados, e `install` para cada motor cuya feature esté activa. Sin esto el registro llega vacío a `App::connect()` y todo esquema falla, incluido `sqlite://` (RF-111, RF-119). |
 
 ---
 
@@ -1241,6 +1295,11 @@ schema.prisma ──► prisma migrate ──► prisma/migrations/*.sql        
 
 ### 13.6 Código generado
 
+⚠️ Pendiente de reconciliar al iniciar la fase 0.4: el ejemplo usa `sqlx::FromRow`
+y `::rdd::Table`, mientras que §12.2 fija `Persist` y RA-014 prohíbe el driver en el
+código del usuario; y lleva `created_at`, que RF-187 rechaza hasta que **V15** se
+resuelva. Se corrige junto con la decisión de Prisma, no antes.
+
 Para cada `model` se genera en `src/generated/rows.rs`:
 
 ```rust
@@ -1292,8 +1351,8 @@ Generar el código desde la **introspección de la BD** (`information_schema`) t
 
 | Comando | Descripción |
 |---|---|
-| `rdd new <name>` | Crea el proyecto con el árbol completo de §5 (RF-002) y el módulo de ejemplo `tasks`, desactivable con `--no-example`. |
-| `rdd g module <name>` | Genera un módulo con la convención NestJS de §5 (RF-001). |
+| `rdd new <name> [--database <motor>]` | Crea el proyecto con el árbol funcional mínimo de §5 (RF-002) y el módulo de ejemplo `tasks`, desactivable con `--no-example`. `--database` elige el motor predeterminado (RF-189). |
+| `rdd g module <name>` | Genera un módulo con las cuatro capas estándar de §5 (RF-001). |
 | `rdd g middleware <Name> [--module <m>]` | Genera un middleware propio. |
 | `rdd add <paquete>` | Ejecuta `cargo add` para `cors`, `logger`, o un crate externo y muestra el fragmento a añadir en `main.rs`. |
 | `rdd migrate [--database-url <url>] [--source <dir>]` | Aplica las migraciones SQL pendientes antes del despliegue. Por defecto lee la URL desde la variable indicada por `[database].url_env` y el directorio desde `[database].migrations_dir` (`migrations/`). |
@@ -1302,6 +1361,18 @@ Generar el código desde la **introspección de la BD** (`information_schema`) t
 | `rdd db ...` | §13.3 |
 | `rdd check` | Verifica reglas de arquitectura (§17) y dependencias (RF-027). |
 | `rdd doctor` | Verifica el entorno (§13.2). |
+
+`--database` acepta los motores cuyo adaptador tiene feature en la fachada: hoy
+`sqlite` (predeterminado) y `postgres`. La lista crece con cada crate de motor que
+pase la suite de conformidad (§12.4, RA-016); un valor fuera de ella se rechaza al
+parsear el flag, nombrando los disponibles, en vez de generar un proyecto que no
+puede compilar. El flag no cambia el código de la app: el motor sigue decidiéndolo
+el esquema de la URL al arrancar (RF-111). Lo que cambia son los **valores
+predeterminados del proyecto**, que tienen que ser coherentes entre sí para que
+`rdd new <name> --database postgres` compile y arranque sin edición manual
+(RF-143): la feature de la fachada en `Cargo.toml`, `[database].provider` en
+`rdd.toml`, el `provider` del `datasource` en `schema.prisma` (§15.2) y la URL de
+respaldo de `main.rs` (§14.3) y de `.env`/`.env.example`.
 
 `rdd migrate` lee `.env` y `rdd.toml`, aplica en orden ascendente los archivos
 `<VERSION>_<DESCRIPCION>.sql` (VERSION entero positivo), y registra versiones y
@@ -1317,41 +1388,70 @@ de `rdd run` o de poner la nueva versión en servicio. `--database-url` y
 | ID | Requisito |
 |---|---|
 | RF-188 | `rdd migrate` DEBE aplicar solo migraciones pendientes en orden, registrar versiones/checksums, fallar explícitamente ante errores o cambios de checksum y ser idempotente. El arranque del servidor NO DEBE migrar implícitamente; el despliegue DEBE poder ejecutar migraciones como paso separado. |
+| RF-189 | `rdd new --database <motor>` DEBE dejar coherentes la feature de la fachada, `[database].provider`, el `provider` de Prisma y las URLs de respaldo de `main.rs`/`.env`/`.env.example`, de modo que el proyecto compile y arranque sin edición manual (RF-143). Sin el flag, el motor es `sqlite`. Un motor sin feature en la fachada DEBE rechazarse al parsear el flag. |
+| RF-190 | El `rdd.toml` que genera `rdd new` DEBE ser TOML válido y parseable por los comandos que lo leen (`rdd migrate`, `rdd check`, `rdd doctor`). Un archivo de configuración generado que no se puede leer rompe RF-143 tanto como un proyecto que no compila. |
+| RF-192 | Con módulo de ejemplo, `rdd new` DEBE generar `migrations/0001_tasks.sql` con el `CREATE TABLE` del agregado, de modo que `rdd migrate` funciona sin editar SQL a mano (RF-143, RF-188). El DDL es el mismo para SQLite y PostgreSQL: `id UUID PRIMARY KEY NOT NULL`, `title TEXT NOT NULL`, `done BOOLEAN NOT NULL DEFAULT FALSE`. **No** se usa `TEXT`/`INTEGER` en SQLite aunque su afinidad lo permita: `rdd-sqlite` decodifica por el **nombre de tipo declarado** (`codec.rs`), así que un `id TEXT` llegaría como `Value::Text` y un `done INTEGER` como `Value::I64`, y `Task::from_row` —que espera `Uuid` y `Bool`— fallaría al leer. SQLite acepta `UUID` y `BOOLEAN` como nombres de tipo y guarda el UUID como texto y el booleano como 0/1. Ninguna columna temporal: RF-187 las rechaza hasta que se resuelva V15. |
 
 ### 14.2 Archivos que genera `rdd g module tasks`
 
-El árbol de módulo de §5, bajo `src/modules/tasks/`: `mod.rs` más las nueve
-carpetas `controllers/`, `services/`, `repositories/`, `dto/`, `entities/`,
-`interfaces/`, `mappers/`, `constants/` y `tests/`, cada una con su `mod.rs` y los
-archivos nombrados en §5 (RF-001, RF-003, RF-005).
-
-El contenido de partida es el mínimo que compila y responde (RF-006, RF-007):
-`entities/` con el agregado en Rust plano, `dto/` con los tres DTOs,
-`services/` con el CRUD mínimo, `controllers/` con `#[controller("/tasks")]` y
-los cinco verbos (`list`, `get`, `create`, `update`, `remove`), y `tests/` con un
-test por capa. En 0.2, `#[aggregate]` y `#[service]` sustituyen al Rust plano sin
-cambiar el árbol.
+El árbol de módulo de §5, bajo `src/modules/tasks/`, contiene solo las cuatro
+capas estándar y sus archivos funcionales (RF-001, RF-003, RF-005). `domain/`
+define `Task` con `Aggregate` + `Persist` (§12.2) y el puerto async
+`TaskRepository`; `application/` contiene los casos de uso CRUD, genéricos sobre el
+puerto; `infrastructure/` implementa el puerto envolviendo `Repo<Task>`;
+`presentation/` contiene los DTOs HTTP y `#[controller("/tasks")]` con los cinco
+verbos (`list`, `get`, `create`, `update`, `remove`). Los tests unitarios se
+mantienen inline con `#[cfg(test)]`, sin una carpeta adicional.
 
 Los nombres que genera el CLI, con `tasks` como ejemplo: `TasksController`,
-`TasksService`, `TasksRepository` (la implementación), `TaskStore` (el puerto en
-`interfaces/`), `Task` (el agregado), `TaskMapper`, `CreateTaskDto`,
-`UpdateTaskDto`, `QueryTaskDto` y `MAX_TITLE_LEN`. El service depende del puerto,
-nunca de la implementación (§5.1). `TasksRepository::shared()` es el almacén de
-la app y `TasksRepository::new()` uno vacío y aislado, que es lo que usan los
-tests del módulo para no compartir estado.
+`TasksUseCases`, `TasksRepository` (adaptador), `TaskRepository` (puerto), `Task`
+(agregado), `TaskResponse` (DTO de salida), `CreateTaskDto`, `UpdateTaskDto`,
+`QueryTaskDto` y `MAX_TITLE_LEN`.
+
+`domain/mod.rs` re-exporta `Task`, `TaskError` y `TaskRepository`, y **todos los
+consumidores importan desde ahí**, no desde el archivo: `use …::domain::Task;`.
+Es la API pública de la capa (RA-004) y lo que evita el aviso de `unused_imports`
+que un re-export nadie usa produce en un crate binario, rompiendo RF-007. Las
+otras tres capas solo declaran sus módulos: no tienen tipos que cruzen la
+frontera tanto como el dominio.
+
+El identificador es `uuid::Uuid` y lo genera `Task::new` (§7.2): el puerto no tiene
+`next_id()` porque asignar ids es responsabilidad del motor o del agregado, no del
+caso de uso. `Task` NO deriva `Deserialize` (RF-031): la entrada HTTP son los DTOs
+de `presentation/`, nunca el agregado.
+
+`infrastructure/tasks_repository.rs` no tiene almacén propio, ni `static`, ni
+`shared()`, ni `new()` sin argumentos: recibe el `Repo<Task>` ya resuelto
+(`TasksRepository::new(repo)`). El aislamiento de los tests lo dan `MemoryBackend`
+y `TestApp` (RF-160), no un estático global compartido entre tests.
+
+`modules/tasks/mod.rs` es la raíz de composición: declara las cuatro capas, define
+`pub type TasksService = TasksUseCases<TasksRepository>;`, escribe a mano
+`impl FromContainer` e `impl FromRequest` para `TasksService` (§6.3) y expone
+`module()` con `providers: []`. Es el único archivo del módulo que nombra a la vez
+`infrastructure/` y `rdd::http`, y por eso vive fuera de las cuatro capas (§17).
+
+`TasksUseCases<R: TaskRepository>` NO lleva tipo por defecto: un `= TasksRepository`
+obligaría a `application/` a importar `infrastructure/`, que RA-002 prohíbe. El
+controller usa el alias `TasksService`, que es API pública del módulo (RA-004) y no
+nombra el adaptador, así que RA-003 tampoco se viola.
+
+El puerto declara `fn … -> impl Future<Output = …> + Send` y el adaptador lo
+implementa con `async fn`, igual que `FromRequest` (§6.3): un `async fn` en el trait
+no garantiza un futuro `Send`, que la plataforma sí exige.
+
+Los tests del caso de uso viven en `modules/tasks/mod.rs`, no en `application/`:
+necesitan el adaptador real y `MemoryBackend`, y solo la raíz de composición puede
+nombrar ambos (RA-002). Cada test construye su propio `Repo::new(Arc::new(
+MemoryBackend::new()))`, así que no hay estado compartido (RF-160). Las invariantes
+del agregado se prueban en `domain/task.rs`.
 
 `tests/acceptance.rs` incluye `src/` por `#[path]` porque un test de integración
 no puede importar el crate binario; así `crate::modules::…` y `crate::app_*`
-resuelven igual que en `main.rs` y no hay que duplicar el cableado.
-
-**Transición a 0.2.** En 0.1 `TasksRepository` es un `Vec` en memoria porque
-todavía no hay persistencia (RF-006). En 0.2 pasa a envolver `Repo<Task>` sobre el
-adaptador que decida `DATABASE_URL` (§12), y el puerto `TaskStore` se vuelve
-**async**: `Repo<T>` lo es, y un puerto síncrono obligaría a bloquear el runtime.
-El árbol de carpetas no cambia; cambian el contenido de `repositories/`, la firma
-de `interfaces/` y los `await` de `services/`. `shared()`/`new()` desaparecen: el
-aislamiento de los tests pasa a `MemoryBackend` o a `TestApp` (RF-160), no a un
-estático global.
+resuelven igual que en `main.rs` y no hay que duplicar el cableado. El test monta la
+app sin `.database(url)`, de modo que `App::build()` registra `MemoryBackend`
+(§12.6) y la aceptación corre sin servidor; el CRUD contra PostgreSQL real es la
+aceptación de `todo-app-ddd` (§25.6), no la del scaffold.
 
 ### 14.3 Marcadores de registro
 
@@ -1369,7 +1469,8 @@ pub mod tasks;
 `src/main.rs` — lo monta en la app:
 
 ```rust
-// El scaffold reserva carpetas para fases posteriores (RF-004).
+// Parte del scaffold todavía no se llama y el proyecto tiene que compilar sin
+// avisos (RF-143); no hay carpetas placeholder que silenciar (RF-004).
 #![allow(dead_code)]
 
 use rdd::prelude::*;
@@ -1377,13 +1478,9 @@ use rdd::prelude::*;
 mod app_controller;
 mod app_module;
 mod app_service;
-mod common;
 mod config;
 mod generated;
-mod infrastructure;
-mod integrations;
 mod modules;
-mod shared;
 
 #[rdd::main]
 async fn main() -> Result<()> {
@@ -1396,7 +1493,12 @@ async fn main() -> Result<()> {
         .module(modules::tasks::module())
         .module(app_module::module());
 
-    // `rdd run --memory` deja `RDD_MEMORY=1` (RF-015).
+    // La URL viene solo del entorno (RF-063); el respaldo lo puso
+    // `rdd new --database` en `config/database_config.rs` (RF-189).
+    let app = app.database(config::database_config::url());
+
+    // `rdd run --memory` deja `RDD_MEMORY=1` y tiene prioridad sobre la URL
+    // (RF-015).
     let app = if std::env::var("RDD_MEMORY").is_ok() {
         app.in_memory()
     } else {
@@ -1406,6 +1508,32 @@ async fn main() -> Result<()> {
     app.run(&addr).await
 }
 ```
+
+`.database(url)` no conecta: `App::run` llama a `connect().await` antes de componer
+(RF-119), así que un esquema sin adaptador falla antes de abrir el socket (RF-111).
+
+La URL de respaldo no va inline en `main.rs` sino en `config/database_config.rs`,
+que es donde vive la configuración (§15.1). Así `main.rs` es idéntico para todos
+los motores y no depende de la longitud de la URL para pasar `cargo fmt --check`
+(RF-007):
+
+```rust
+/// Respaldo del motor que eligió `rdd new --database` (§14.3, RF-189).
+const FALLBACK_URL: &str = "sqlite://todo-app-ddd.db";
+
+/// La URL del entorno o, si no está puesta o está vacía, la de respaldo.
+pub fn url() -> String {
+    super::env_opt("DATABASE_URL").unwrap_or_else(|| FALLBACK_URL.to_owned())
+}
+```
+
+El valor de `FALLBACK_URL` lo fija `--database`, igual que el de `.env` y
+`.env.example`: con `sqlite` es `sqlite://<paquete>.db`, que funciona sin servidor;
+con `postgres` es `postgres://postgres:CAMBIAR@localhost:5432/<base_de_datos>`. El
+nombre del archivo SQLite y el de la base son el del paquete (`@package@` y
+`@database@` en las plantillas), no constantes. Un proyecto PostgreSQL recién
+generado **compila** (RF-143) pero no arranca hasta que el operador ponga una URL
+real en `.env`: no hay servidor que adivinar.
 
 `rdd g module` inserta la línea nueva inmediatamente debajo del marcador, o sea
 antes de `.module(app_module::module())`, y conserva el comentario. Si el
@@ -1437,11 +1565,13 @@ body_limit_bytes = 2_097_152
 
 [database]
 # El motor lo decide el esquema de la URL (RF-111). `provider` es orientativo:
-# lo usa `rdd doctor` para saber qué crate de adaptador comprobar.
-provider = "sqlite"            # sqlite | postgresql | mysql | mongodb | redis | mssql | memory
+# lo usa `rdd doctor` para saber qué crate de adaptador comprobar. Es el nombre
+# de la feature de la fachada, no el token de Prisma (§15.2).
+provider = "sqlite"            # sqlite | postgres | mysql | mongodb | redis | mssql | memory
 url_env  = "DATABASE_URL"      # nombre de la variable; nunca la URL (RF-063)
 max_connections = 10
 acquire_timeout_secs = 5
+migrations_dir = "migrations"  # lo lee `rdd migrate` (§14.1)
 
 [prisma]
 schema        = "prisma/schema.prisma"
@@ -1452,6 +1582,7 @@ generated_dir = "src/generated"
 allow_origins     = ["http://localhost:5173"]
 allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 allow_headers     = ["content-type", "authorization"]
+expose_headers    = ["x-request-id", "ratelimit-remaining"]
 allow_credentials = false
 max_age_secs      = 3600
 
@@ -1460,6 +1591,10 @@ format = "pretty"               # "pretty" | "json"
 ```
 
 ### 15.2 Plantilla de `schema.prisma` que genera `rdd new`
+
+El `provider` del `datasource` lo fija `--database` (RF-189), con el token que
+Prisma espera y no el de la fachada: `sqlite` → `"sqlite"`, `postgres` →
+`"postgresql"`. El ejemplo es el de PostgreSQL:
 
 ```prisma
 datasource db {
@@ -1477,7 +1612,10 @@ model Task {
 
 Sin `createdAt`: hasta que **V15** se resuelva, `Value` no tiene variante temporal
 y el código generado desde este esquema no podría leer la columna (RF-187). Es la
-misma decisión que §25.5.
+misma decisión que §25.5. El generador DEBE emitir exactamente este modelo: una
+columna que el adaptador rechaza al leer rompe el round-trip de `Persist` (§12.2).
+`gen_random_uuid()` y `@db.Uuid` son de PostgreSQL; el equivalente SQLite se fija
+al iniciar la fase 0.4, cuando Prisma deje de ser un marcador (§13.1).
 
 ⚠️ La forma exacta del bloque `datasource` (con o sin `url`) depende de la versión de Prisma fijada (§13.2).
 
@@ -1494,13 +1632,24 @@ misma decisión que §25.5.
 |---|---|---|
 | Módulo (carpeta) | `snake_case`, plural | `tasks/` |
 | Aggregate | `PascalCase`, singular | `Task` |
-| Service | `<Aggregate>Service` | `TaskService` |
-| Controller | `<Aggregate>Controller` | `TaskController` |
+| Casos de uso | `<Módulo>UseCases`, genérico sobre el puerto | `TasksUseCases<R>` |
+| Service (alias de DI) | `<Módulo>Service`, en `mod.rs` | `TasksService` |
+| Controller | `<Módulo>Controller` | `TasksController` |
+| Puerto del repositorio | `<Aggregate>Repository`, en `domain/` | `TaskRepository` |
+| Adaptador del repositorio | `<Módulo>Repository`, en `infrastructure/` | `TasksRepository` |
+| DTO de salida | `<Aggregate>Response` | `TaskResponse` |
+| DTO de entrada | `<Verbo><Aggregate>Dto` | `CreateTaskDto` |
 | Fila generada | `<Modelo>Row` | `TaskRow` |
 | Middleware | Sustantivo o adjetivo | `Authenticated`, `RequireRole` |
 | Tabla SQL | `snake_case`, plural (vía `@@map`) | `tasks` |
 | Columna SQL | `snake_case` (vía `@map`) | `created_at` |
 | Rutas REST | Sustantivos en plural, sin verbos | `PUT /tasks/:id/complete` solo para acciones de dominio |
+
+El service, el controller y el adaptador llevan el nombre del **módulo** (plural);
+el agregado, el puerto y los DTOs llevan el del **aggregate** (singular). Son dos
+nombres distintos a propósito: `TaskRepository` es el puerto que `domain/` define
+y `TasksRepository` es la clase que lo implementa en `infrastructure/`, así que
+importarlos no puede confundirse (RA-007). §14.2 fija los nombres que emite el CLI.
 
 ---
 
@@ -1511,16 +1660,27 @@ archivo** dentro del módulo (§5), usando `syn` para leer sentencias `use`.
 
 | ID | Archivo | NO DEBE importar |
 |---|---|---|
-| RA-001 | `modules/<m>/entities/` y `modules/<m>/interfaces/` | `axum`, cualquier driver (`sqlx`, `mongodb`, `redis`, `tiberius`), `rdd::http`, `services`, `controllers`, `repositories`, `generated` |
-| RA-002 | `modules/<m>/services/` | `controllers`, `axum` |
-| RA-003 | `modules/<m>/controllers/` | `generated`, cualquier driver, `Repo`, `repositories` (un controller no habla con el repositorio) |
+| RA-001 | `modules/<m>/domain/` | `axum`, cualquier driver (`sqlx`, `mongodb`, `redis`, `tiberius`), `rdd::http`, `application`, `infrastructure`, `presentation`, `generated` |
+| RA-002 | `modules/<m>/application/` | `axum`, `rdd::http`, `infrastructure`, `presentation`, cualquier driver |
+| RA-003 | `modules/<m>/presentation/` | `generated`, cualquier driver, `Repo`, `infrastructure` (la presentación no accede directamente a persistencia) |
 | RA-004 | Un módulo `A` | Archivos internos de otro módulo `B`; solo puede usar su API pública (lo que `b/mod.rs` re-exporta con `pub use`) |
 
 **RA-005.** Las violaciones DEBEN reportarse con archivo, línea, regla y sugerencia. `rdd check` retorna código distinto de cero si hay violaciones (apto para CI).
 
 **RA-006.** Se permite suprimir una regla en una línea con `// rdd:allow(RA-003) motivo`; el motivo es obligatorio.
 
-**RA-007.** `modules/<m>/repositories/` es la única carpeta que toca un adaptador o su driver. El service depende del puerto de `interfaces/` o de `Repo<T>`, nunca del crate del motor: cambiar de PostgreSQL a MongoDB no debe tocar un service (RF-185). La excepción es RF-115 (consultas especiales con el handle nativo), que DEBE suprimirse con `// rdd:allow(RA-007)` y motivo.
+**RA-007.** `modules/<m>/infrastructure/` es la única capa que toca un adaptador o su driver. `application/` depende del puerto de `domain/`, nunca del crate del motor: cambiar de PostgreSQL a MongoDB no debe tocar un caso de uso (RF-185). La excepción es RF-115 (consultas especiales con el handle nativo), que DEBE suprimirse con `// rdd:allow(RA-007)` y motivo.
+
+**La raíz de composición no es una capa.** Las reglas RA-001 a RA-003 y RA-007 se
+aplican por carpeta, así que `modules/<m>/mod.rs` queda fuera: es el archivo que
+cablea las cuatro capas y por tanto el único que puede nombrarlas a todas. Allí
+viven `module()`, el alias del service concreto y las dos impls de DI (§6.3). Esto
+no es una excepción a RA-002: `application/` sigue sin conocer `infrastructure/`
+porque el caso de uso es genérico sobre el puerto **sin parámetro por defecto**, y
+quien fija el tipo concreto es `mod.rs` con
+`pub type TasksService = TasksUseCases<TasksRepository>;`. `presentation/` importa
+ese alias —API pública del módulo, RA-004— y no el adaptador, así que RA-003 tampoco
+se relaja.
 
 ---
 
@@ -1593,7 +1753,9 @@ async fn crea_y_completa_una_tarea() {
 - [x] `Error` y respuestas Problem Details (§10.3)
 - [x] Apagado ordenado (RF-013), `/health` (RF-016), límite de cuerpo (RF-017), normalización de barra (RF-018)
 - [x] Diagnósticos RDD0301–RDD0305
-- [x] `rdd new`, `rdd g module`, `rdd migrate` y `rdd run` con el árbol de §5 (RF-001 a RF-007, RF-140, RF-141, RF-143, RF-188)
+- [x] `rdd new`, `rdd g module`, `rdd migrate` y `rdd run` con el árbol de §5 (RF-001 a RF-007, RF-140, RF-141, RF-143, RF-188 a RF-190)
+- [x] Ningún `.rs` generado vacío ni solo cabecera: `src/generated/mod.rs` lleva snippet documental (RF-004, §26 no cambia esto)
+- [x] `migrations/0001_tasks.sql` generado, y `.gitkeep` solo con `--no-example` (RF-003, RF-192)
 
 **Aceptación:** un proyecto creado con `rdd new` compila sin cambios (RF-143), responde en `/health` y devuelve 404 y 405 en formato Problem Details; un test de integración recorre todos los códigos de §10.3; `AxumPlatform` y `dispatch` pasan la suite de conformidad disponible en esta fase.
 
@@ -1605,6 +1767,7 @@ async fn crea_y_completa_una_tarea() {
 - [ ] `Persist` (§12.2): trait del **aggregate** (`TABLE`, `COLUMNS`, `to_values`, `from_row`), lo implementa `#[aggregate]`. Un boceto previo lo definió como repositorio CRUD síncrono con backends MySQL y MongoDB, y otro como `from_row(&PgRow)`; ambos se retiraron: el primero contradecía §12.1 (async) y el segundo ataba el puerto a PostgreSQL.
 - [ ] `MemoryBackend` en el núcleo (§12.1, RF-015, RF-110)
 - [ ] `rdd-sqlite`, `rdd-postgres` y `rdd-mysql` sobre `sqlx`, elección por esquema de URL al arrancar (RF-111, ⚠️ V11)
+- [ ] La fachada puebla el registro: `declare` para los seis esquemas e `install` para los compilados, y una feature por motor (RF-191, §12.6)
 - [ ] `rdd-db-tests`: suite de conformidad obligatoria (RF-180 a RF-182, RA-016)
 - [ ] `#[aggregate]` macro — expansión mínima por ahora (expande `item` tal cual); expansión completa planificada para 0.2.1
 - [ ] `#[service]` macro — expansión mínima por ahora (expande `item` tal cual); expansión completa planificada para 0.2.1
@@ -1612,7 +1775,7 @@ async fn crea_y_completa_una_tarea() {
 - [ ] Conversión de errores por adaptador (RF-042)
 - [ ] `TestApp` (RF-160, RF-161)
 - [ ] Diagnósticos RDD0101, RDD0102, RDD0201
-- [ ] El scaffold del CLI usa `Repo<T>` en `repositories/`, no un `Vec` en memoria (§14.2)
+- [ ] El scaffold del CLI implementa el puerto del dominio en `infrastructure/`, no un `Vec` en memoria (§14.2)
 
 **Aceptación:** `todo-app-ddd` (§25) pasa el test de §20 con backend en memoria **y** contra PostgreSQL real: crear una tarea por HTTP, verla con `psql`, reiniciar la app y comprobar que sigue ahí. `rdd-mysql` pasa `rdd-db-tests` contra un MySQL/MariaDB real.
 
@@ -1624,11 +1787,12 @@ async fn crea_y_completa_una_tarea() {
 - [ ] Registro global, de módulo, de controller y de ruta, con el orden de §11.3 verificado por tests
 - [ ] Fallback cubierto por middlewares globales (RF-081)
 - [ ] `Ext<T>` y `req.resolve::<T>()`
-- [ ] `rdd-cors` con RF-090 a RF-099 (implementación propia, sin Tower)
+- [x] `rdd-cors` con RF-090 a RF-099 (implementación propia, sin Tower)
 - [ ] `rdd-logger` con RF-100 a RF-104
 - [ ] Diagnóstico RDD0401
+- [x] Demo `example/todo-app` (§26): JWT y roles a nivel de aplicación, CORS primero y `RateLimit` por identidad, SQLite, miembro del workspace (RF-193)
 
-**Aceptación:** test que demuestra que un preflight `OPTIONS` recibe cabeceras CORS correctas sin pasar por un middleware de autenticación que rechaza todo; test de orden de ejecución con tres middlewares anidados; test de que `request_id` aparece en la respuesta y en el log.
+**Aceptación:** test que demuestra que un preflight `OPTIONS` recibe cabeceras CORS correctas sin pasar por un middleware de autenticación que rechaza todo; test de orden de ejecución con tres middlewares anidados; test de que `request_id` aparece en la respuesta y en el log. El demo de §26 pasa sus ocho comprobaciones de §26.6 y la puerta de RF-193 (`cargo test --workspace`, clippy y fmt).
 
 ### Fase 0.4 — Prisma
 
@@ -1747,18 +1911,15 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.2.1-draft | 2026-11-07 | Ajustes de implementación sobre requisitos ya existentes, verificados con `rdd-macros` en la fase 0.1. (1) **RF-057**: la firma de `FromRequest` pasa a `from_request(ctx: &Ctx, bind: Bind)`; `Ctx` es propietario de la petición y `Bind` es la pista de enlace (parámetro de ruta o cabecera), porque la firma es única para todos los extractores. (2) **§4.4**: `RouteDef::path` es `String`, no `&'static str`, porque la ruta final `prefijo + ruta` se calcula al montar (RF-051). (3) **§8.5**: la expansión de referencia se reescribe con la forma real —`rdd::api::route_def` compone middlewares, materializa errores y fija el estado; `routes()` y el registro `Controller`/`ModuleMember` quedan explícitos—, que es la que verifica RN-013. (4) **RF-052/RF-053**: `IntoResponse` es una impl blanket sobre `Serialize`, así que `Result<Task>` funciona sin envoltorios; 204 y 304 se emiten sin cuerpo. No hay `impl IntoResponse for Response<Bytes>` (sería incompatible con la blanket): el control total de la respuesta vive en los middlewares, que devuelven `Result<Response>` (§11.1). |
 | 0.2.2-draft | 2026-11-07 | Cierre de la fase 0.1 con la CLI. (1) **§6.1/RF-012**: `App::run` y `App::run_on` devuelven `rdd::Result<()>` en vez de `PlatformResult`, para que `#[rdd::main] async fn main() -> Result<()>` compile tal cual; se añade `From<PlatformError> for Error` para no perder el error original. (2) **§14.1**: `rdd new` genera siempre el módulo de ejemplo `tasks` (nombre fijo del spec), no el nombre del proyecto; el nombre del proyecto solo decide el paquete y el directorio. (3) **§5 (estado temporal)**: en 0.1 el módulo de ejemplo solo lleva `mod.rs` y `routes.rs`, porque `#[aggregate]`/`#[service]` llegan en 0.2; `rdd g module` completará `domain.rs` y `service.rs`. (4) **§14.1**: `rdd run --memory` exporta `RDD_MEMORY=1` como señal forward-compatible para elegir el backend en memoria cuando exista persistencia. (5) **RF-140/RF-141**: `rdd new` crea `./<kebab-case>`, se niega a sobrescribir sin `--force` y lista sin escribir con `--dry-run`. |
 | 0.3.0-draft | 2026-11-07 | **Scaffolding con la convención NestJS.** (1) **§5 se reescribe**: el proyecto pasa de `src/tasks/{mod,domain,service,routes}.rs` al árbol completo por responsabilidad —`config/`, `common/` (11 subcarpetas), `modules/<m>/` (nueve carpetas: controllers, services, repositories, dto, entities, interfaces, mappers, constants, tests), `infrastructure/`, `integrations/`, `shared/`, `tests/`— más `app_module.rs`/`app_controller.rs`/`app_service.rs`, `rustfmt.toml`, `clippy.toml`, `rust-toolchain.toml`, `Dockerfile`, `.env.example` y `.gitignore`. La adaptación de nombres (`x.y.ts`→`x_y.rs`, `__tests__`→`tests`, guiones→`snake_case`, singular de entity/dto) queda fijada en §5. (2) **RF-001 se redefine** y se añaden **RF-002 a RF-007**: árbol completo en `rdd new`, `mod.rs` en cada carpeta-módulo, cabecera documental, regla de singularización, prohibición de generar código que dependa de macros aún no implementadas, y `cargo check` + `tests/acceptance.rs` en verde. (3) **§14.2/§14.3**: el marcador `// rdd:mods` pasa a `src/modules/mod.rs` y `// rdd:modules` queda en `src/main.rs`. (4) **§17 RA-001 a RA-003**: las reglas de importación se expresan por carpeta (`entities/`, `services/`, `controllers/`) en vez de por nombre de archivo suelto. (5) **§21**: se desmarca `rdd new`/`rdd run` hasta cerrar RF-007, y se corrigen las filas de 0.2 que daban por hecho un `Persist` CRUD síncrono con MySQL/MongoDB que contradecía §12 y §4.3; ese código se retiró del árbol. (6) **§6.1/RF-012**: se confirma el retorno `rdd::Result<()>` de `App::run`/`run_on` acordado en 0.2.2, que es lo que exige `run_main` (§8.4). (7) **§5**: `rust-toolchain.toml` no fija `channel` (solo perfil y componentes); el MSRV lo declara `rust-version` en `Cargo.toml`, porque un canal pinned obligaría a descargar otro toolchain y rompería RF-143 sin red. (8) **§14.2**: se fijan los nombres que genera el CLI (`TasksController`, `TasksService`, `TasksRepository`, el puerto `TaskStore`, `Task`, `TaskMapper`, los tres DTOs y `MAX_TITLE_LEN`), el almacén aislado para tests y el mecanismo de `tests/acceptance.rs` (incluir `src/` por `#[path]`, porque un test de integración no puede importar el binario). (9) **§14.3**: el esqueleto de `main.rs` pasa a ser el que genera el CLI —`mod generated;`, configuración desde `src/config/app_config.rs`, `RDD_MEMORY` → `App::in_memory()` y el marcador seguido de `.module(app_module::module())`— y se documenta que la inserción va justo debajo del marcador, conservándolo. (10) **§21**: `rdd g module` pasa de la fase 0.2 a la 0.1, porque RF-001 lo exige y el módulo de ejemplo de `rdd new` sale del mismo generador; mantenerlos en fases distintas habría duplicado el árbol. (11) **§14.2**: el controller de ejemplo lleva los cinco verbos (`list`, `get`, `create`, `update`, `remove`), no solo los tres del boceto inicial. (12) **RF-007 se refuerza**: el proyecto generado debe pasar también `cargo clippy --all-targets -- -D warnings` y `cargo fmt --all -- --check`, y la aceptación lo comprueba tras añadir `task-items`; el scaffold entrega `clippy.toml` y `rustfmt.toml`, así que no puede nacer violándolos. |
-
 | 0.4.0-draft | 2026-11-07 | **Persistencia multi-motor vía adaptadores.** (1) **ADR-10 queda sustituido por ADR-16**: el núcleo ya no depende de `sqlx`; define el puerto `DbAdapter` y cada motor vive en su propio crate (`rdd-postgres`, `rdd-mysql`, y en 0.6 `rdd-mongodb`, `rdd-redis`, `rdd-mssql`). Se añaden **ADR-17** (Redis es adaptador KV y API de caché en el mismo crate) y **ADR-18** (MSSQL con `tiberius-ng` + `bb8`, verificado en Docker). (2) **§2.1/§2.2**: la exclusión de motores distintos de PostgreSQL se retira; pasa a "motores sin adaptador publicado" y se acota lo que sigue fuera (SQLite barato vía `sqlx`; Oracle, Cassandra y DynamoDB no planificados). Prisma sigue siendo solo PostgreSQL (**RF-186**). (3) **§4.1/§4.2/§4.3**: entran los cinco crates de adaptador y `rdd-db-tests`; `sqlx` sale de las dependencias permitidas de `rdd-core` y entra en la lista prohibida junto con `mongodb`, `redis` y `tiberius`. Nuevas **RA-014** (el núcleo no lleva ningún driver en su árbol, verificado en CI como RA-011), **RA-015** (los adaptadores no dependen entre sí ni de ninguna plataforma) y **RA-016** (un adaptador solo se publica si pasa `rdd-db-tests` contra un servidor real). (4) **§12 se reescribe**: `Value`/`Row` neutros, puerto `DbAdapter` object-safe con cuatro operaciones (`get`, `all`, `save`, `delete`) y `Repo<T>` como handle sobre `Arc<dyn DbAdapter>`; `Persist` deja de hablar SQL y pasa a `COLUMNS` + `to_values`/`from_row`. Se rechazan las transacciones en el puerto (§12.3) porque Redis no las honra. (5) **RF-042**: la conversión de errores del driver vive en el crate del motor, nunca en el núcleo. (6) **RF-110 a RF-117**: handle agnóstico, selección por esquema de URL con fallo al arrancar nombrando el crate que falta, upsert nativo atómico, parámetros ligados, quoting por motor, handle nativo opcional, pool en `rdd.toml` y nada de migraciones automáticas. (7) **§12.4/§12.5**: suite `rdd-db-tests` (**RF-180 a RF-182**) y tabla por motor, más **RF-183** (`all()` de Redis es `SCAN`, no un `SELECT`), **RF-184** (KV y caché distinguibles, sin TTL implícito), **RF-185** (un motor nuevo no obliga a tocar el núcleo ni otros adaptadores) y **RF-186**. (8) **§14.2**: transición a 0.2 del scaffold —`TasksRepository` envuelve `Repo<Task>`, `TaskStore` pasa a ser async y `shared()`/`new()` desaparecen en favor de `MemoryBackend`/`TestApp`— sin cambiar el árbol de carpetas. (9) **§15.1**: `[database] provider` pasa a ser informativo para `rdd doctor` y admite los seis valores; la URL sigue viniendo solo del entorno (RF-063). (10) **§17**: RA-001/RA-003 amplían la prohibición a cualquier driver y se añade **RA-007** (`repositories/` es la única carpeta que toca un adaptador). (11) **§21**: la fase 0.2 incorpora el puerto, `MemoryBackend`, `rdd-db-tests`, `rdd-postgres` y `rdd-mysql`, con aceptación contra PostgreSQL real (crear por HTTP, verlo con `psql`, reiniciar y comprobar que sobrevive); se crea la **fase 0.6** para los adaptadores adicionales. (12) **§22**: nuevas verificaciones **V11** (diferencias MySQL en `sqlx`), **V12** (`tiberius-ng`), **V13** (cliente Redis) y **V14** (BSON↔`Value`). |
-
 | 0.4.1-draft | 2026-11-07 | Detalles de implementación del puerto, necesarios antes de escribir `rdd-core`. (1) **§12.1**: `Repo<T>` añade la cota `T::Id: Into<Value>` —`Aggregate::Id` es un tipo asociado libre y el puerto solo habla `Value`—, se fija `Repo::new(Arc<dyn DbAdapter>)` y se documenta que `Repo<T>` implementa `FromContainer` leyendo el valor `Db` que `App::build()` registra, de modo que `#[service]` lo inyecta sin registro por agregado. (2) **§12.6 nuevo**: registro global de adaptadores (`declare`/`install`/`factory_for`) poblado por la fachada, con el mismo razonamiento que RP-012 para la plataforma; es lo que permite nombrar el crate que falta sin que el núcleo conozca ningún motor (RF-185). (3) **RF-118/RF-119 nuevos**: `App::build()` sigue siendo síncrono y sin I/O, y `App::connect().await` resuelve la URL y conecta; `.run()`/`.run_on()` lo llaman antes de componer, así que el fallo de RF-111 ocurre antes de abrir el socket. `.adapter(Arc<dyn DbAdapter>)` inyecta uno ya conectado. Se mantiene `build()` síncrono para no volver async toda la suite de plataformas ni el scaffold. (4) **RF-015**: `.in_memory()` tiene prioridad sobre una URL ya configurada. (5) **§12.1**: las cuatro operaciones de `DbAdapter` llevan una vida explícita común `'a` en todos sus argumentos; con `BoxFuture<'_>` la elisión la ata solo a `&self` y el `async move` del adaptador no puede capturar `table` ni `id`. El trait sigue siendo object-safe. |
-
 | 0.4.2-draft | 2026-11-07 | **App de ejemplo en la raíz: `todo-app-ddd`.** Petición del usuario. (1) **§4.1**: desaparece `examples/todo-app/` y entra `todo-app-ddd/` en la raíz del repositorio, miembro del workspace. La razón es que así `cargo test --workspace` la compila y un cambio en el núcleo que rompa el scaffold se detecta en la misma corrida. (2) **§25 se reescribe entero**: el anexo mostraba un árbol plano `src/tasks/{domain,service,routes,mod}.rs` que contradecía §5 desde 0.3.0-draft, y usaba `Uuid::new()` y macros aún no implementadas. Ahora describe la app real: árbol de §5, `Task` con `Aggregate`+`Persist` escritos a mano hasta que llegue `#[aggregate]` (RF-006), `TasksRepository` envolviendo `Repo<Task>`, `TaskStore` con `async fn` nativo (sin `async_trait`, como `FromRequest`), arranque con `.database(url)` y `.env` no versionado, tabla creada con `migrations/0001_tasks.sql` hasta que `rdd db migrate` exista en 0.4, y la verificación completa contra PostgreSQL real. (3) **§5, §15.1 y §21**: las tres fases que usaban el ejemplo (0.2, 0.5 y 0.6) pasan a nombrar `todo-app-ddd`. |
-
 | 0.4.3-draft | 2026-11-07 | **El puerto gana `id_column`**, descubierto al implementar el segundo adaptador — exactamente el fallo que ADR-15 y `rdd-db-tests` existen para detectar. (1) **§12.1**: `get` y `delete` reciben `id_column: &str` además de la tabla y el id. Un motor SQL necesita el nombre de la columna para el `WHERE` y no puede adivinarlo, porque `Persist::COLUMNS[0]` puede llamarse `task_id` y no `id`; inferirlo de `save` obligaría a guardar antes de poder leer. `Repo<T>` lo pasa desde `T::COLUMNS[0]`; MongoDB y Redis lo ignoran. (2) **§12.1**: el orden de `Row` deja de ser contractual. `all` no recibe la lista de columnas y hace `SELECT *`, así que la fila llega en el orden físico de la tabla; `from_row` lee por nombre y las columnas de más se ignoran. Afirmar el orden de `COLUMNS` habría sido falso para cualquier motor SQL. |
-
 | 0.4.4-draft | 2026-11-07 | **Tipos que `Value` no puede representar**, detectado al escribir el códec de `rdd-postgres`. (1) **RF-187 nuevo**: un adaptador solo decodifica tipos con variante simétrica en `Value`; los demás dan error explícito nombrando columna y tipo. Convertir `TIMESTAMPTZ` a `String` sería una trampa: se lee bien pero al guardar se envía el OID de `TEXT` y PostgreSQL lo rechaza. (2) **§12.5**: la fila de PostgreSQL remite a RF-187. (3) **V15 nueva**: falta decidir si `Value` gana variantes temporal y decimal antes de la fase 0.4. (4) **§25.5**: la tabla `tasks` pierde `created_at TIMESTAMPTZ`, que era incompatible con lo anterior. (5) **§4.2**: `anyhow` entra en las dependencias permitidas de los cinco adaptadores —`Error::internal` lo exige para conservar el error del driver como fuente (RF-042)— y se corrige la dirección de la suite: cada adaptador depende de `rdd-db-tests` como `dev-dependency`, no al revés. (6) **§15.2**: la plantilla de `schema.prisma` pierde `createdAt DateTime` por la misma razón que §25.5 — el código generado desde ese esquema no podría leer la columna hasta que V15 se resuelva. (7) **§12.4**: se fija el mecanismo de RF-181 — el test de integración de cada motor se activa con `RDD_TEST_<MOTOR>_URL`, y el crate crea y destruye su propia tabla de sonda. (8) **§25.4/§25.6**: la instancia local pasa al contenedor `rdd-pg` en el puerto **5433**. En 5432 el servicio nativo de Windows le gana la conexión al proxy de Docker, así que el contenedor es inalcanzable desde el host; ni el servicio nativo ni `todo-pg` se modifican. |
 | 0.4.5-draft | 2026-11-07 | Se añade `rdd-sqlite` como adaptador predeterminado para proyectos locales y se actualizan la fachada, el scaffold y las guías. |
 | 0.4.6-draft | 2026-11-07 | Se añade `rdd migrate` para aplicar migraciones versionadas de SQLite/PostgreSQL como paso explícito de despliegue (RF-188); el servidor no migra al arrancar. Se fija Rust 1.94 como MSRV por SQLx 0.9. |
+| 0.4.7-draft | 2026-11-10 | **Reconciliación del documento con el árbol de cuatro capas y con el código ya escrito.** Tres cambios estaban en el árbol de trabajo sin entrada de registro, lo que violaba §24.2; se documentan aquí junto con las correcciones que dejaban referencias cruzadas obsoletas. (1) **§5/§5.1/§5.2**: el árbol de nueve carpetas por módulo y las capas transversales (`common/`, `shared/`, `integrations/`, `infrastructure/` raíz, `docs/`, `tests/e2e/`) se sustituyen por las **cuatro capas DDD** (`domain/`, `application/`, `infrastructure/`, `presentation/`) y solo carpetas funcionales; **RF-001 se redefine** y RF-002 a RF-006 se ajustan (`.gitkeep` en `migrations/`, cabecera documental por capa, prohibición de placeholders). Sustituye a la decisión 0.3.0-draft. (2) **§11.7 nuevo, RF-105 a RF-109**: middleware `RateLimit` de ventana fija por clave, cabeceras `RateLimit-*`, 429 con Problem Details y `Retry-After`, almacenamiento local acotado con 503 al saturarse y función de clave proporcionada por la app. (3) **§6.3**: las impls de `FromContainer` y `FromRequest` son **por tipo, nunca blanket** —un `impl<T: FromContainer> FromRequest for T` solapa con `Json/Path/Query/Header/Ext` y Rust lo rechaza con E0119 porque no razona en negativo—; mientras `#[service]` no exista (RF-006) el scaffold las escribe a mano, y viven en **`modules/<m>/mod.rs`**, la raíz de composición, no en `application/`. (4) **§14.2**: el estado de 0.2 pasa a ser el **estado actual**, no una transición futura: `Task` con `Uuid` + `Aggregate`/`Persist` a mano, puerto `TaskRepository` async, `TasksRepository` envolviendo `Repo<Task>` sin `static`/`shared()`/`new()`, `TaskResponse` como DTO de salida, `TasksUseCases<R>` **sin tipo por defecto** y el alias `pub type TasksService = TasksUseCases<TasksRepository>;` en `mod.rs`. Se retiran los nombres `TaskStore` y `TaskMapper`. La aceptación del scaffold corre en memoria; el CRUD contra PostgreSQL real es §25.6. (5) **§14.3**: el esqueleto de `main.rs` pasa a ser el que genera el CLI de verdad —sin `mod common/infrastructure/integrations/shared`, con `.database(config::database_config::url())` antes de `RDD_MEMORY` y el respaldo en `FALLBACK_URL` dentro de `config/database_config.rs`— y se documenta que `.database()` no conecta (RF-119). El respaldo sale de `main.rs` para que el archivo sea idéntico con cualquier motor y no dependa de la longitud de la URL para pasar `cargo fmt --check` (RF-007). (6) **§17**: se aclara que RA-001 a RA-003 y RA-007 aplican **por carpeta**, así que `mod.rs` queda fuera y es el único archivo que puede nombrar las cuatro capas; el alias del service evita relajar RA-002 y RA-003. (7) **§25.2/§25.3**: `TaskStore`→`TaskRepository`, fuera `TaskMapper`, `COLUMNS = ["id", "title", "done"]` (sin `created_at`, por V15/RF-187) y el snippet del repositorio pasa a `infrastructure/`, donde RA-007 lo exige. (8) **§4.1**: el `Cargo.toml` del usuario refleja el default real de la fachada, `axum + sqlite`, y declara `uuid` con `v4`+`serde` porque el id del agregado lo es (§7.2). (9) **§14.2/§25.3**: el puerto async declara `fn … -> impl Future<Output = …> + Send` y el adaptador lo implementa con `async fn` —la forma real de `FromRequest`—, porque un `async fn` en el trait no garantiza un futuro `Send` y la plataforma lo exige. (10) **§14.2**: los tests del caso de uso viven en `modules/<m>/mod.rs`, el único archivo que puede nombrar a la vez el adaptador y `MemoryBackend` sin violar RA-002; cada test crea su propio backend (RF-160). (11) **§14.1, RF-189 nuevo**: `rdd new --database <motor>` elige el motor predeterminado del proyecto y deja coherentes la feature de la fachada, `[database].provider`, el `provider` de Prisma y las URLs de respaldo; sin él, `sqlite`. Es lo que permite que §25.1 (`rdd new todo-app-ddd`) cumpla §25.4 (PostgreSQL real) sin editar `Cargo.toml` a mano. (12) **§12.6, RF-191 nuevo**: se documentan las features de la fachada (`axum`+`sqlite` por defecto, una opcional por motor) y se exige que `run_main` pueble el registro con `declare` para los seis esquemas e `install` para los compilados; hasta ahora solo la prosa lo pedía y ningún RF lo verificaba. (13) **§15.1, RF-190 nuevo**: el esquema de `rdd.toml` gana `migrations_dir`, que §14.1 y `rdd migrate` ya usaban pero no estaba documentado, y `provider` pasa a nombrar la feature de la fachada (`postgres`) en vez del token de Prisma (`postgresql`), que queda limitado a §15.2. RF-190 exige que el `rdd.toml` generado sea TOML válido: la plantilla escapaba las comillas dentro de un raw string y emitía `migrations_dir = \"migrations\"`, que ningún parser acepta. (14) **§15.2**: el `provider` del `datasource` sigue a `--database` y se exige emitir el modelo `Task` **sin** `createdAt`, que la plantilla todavía llevaba pese a la decisión 0.4.4-draft y a RF-187. (15) **§16**: la tabla de nombres pasa a plural para el service, el controller y el adaptador (`TasksService`, `TasksController`, `TasksRepository`) y a singular para el agregado, el puerto y los DTOs (`Task`, `TaskRepository`, `TaskResponse`), que es lo que generan §14.2 y el CLI; se añaden las filas que faltaban (casos de uso, puerto, adaptador, DTOs). (16) **§14.3/§25.4**: se corrige «sin `.env` arranca en memoria», que era falso desde que `main.rs` tiene URL de respaldo; solo `RDD_MEMORY=1` fuerza memoria (RF-015). (17) **§13.6**: se marca como pendiente de reconciliar en 0.4 — el ejemplo usa `sqlx::FromRow`/`::rdd::Table` en vez de `Persist` (RA-014) y lleva `created_at` (RF-187). (18) **§5.2/RF-007**: se fija el mecanismo que faltaba — el generador DEBE formatear con `rustfmt` los `.rs` que escribe, porque el ancho de las firmas depende del nombre del módulo y ninguna plantilla fija pasa `cargo fmt --check` con `tasks` y con `task-items` a la vez. Lo detectó el test de aceptación: seis diffs de formato que 142 tests del workspace no veían, más un `E0716` en `tests/acceptance.rs` y dos `unused_imports` en los re-exports de `domain/mod.rs` que nadie consumía (de ahí la regla de importación de §14.2). |
+| 0.5.0-draft | 2026-11-10 | **Demo autenticado en `example/`, `rdd-cors` especificado de verdad y ningún archivo generado en blanco.** Petición del usuario: una TODO app con JWT y autorización a modo de demo, usando CORS y `RateLimit`, con un snippet por archivo para que nada quede vacío. (1) **§26 nuevo**: anexo del demo `example/todo-app`, generado por el CLI con `--database sqlite`, con los módulos `users` y `tasks`, JWT y roles **a nivel de aplicación** sobre el mecanismo de middlewares ya existente (`JwtMiddleware` global que **identifica sin rechazar**, `RequireAuth` de controller que devuelve 401, `Ext<Session>` en el handler y `RequireRole` de ruta montado con `#[middleware(...)]` que devuelve 403). El desdoble identificar/exigir lo fuerza **RF-080**: el orden es global → módulo → controller → ruta, así que un JWT global que rechazara dejaría fuera el login y `/health`, y uno de controller correría después del `RateLimit` global, que se quedaría sin identidad para su clave (RF-109). `src/middleware/` y `src/config/jwt_config.rs` añadidos por el demo y no por el CLI, secretos solo por entorno (RF-063, RN-030), `argon2` para contraseñas y `jsonwebtoken` para tokens —dependencias del demo, no del núcleo—, orden `CORS → JWT → RateLimit → módulo → RequireAuth → RequireRole → handler` con el preflight respondido por CORS antes de nada, `owner_id` en `tasks` y filtrado por dueño en el caso de uso (acceso cruzado responde **404, no 403**, para no filtrar existencia), y ocho comprobaciones de aceptación en §26.6. Se explica por qué compartir `Session`/`Role` entre el middleware transversal y `modules/users/` es legal: **RA-004** permite la API pública que `users/mod.rs` re-exporta, y `src/middleware/` está fuera de `modules/`, así que RA-001 a RA-003 y RA-007 no aplican. (2) **§2.2**: la fila «Autenticación completa» sigue excluyendo un crate `rdd-auth`, pero ahora remite a §26 como el camino soportado hoy; el framework no gana código de autenticación. (3) **§25.1/§25.2/§25.8**: se aclara que `todo-app-ddd` (raíz, PostgreSQL) es el banco de pruebas de la fase 0.2 y `example/todo-app` es el demo de aprendizaje, que su única diferencia con un proyecto recién generado es `.env`, que la migración inicial la genera el CLI (RF-192), y que el CORS se monta con `Cors::from_config()?`. (4) **RF-193 nuevo**: los ejemplos de `example/` DEBEN ser miembros del workspace y pasar `cargo test --workspace`, clippy `-D warnings` y fmt `--check`; fuera del workspace se pudren sin que nada lo detecte. (5) **§11.5 reescrito**: el snippet anterior encadenaba setters sobre `Cors::new()` mientras RF-092 exigía rechazo «en la construcción», dos cosas incompatibles. Ahora hay **dos tipos**: `Cors::new()` devuelve un builder acumulativo y `.build()` devuelve `Result<Cors, CorsConfigError>`; solo el `Cors` validado acepta `App::middleware`. `allow_origin` es repetible, `permissive()` devuelve `Cors` directamente y avisa en release (RF-091), y `from_config()` lee la sección `[cors]` del `rdd.toml` del directorio actual: **sin esa sección equivale a `Cors::new().build()`, o sea denegar todo**, nunca abrir por defecto. RF-090/RF-092/RF-093 se ajustan a esa forma y §15.1 gana `expose_headers`. (6) **§4.2**: `serde`, `toml` y `tracing` entran en las dependencias permitidas de `rdd-cors` y `rdd-logger`, porque RF-151 les manda leer su propia sección de `rdd.toml` y el núcleo no lleva parser de TOML (RA-014); **RF-095** se reescribe para decir «solo `rdd-core` entre los crates del framework», que es lo que RA-011 y ADR-13 protegen de verdad — ninguna plataforma ni Tower. (7) **RF-003/RF-004 reescritos**: ningún `.rs` generado puede quedar vacío ni ser solo cabecera; o tiene código funcional —declarar submódulos cuenta— o lleva un snippet de ejemplo. `src/generated/mod.rs`, cuyo código llega en 0.4, lleva un snippet **documental** en un bloque `ignore` de lo que emitirá el generador y no código que dependa de APIs sin implementar (RF-006); la otra excepción nombrada es `src/modules/mod.rs` con `--no-example`, cuyo contenido es el marcador `// rdd:mods` donde inserta `rdd g module`. `migrations/` lleva la migración inicial con módulo de ejemplo y `.gitkeep` solo con `--no-example`, única excepción porque git no trackea directorios vacíos. (8) **RF-192 nuevo**: con módulo de ejemplo, `rdd new` DEBE generar `migrations/0001_tasks.sql`, de modo que `rdd migrate` funciona sin editar SQL a mano; ninguna columna temporal hasta que se resuelva V15 (RF-187). El DDL resulta ser el mismo para SQLite y PostgreSQL (`id UUID`, `done BOOLEAN`): `rdd-sqlite` decodifica por nombre de tipo declarado, así que declarar `TEXT`/`INTEGER` —lo que la afinidad de SQLite permitiría— haría llegar `Value::Text`/`Value::I64` a un `from_row` que espera `Uuid`/`Bool`. Lo delató el `example/todo-app` que ya funcionaba y la suite de conformidad de `rdd-sqlite`. (9) **§21**: se añaden las dos casillas pendientes de 0.1 que salen de (7) y (8), y la de 0.3 con el demo y RF-193; la aceptación de 0.3 incorpora las ocho comprobaciones de §26.6. (10) **§26.2/§26.3/§26.5, decisiones que faltaban para poder escribir el código**: `RegisterDto` no lleva `role` —elegirlo en el cliente sería una escalada de privilegios—, así que el registro nace `user` salvo que el correo coincida con `ADMIN_EMAIL`, la tercera variable que lee `jwt_config.rs` y la única vía de bootstrap del admin; sin ella nadie es admin y la comprobación 4 de §26.6 solo verifica su mitad 403. El codec de tokens es el puerto `TokenCodec` (`issue` + `verify`) con un solo `Claims`, publicado por `users/mod.rs` para que `src/middleware/jwt.rs` lo importe por la vía de RA-004: dos copias del `Claims` derivarían en silencio. `0002_users.sql` añade `owner_id` con `ALTER TABLE`, seguro porque `rdd migrate` lleva la cuenta en `_sqlx_migrations`, y `email` es `UNIQUE` para que la carrera entre dos registros la resuelva la base y el adaptador la traduzca a 409 (RF-042). Y se separan las dos autorizaciones: `RequireRole` decide si la identidad puede ejecutar la operación, el caso de uso si el recurso es suyo — un admin tampoco borra tareas ajenas, recibe 404. (11) **§26.3, los snippets pasan a ser el código real**: `CorsConfigError` y `RateLimitConfigError` no tienen `From` hacia `rdd::Error`, así que el `?` lleva `map_err(|err| Error::Internal(err.into()))` —son fallos del operador, no del cliente (RF-041)—; el codec se construye una vez en `main.rs` con `modules::users::tokens()` y se pasa a `users::module(tokens)`, que lo registra como singleton, porque `std::env::set_var` es `unsafe` en edition 2024 y el workspace lo prohíbe, de modo que un test no puede inyectar `JWT_SECRET` por el entorno; y los handlers reenvían `session.id` al caso de uso (`list_of`, `remove_of`) en vez de dejar que el dueño venga en el DTO. Dos hallazgos de la aceptación quedan fijados: **`POST /auth/login` necesita `status = 200` explícito**, porque el 201 por omisión del verbo contradice la comprobación 2 de §26.6 (entrar no crea un recurso), y **`Vary` sale en minúsculas** —`HeaderName::as_str()` siempre lo está—, así que comprobarlo exige comparar sin distinguir mayúsculas. Por último, `argon2` habilita `password-hash/rand_core` pero **no** `rand_core/getrandom`: sin declarar `password-hash` con esa feature en el workspace, `OsRng` no existe y no se puede generar la sal. (12) **RF-063 y §5**: el `.gitignore` generado excluye también `*.db`, `*.db-shm` y `*.db-wal` cuando el motor es SQLite. Lo delató la aceptación en vivo de §26.6: `rdd migrate` crea `<paquete>.db` en la raíz del proyecto (RF-192) y el `.gitignore` anterior solo cubría `.env`, `target/` y `*.log`, así que la base con las cuentas y las tareas del demo quedaba versionable. Con PostgreSQL no se añaden esas líneas porque no hay archivo local. |
 
 ---
 
@@ -1767,44 +1928,62 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 ### 25.1 Qué es y dónde vive
 
 `todo-app-ddd/` está en la **raíz del repositorio**, es miembro del workspace y
-**la genera el CLI** (`rdd new todo-app-ddd`): no se mantiene a mano. Es la
-aceptación viva de la fase 0.2 (§21), un CRUD de tareas contra PostgreSQL real.
+**la genera el CLI** (`rdd new todo-app-ddd --database postgres`, RF-189): no se
+mantiene a mano. Es la aceptación viva de la fase 0.2 (§21), un CRUD de tareas
+contra PostgreSQL real.
 
 Vive en la raíz y no en `examples/` porque es el banco de pruebas del framework:
 al ser miembro del workspace, `cargo test --workspace` la compila y la ejercita, así
 que un cambio en el núcleo que rompa el scaffold se detecta en la misma corrida que
-los tests del núcleo. Sustituye al antiguo `examples/todo-app/` de §4.1.
+los tests del núcleo. Sustituye al antiguo `examples/todo-app/` de §4.1 como
+**banco de pruebas**; el `example/todo-app/` de §26 es otra cosa: un demo
+autenticado para aprender el framework, no la aceptación de la fase 0.2.
 
 ### 25.2 Estructura
 
-El árbol completo de §5, sin excepciones: `config/`, `common/`, `modules/tasks/`
-con sus nueve carpetas, `infrastructure/`, `integrations/`, `shared/` y `tests/`.
-Los nombres son los de §14.2 (`Task`, `TasksController`, `TasksService`,
-`TasksRepository`, el puerto `TaskStore`, `TaskMapper`, los tres DTOs y
-`MAX_TITLE_LEN`). Este anexo no repite el árbol: §5 es la referencia.
+El árbol mínimo funcional de §5: `config/`, `modules/tasks/` con sus cuatro
+capas, `generated/`, `migrations/` y `tests/`. No genera carpetas placeholder.
+Los nombres son los de §14.2 (`Task`, `TasksController`, `TasksUseCases`, el alias
+`TasksService`, `TasksRepository`, el puerto `TaskRepository`, `TaskResponse`, los
+tres DTOs de entrada y `MAX_TITLE_LEN`). Este anexo no repite el árbol: §5 es la
+referencia.
+
+La única diferencia con un proyecto recién generado es el contenido de `.env`:
+`--database postgres` ya deja la feature de la fachada, el `provider` de
+`rdd.toml` y el de Prisma apuntando a PostgreSQL (RF-189), pero la URL que genera
+lleva `CAMBIAR` por contraseña. Aquí se sustituye por la del contenedor `rdd-pg`
+(§25.4). La migración `migrations/0001_tasks.sql` ya la genera el CLI (RF-192) y
+coincide con §25.5: el DDL es el mismo para SQLite y PostgreSQL.
 
 ### 25.3 Persistencia
 
-`Task` implementa `Aggregate` (§7.1) y `Persist` (§12.2) con `TABLE = "tasks"` y
-`COLUMNS = ["id", "title", "done", "created_at"]`. Mientras `#[aggregate]` no esté
-implementada (RF-006), esas dos impls se escriben a mano en
-`modules/tasks/entities/task_entity.rs`; la macro las sustituirá sin cambiar el
-resto del módulo.
+`Task` implementa `Aggregate` (§7.1) con `type Id = Uuid` y `Persist` (§12.2) con
+`TABLE = "tasks"` y `COLUMNS = ["id", "title", "done"]`. Mientras `#[aggregate]` no
+esté implementada (RF-006), esas dos impls se escriben a mano en
+`modules/tasks/domain/task.rs`; la macro las sustituirá sin cambiar el resto del
+módulo. `from_row` lee por nombre (`row.value("id")?.as_uuid()?`), porque el orden
+de `Row` no es contractual (§12.1).
 
-`TasksRepository` envuelve `Repo<Task>` y implementa el puerto `TaskStore`, que es
-**async** (§14.2, transición a 0.2). El service depende de `TaskStore`, nunca del
-crate del motor (RA-007): cambiar `DATABASE_URL` a otro motor no toca ni el service
-ni el controller (RF-185).
+El puerto `TaskRepository` vive en `domain/tasks_repository.rs` y es **async**:
+declara `fn … -> impl Future<Output = …> + Send`, que es la forma real de
+`FromRequest` (§6.3), y el adaptador lo implementa con `async fn`. Un `async fn` en
+la declaración del trait no garantiza que el futuro sea `Send`, y los handlers de
+la plataforma sí lo exigen; el `+ Send` es lo que lo garantiza. El caso de uso es
+genérico sobre el puerto, así que no necesita object-safety ni el crate
+`async_trait`. El adaptador `TasksRepository` vive en
+`infrastructure/tasks_repository.rs`, envuelve `Repo<Task>` y no conoce ningún
+driver (RA-007). Cambiar `DATABASE_URL` a otro motor no toca ni el caso de uso ni el
+controller (RF-185).
 
 ```rust
-// modules/tasks/repositories/tasks_repository.rs
+// modules/tasks/infrastructure/tasks_repository.rs
 pub struct TasksRepository { repo: Repo<Task> }
 
 impl TasksRepository {
     pub fn new(repo: Repo<Task>) -> Self { Self { repo } }
 }
 
-impl TaskStore for TasksRepository {
+impl TaskRepository for TasksRepository {
     async fn list(&self) -> Result<Vec<Task>> { self.repo.all().await }
     async fn get(&self, id: Uuid) -> Result<Task> { self.repo.get(id).await }
     async fn save(&self, task: &Task) -> Result<()> { self.repo.save(task).await }
@@ -1812,13 +1991,9 @@ impl TaskStore for TasksRepository {
 }
 ```
 
-`TaskStore` usa `async fn` nativo en el trait, como `FromRequest` (§6.3): el service
-es genérico sobre el puerto, así que no necesita object-safety ni el crate
-`async_trait`.
-
 No hay `shared()` ni `new()` con un `static` global: el aislamiento de los tests lo
 dan `MemoryBackend` y `TestApp` (RF-160), y el `Repo<Task>` se inyecta desde el
-contenedor (§12.1).
+contenedor (§12.1) a través de las dos impls de `modules/tasks/mod.rs` (§6.3, §17).
 
 ### 25.4 Arranque
 
@@ -1840,8 +2015,10 @@ publicado en **5433**; ni el servicio nativo ni `todo-pg` se tocan.
 
 `App::new().database(url)` no conecta: `.run()` llama a `connect().await`, que
 resuelve el esquema `postgres://` por el registro de §12.6 y conecta el pool antes
-de abrir el socket (RF-111, RF-119). Sin `.env` o con `RDD_MEMORY=1`, la app arranca
-en memoria (RF-015).
+de abrir el socket (RF-111, RF-119). Sin `.env` la app **no** arranca en memoria:
+cae en la URL de respaldo de §14.3, que lleva `CAMBIAR` por contraseña y falla al
+conectar. Solo `RDD_MEMORY=1` fuerza memoria, y tiene prioridad sobre la URL
+(RF-015).
 
 ### 25.5 Esquema de la tabla
 
@@ -1905,7 +2082,7 @@ rdd = "..."
 // main.rs
 App::new()
     .database(env("DATABASE_URL"))
-    .middleware(Cors::from_config())
+    .middleware(Cors::from_config()?)
     .middleware(Logger::default())
     .module(tasks::module())
     // Axum:   .run("0.0.0.0:3000")
@@ -1914,3 +2091,220 @@ App::new()
     .run_on(AxumPlatform::new().layer(CompressionLayer::new()), "0.0.0.0:3000")
     .await
 ```
+
+---
+
+## 26. Anexo: el demo autenticado `example/todo-app`
+
+### 26.1 Qué es y dónde vive
+
+`example/todo-app/` es un demo para aprender el framework: una API TODO con
+registro e inicio de sesión por JWT, autorización por roles, CORS y rate limit.
+Es miembro del workspace (RF-193) y **lo genera el CLI** —`rdd new todo-app
+--database sqlite` ejecutado dentro de `example/`— igual que §25.1: no se mantiene
+un árbol alternativo a mano.
+
+No es el banco de pruebas de la fase 0.2, que es `todo-app-ddd/` en la raíz (§25),
+ni mete autenticación en el framework. §2.2 sigue declarando la autenticación
+completa fuera de alcance: lo que el demo demuestra es que el mecanismo de
+middlewares (§11), `Ext<T>` (RF-083) y los errores 401/403 del núcleo bastan para
+escribirla **en la aplicación**. Si algún día se extrae a un crate `rdd-auth`,
+este ejemplo es el punto de partida, no al revés.
+
+### 26.2 Estructura
+
+El árbol de §5 con dos módulos: `tasks`, el que genera el CLI, y `users`, añadido
+con `rdd g module users` y completado a mano. El nombre es `users` para que el
+agregado salga `User` por la regla de singularización (RF-005); su controller
+publica `/auth/register`, `/auth/login` y `/users/me`.
+
+```
+example/todo-app/
+├── migrations/
+│   ├── 0001_tasks.sql          # lo genera el CLI (RF-192)
+│   └── 0002_users.sql          # lo añade el demo
+├── src/
+│   ├── config/
+│   │   └── jwt_config.rs       # secreto, expiración y ADMIN_EMAIL, solo del entorno
+│   ├── middleware/             # transversal de la app, no es un módulo
+│   │   ├── mod.rs
+│   │   ├── jwt.rs              # JwtMiddleware: identifica, no rechaza
+│   │   ├── require_auth.rs     # RequireAuth: 401 si no hay sesión
+│   │   └── require_role.rs     # RequireRole: 403 si el rol no alcanza
+│   └── modules/
+│       ├── users/              # las cuatro capas de §5
+│       └── tasks/              # el del CLI, con los guards puestos
+└── tests/acceptance.rs         # 401, 403, 429 y preflight
+```
+
+`src/middleware/` y `config/jwt_config.rs` los añade el demo, no el CLI: no todos
+los proyectos necesitan middlewares propios y el scaffold no debe generar
+configuración de seguridad por omisión (RF-006, RN-030). Son código funcional, no
+placeholders, así que RF-004 no se relaja. Ningún archivo del demo queda en
+blanco: cada uno lleva código y un comentario que explica qué pinta ahí.
+
+**Cómo no violar RA-004.** `JwtMiddleware` es transversal: lo mismo lo usa `users`
+que `tasks`, y un módulo no puede importar archivos internos de otro. Por eso vive
+fuera de `modules/` y toma `Session` y `Role` de la **API pública** del módulo
+`users` —lo que `users/mod.rs` re-exporta con `pub use`—, que es exactamente lo que
+RA-004 permite. `tasks/presentation/` importa `Session` por esa misma vía.
+
+### 26.3 La receta JWT (a nivel de aplicación)
+
+Cuatro piezas, todas con API que ya existe:
+
+1. **`JwtMiddleware`** implementa `Middleware` (§11.1) y es **global**. Lee
+   `Authorization: Bearer <token>` y, si es válido, mete la identidad en las
+   extensiones (`req.extensions_mut().insert(session)`, RF-083). Si no hay
+   cabecera, o el token es inválido o expiró, **sigue igual sin sesión**: no
+   rechaza. Identifica, no autoriza.
+2. **`RequireAuth`** es el que rechaza: montado por controller, devuelve
+   `Err(Error::Unauthorized)` sin llamar a `next` (RF-082) cuando no hay sesión en
+   las extensiones, y el núcleo lo materializa como 401 con Problem Details
+   (§10.3).
+3. **`Ext<Session>`** en el handler lee la identidad. El controller no vuelve a
+   mirar la cabecera.
+4. **`RequireRole`** lee la sesión y devuelve `Err(Error::Forbidden)` → 403 si el
+   rol no alcanza. Se monta por ruta con
+   `#[middleware(RequireRole::new(Role::Admin))]` (§11.4, RF-086).
+
+Separar identificar (1) de exigir (2) lo fuerza el orden de RF-080 —global →
+módulo → controller → ruta—: un JWT global que rechazara sin token dejaría fuera
+`/auth/register`, `/auth/login` y `/health`, y un JWT de controller correría
+**después** del `RateLimit` global, que entonces no tendría identidad con qué
+contar (RF-109). Con el desdoble, `RateLimit` ve la sesión cuando la hay y
+`RequireAuth` decide qué rutas la exigen.
+
+```rust
+// main.rs — los tres globales, en este orden (§26.4)
+let tokens = modules::users::tokens();
+App::new()
+    .middleware(Cors::from_config().map_err(|err| Error::Internal(err.into()))?)
+    .middleware(JwtMiddleware::new(Arc::new(tokens.clone())))
+    .middleware(
+        RateLimit::new(100, Duration::from_secs(60), rate_key)
+            .map_err(|err| Error::Internal(err.into()))?,
+    )
+    .module(modules::users::module(tokens))
+```
+
+`CorsConfigError` y `RateLimitConfigError` no tienen `From` hacia `rdd::Error`, así
+que el `?` del snippet necesita el `map_err`: son fallos de configuración, o sea
+500 (RF-041), y no un 400 que culparía al cliente de algo que puso el operador.
+
+El codec se construye **una vez en `main.rs`** y se le pasa al módulo, que lo
+registra como singleton del contenedor. No lo construye la fábrica del módulo:
+`std::env::set_var` es `unsafe` en edition 2024 y el workspace prohíbe `unsafe`
+(RF-143), así que un test no puede inyectar `JWT_SECRET` por el entorno. Recibirlo
+como parámetro es lo que deja probar el login con un secreto de prueba.
+
+```rust
+#[controller("/tasks")]
+#[middleware(RequireAuth)]
+impl TasksController {
+    #[get("/")]
+    async fn list(
+        svc: TasksService,
+        session: Ext<Session>,
+        query: Query<QueryTaskDto>,
+    ) -> Result<Vec<TaskResponse>> {
+        svc.list_of(session.id, query.q, query.done).await
+    }
+
+    #[delete("/:id")]
+    #[middleware(RequireRole::new(Role::Admin))]
+    async fn remove(svc: TasksService, session: Ext<Session>, id: Path<Uuid>) -> Result<()> {
+        svc.remove_of(session.id, *id).await
+    }
+}
+```
+
+El dueño viaja en el `session` del handler al caso de uso, no en el DTO: si viniera
+en el cuerpo, el cliente elegiría de quién es la tarea.
+
+El secreto y la expiración vienen **solo del entorno** (`JWT_SECRET`,
+`JWT_TTL_SECS`), nunca del código ni de `rdd.toml` (RF-063, RN-030). Las
+contraseñas se guardan con `argon2`, nunca en claro ni con un hash reversible.
+`User` no deriva `Deserialize` (RF-031): la entrada son `RegisterDto` y `LoginDto`.
+Las dependencias del demo —`jsonwebtoken` y `argon2`— no las arrastra el núcleo
+(RA-011, RA-014).
+
+**De dónde sale el `admin`.** `RegisterDto` NO lleva campo `role`: dejar que el
+cliente lo elija sería una escalada de privilegios. El registro nace siempre
+`user`, salvo que el correo coincida con `ADMIN_EMAIL` (tercera variable de
+`jwt_config.rs`, comparada sin distinguir mayúsculas). Es la única vía de
+bootstrap del demo: no hay endpoint para cambiar el rol ni un usuario sembrado
+con contraseña conocida en el SQL. Sin `ADMIN_EMAIL` puesta, nadie es admin y la
+comprobación 4 de §26.6 se verifica solo en su mitad 403.
+
+**Identificar y autorizar son dos pasos.** El codec de tokens es un puerto del
+dominio `users` (`TokenCodec`, con `issue` y `verify`); su adaptador HS256 vive en
+`users/infrastructure/` y se publica con `pub use` desde `users/mod.rs`, que es lo
+que RA-004 permite importar a `src/middleware/jwt.rs`. Así el `Claims` del JWT se
+escribe una sola vez: si emisión y verificación tuvieran cada una su copia,
+cambiar un campo rompería el login en silencio.
+
+### 26.4 Orden de los middlewares
+
+Cadena efectiva de una ruta protegida. Los tres primeros son globales y se
+registran en ese orden; `RequireAuth` es de controller y `RequireRole` de ruta
+(RF-080):
+
+```
+CORS ─► JwtMiddleware ─► RateLimit ─► [módulo] ─► RequireAuth ─► RequireRole ─► handler
+```
+
+- **CORS primero** (RF-085): el preflight `OPTIONS` se responde 204 sin pasar por
+  la autenticación (RF-094). Invertir el orden rompe el navegador: el preflight
+  viaja sin credenciales, así que un 401 ahí impide la petición real para siempre.
+- **RateLimit después de identificar**: su clave es la identidad autenticada
+  (`user:<id>`), no una cabecera que el cliente pueda cambiar (RF-109). Sin
+  identidad la clave es `anonymous`, de modo que registro y login también quedan
+  limitados.
+- El 429 lleva Problem Details, `Retry-After` y `RateLimit-*` (RF-107). CORS lo
+  cubre porque es global y envuelve también el fallback (RF-081).
+
+`RequireAuth` se monta por controller, no global: `/auth/register`, `/auth/login`
+y `/health` tienen que seguir siendo públicos. `JwtMiddleware` sí es global porque
+solo identifica y no rechaza nada (§26.3).
+
+### 26.5 Persistencia
+
+SQLite (RF-111), el motor predeterminado del CLI: no necesita servidor, así que el
+demo se verifica completo sin Docker ni red. `User` y `Task` implementan
+`Aggregate` + `Persist` a mano (RF-006) sobre `Repo<T>`. `users` guarda
+`id, email, password_hash, role`; `tasks` gana `owner_id` para que cada quien vea
+solo las suyas. Filtrar por dueño es responsabilidad del **caso de uso**, no del
+controller: el controller no decide nada (§5.1). Ninguna columna temporal
+(RF-187, V15).
+
+`0002_users.sql` crea `users` y añade `owner_id` a `tasks` con `ALTER TABLE`. Es
+seguro porque `rdd migrate` lleva la cuenta en `_sqlx_migrations` y no reaplica
+(§14.1); el demo parte de una base vacía, así que no hay filas anteriores que
+queden sin dueño. `email` lleva `UNIQUE`: la carrera entre dos registros del
+mismo correo la resuelve la base, y el adaptador la traduce a 409 (RF-042).
+
+**Rol y dueño son dos autorizaciones distintas.** `RequireRole` decide si la
+identidad puede ejecutar la operación (`DELETE` exige `admin`); el caso de uso
+decide si el recurso es suyo. Un admin tampoco borra tareas ajenas: recibe 404,
+igual que cualquier otro, porque el recurso no existe *para él* (§26.6,
+comprobación 8).
+
+### 26.6 Verificación
+
+| ID | Requisito |
+|---|---|
+| RF-193 | Los ejemplos de `example/` DEBEN ser miembros del workspace y pasar la puerta completa: `cargo test --workspace`, `cargo clippy --all-targets -- -D warnings` y `cargo fmt --all -- --check`. Un ejemplo fuera del workspace se pudra sin que nada lo detecte. |
+
+Aceptación del demo, sobre SQLite y sin servidor:
+
+1. `rdd migrate` crea `tasks` y `users`; `cargo run` arranca.
+2. `POST /auth/register` → 201; `POST /auth/login` → 200 con un JWT.
+3. `GET /tasks` sin token → **401** con Problem Details; con token → 200.
+4. `DELETE /tasks/:id` con rol `user` → **403**; con rol `admin` → 204.
+5. `OPTIONS /tasks` con `Origin` y `Access-Control-Request-Method` → **204** con
+   las cabeceras de RF-096 y **sin** pasar por `JwtMiddleware` (C-09).
+6. Superar el límite → **429** con `Retry-After` y `RateLimit-*` (RF-107).
+7. Reiniciar la app: el usuario y las tareas siguen ahí.
+8. Un usuario no ve las tareas de otro ni las borra: 404, no 403, para no revelar
+   que el recurso existe.

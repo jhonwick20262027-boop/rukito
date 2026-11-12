@@ -4,12 +4,15 @@
   RDD.config = {
     repo: "https://github.com/jhonwick20262027-boop/rukito",
     version: "v0.1.0",
-    specVersion: "0.10.1-draft",
+    specVersion: "0.10.3-draft",
   };
   RDD.searchIndex = [
     { title: "Guía rápida", section: "Inicio", keywords: "rdd, rust, api, empezar", url: "guide/inicio-rapido.html" },
     { title: "Arquitectura", section: "Framework", keywords: "rdd, crates, workspace, dependencias", url: "guide/arquitectura.html" },
     { title: "CLI", section: "Referencia", keywords: "rdd, comandos, new, module, run", url: "guide/cli.html" },
+    { title: "GraphQL", section: "Guías", keywords: "graphql, schema, explorer, macros, sse, subscriptions", url: "guide/graphql.html" },
+    { title: "Tiempo real (WebSocket)", section: "Guías", keywords: "websocket, socket.io, rdd-socket, hub, salas, presencia, ws", url: "guide/tiempo-real.html" },
+    { title: "JWT en el explorer", section: "Guías", keywords: "jwt, bearer, token, explorer, graphql, cabeceras, login", url: "guide/jwt-explorer.html" },
     { title: "Especificación", section: "Referencia", keywords: "rdd, spec, requisitos, arquitectura", url: "especificacion.html" },
   ];
 

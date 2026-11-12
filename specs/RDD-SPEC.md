@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.10.1-draft |
+| Versión del documento | 0.10.3-draft |
 | Fecha | 2026-11-11 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
@@ -1661,7 +1661,7 @@ suscripción) sigue pasando por el guardián (RF-239, RF-242). La CSP y el
 | RF-238 | Una operación de suscripción DEBE responderse como `text/event-stream` con `Cache-Control: no-store` solo si `Accept` incluye `text/event-stream`; si no, 406 en Problem Details. El flujo emite un `event: next` con `data:` (payload `{"data"|"errors"}` en una línea), comentarios `: ping` como latido y un `event: complete` al cerrarse; no usa `id:` ni reanudación y `Last-Event-ID` se ignora. Si el cliente desconecta, la suscripción se cancela al cerrarse la cola y no queda tarea huérfana. Al completarse `ShutdownSignal`, el montaje DEBE llamar a `GraphqlHttp::shutdown()` para cerrar los flujos dentro de `shutdown_grace` (RP-009). No se ofrece transporte WebSocket para suscripciones (ADR-28). |
 | RF-239 | `GraphqlHttpConfig::authorize(&Request)` DEBE ejecutarse después de los globales y antes de parsear o ejecutar: `Ok` continúa y `Err` se responde con el mapeo del núcleo a Problem Details, igual que `SocketHandler::authorize` (RP-024). El guardián DEBE cubrir las operaciones y las suscripciones; el documento del explorer también pasa por él salvo que `public_explorer(true)` esté activo, en cuyo caso solo el `GET` sin `query` queda exento. `GraphqlHttp` DEBE construir el `GraphqlContext` de cada operación con las extensiones de la petición preparada —incluido el `Arc<Container>` de RF-084— para que un resolutor lea la identidad con `ctx.ext::<Session>()`, un recurso con `ctx.get::<T>()` y un provider con `ctx.resolve()`. |
 | RF-240 | Las macros DEBEN generar el esquema a partir del código: `#[derive(GraphqlObject)]` y `#[derive(GraphqlInput)]` publican los campos (con `snake_case` → `camelCase`, doc comment como `description`, `#[graphql(name = "…")]` en el tipo o en el campo, y `#[graphql(skip)]`), y `#[graphql_object(query \| mutation \| subscription)]` sobre un `impl` publica sus métodos como campos raíz. En un `impl` de raíz, cada método DEBE ser `async`, recibir `&GraphqlContext` y devolver `rdd::Result<T>`; en `subscription` el retorno es `rdd::Result<GraphqlStream<T>>`. Un tipo o firma no soportada es el diagnóstico RDD0501 y un nombre duplicado o reservado (`__`) es RDD0502, ambos con span exacto y `help:`. Las rutas absolutas de RN-012 se conservan. |
-| RF-241 | El explorer DEBE servirse en `GET /graphql` sin `query` como `text/html; charset=utf-8`, autocontenido y embebido en el binario con `include_str!`: sin CDN, sin peticiones a terceros y sin recursos externos. La interfaz es una app Vue 3 + TypeScript + Tailwind + shadcn-vue compilada con Vite a un único HTML con JS y CSS inline; el artefacto se commitea y se regenera con un comando reproducible (`npm ci && npm run build`). DEBE ofrecer editor CodeMirror 6 con resaltado y autocompletado GraphQL al estilo VS Code, árbol de esquema y documentación generados desde `__schema`, pestañas de variables y cabeceras (incluido `Authorization`), ejecución con estado, errores, tiempo y respuesta JSON, suscripción SSE leyendo el cuerpo de un POST con `fetch` (no `EventSource`, que no admite POST) con botón de detener, e historial local de operaciones. Usa el sistema de diseño «oxide forge» del sitio público (neutros cálidos, óxido, ámbar y verde ácido; tipografías Space Grotesk, Inter y JetBrains Mono con degradación a fuentes del sistema, sin descargas externas) con tema oscuro por defecto y variante clara. DEBE enviar `Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'` y `X-Content-Type-Options: nosniff`; la CSP no se relaja y el bundle no usa `eval`. Con `.explorer(false)` la ruta responde 404 en Problem Details. |
+| RF-241 | El explorer DEBE servirse en `GET /graphql` sin `query` como `text/html; charset=utf-8`, autocontenido y embebido en el binario con `include_str!`: sin CDN, sin peticiones a terceros y sin recursos externos. La interfaz es una app Vue 3 + TypeScript + Tailwind + shadcn-vue compilada con Vite a un único HTML con JS y CSS inline; el artefacto se commitea y se regenera con un comando reproducible (`npm ci && npm run build`). DEBE ofrecer editor CodeMirror 6 con resaltado y autocompletado GraphQL al estilo VS Code —sugerencias al escribir y con Ctrl+Espacio, Tab indenta la selección o la línea y, con el desplegable abierto, Tab acepta la sugerencia activa—, árbol de esquema y documentación generados desde `__schema`, pestañas de variables y cabeceras (incluido `Authorization`), ejecución con estado, errores, tiempo y respuesta JSON, suscripción SSE leyendo el cuerpo de un POST con `fetch` (no `EventSource`, que no admite POST) con botón de detener, e historial local de operaciones. Usa el sistema de diseño «oxide forge» del sitio público (neutros cálidos, óxido, ámbar y verde ácido; tipografías Space Grotesk, Inter y JetBrains Mono con degradación a fuentes del sistema, sin descargas externas) con tema oscuro por defecto y variante clara. DEBE enviar `Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'` y `X-Content-Type-Options: nosniff`; la CSP no se relaja y el bundle no usa `eval`. Con `.explorer(false)` la ruta responde 404 en Problem Details. |
 | RF-242 | `GraphqlHttpConfig` DEBE exponer `path` (por defecto `/graphql`), `explorer` (por defecto `true`), `public_explorer` (por defecto `false`) y `max_depth` (por defecto 16); un `max_depth` de 0 o un `path` vacío o sin `/` inicial DEBE fallar el arranque con un mensaje que nombre el campo. Los límites de cuerpo y de tiempo de apagado vienen de `Limits` y no se duplican (RF-017, RP-009). |
 | RF-243 | La fachada DEBE declarar `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y reexportar `rdd_graphql` como `rdd::graphql` con `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y las macros; `rdd-axum` DEBE declarar `graphql = ["dep:rdd-graphql"]`. Activar `graphql` sin `axum` es un error de compilación claro (RP-012) y `rdd-graphql` no aparece en el árbol de `rdd-core` ni de `rdd-hyper` (RA-021). |
 | RF-244 | `SchemaBuilder::build` DEBE validar el esquema y fallar al arrancar si dos raíces publican un campo con el mismo nombre, si un tipo aparece dos veces con definiciones distintas, si un nombre empieza por `__`, o si una raíz declarada no expone ningún campo: el mensaje DEBE nombrar el tipo y el campo. Un `panic` o un `Error` interno de un resolutor NO DEBE tumbar la petición ni el servidor: se registra con `tracing` (RN-040) y el cliente recibe `errors[{message: "error interno"}]` con `path`, sin detalle interno. |
@@ -2863,7 +2863,8 @@ compilado a un único `explorer.html` inline, `public_explorer` en
 - [ ] Sistema de diseño «oxide forge» con tema oscuro por defecto y variante
       clara, accesibilidad y atajo Cmd/Ctrl+Enter (RF-241)
 - [ ] Editor CodeMirror 6 con resaltado y autocompletado GraphQL alimentado por
-      `__schema` (RF-237, RF-241)
+      `__schema`, Tab para indentar y aceptar la sugerencia activa (RF-237,
+      RF-241)
 - [ ] Build reproducible (`npm ci && npm run build`) que emite
       `crates/rdd-graphql/src/explorer.html` con JS/CSS inline, sin recursos
       externos y sin `eval` (RF-241, ⚠️ V24)
@@ -2877,7 +2878,7 @@ compilado a un único `explorer.html` inline, `public_explorer` en
       (§26.9)
 - [ ] G-06, G-08 y G-09 actualizados: HTML único, CSP intacta y
       `explorer(false)` en 404 (RF-241)
-- [ ] Docs regenerados y `specVersion` a `0.10.1-draft`
+- [ ] Docs regenerados y `specVersion` a `0.10.3-draft`
 
 **Aceptación:** abrir `GET /graphql` en un navegador sin token muestra el
 explorer y permite ejecutar operaciones tras pegar el Bearer; el editor
@@ -3000,6 +3001,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.8.0-draft | 2026-11-11 | **MCP sobre Streamable HTTP (`/mcp`).** El protocolo de 0.7 no cambia; se añade el transporte remoto que ADR-21 dejó como fase futura. (1) **§2.1/§2.2**: MCP por HTTP entra como fase 0.9; siguen fuera el montaje en plataformas distintas de `rdd-axum`, `GET /mcp`, la reanudación con `Last-Event-ID`, las sesiones distribuidas, el batching y las versiones `2025-03-26`/`2024-11-05` por HTTP. (2) **§4.1/§4.2/§4.3**: `rdd-axum` gana la feature `mcp-http` y es el único que puede depender de `rdd-mcp`; nueva **RA-020** (la dependencia va en una sola dirección y `rdd-hyper` no arrastra `rdd-mcp`). (3) **§4.4**: `Prepared` y `HttpApp::prepare` como punto de entrada fuera de la tabla de rutas; nuevas **RP-028** (globals + contenedor sin reordenar la cadena) y **RP-029** (el montaje respeta RP-006, no interpreta JSON-RPC y se prueba con M-10 a M-15). `dispatch` no sirve `/mcp`. (4) **§10.6/§10.7**: `ToolContext::ext` y `serve_stdio_with`/`serve_io_with`, para que la identidad llegue por contexto; el comportamiento por stdio no cambia salvo que ahora puede sembrar extensiones. (5) **§10.8 nuevo**: `McpHttp`, `McpHttpConfig`, `McpHttpResponse`, `SseStream`, `AxumPlatform::mcp`, tabla de estados y **RF-222 a RF-232** (montaje y choque de rutas; sesión con `Mcp-Session-Id`, TTL y tope; POST único con `Content-Type`/`Accept`; versiones `2025-11-25`/`2025-06-18`; SSE con progreso y sin reanudación; cancelación entre POSTs; `Origin` + `authorize` + identidad por contexto; tope de 64 en vuelo y apagado; `Cache-Control: no-store` y sesión fuera de los logs; demo `--mcp-http`; casos M-10 a M-16). (6) **§12.6**: feature `mcp-http = ["mcp", "axum/mcp-http"]` y re-export de `McpHttp`. (7) **§20**: suite M-10 a M-16 contra un servidor real y el demo. (8) **§21**: fase 0.9 con aceptación de dos usuarios, 401/403, SSE, cancelación, DELETE y RA-018/RA-020. (9) **§22**: **V20** (origen del `Stream` para SSE y desconexión del cliente) y **V21** (clientes MCP reales sobre HTTP). (10) **§23**: **ADR-23** (semántica neutral + montaje en la plataforma), **ADR-24** (sesiones en memoria, sin GET ni reanudación, versiones acotadas) y **ADR-25** (identidad en `ToolContext`). (11) **§26.7/§26.8**: las tools leen `Session` de `ctx`, el modo `--mcp` la siembra desde `MCP_OWNER_ID` y el modo `--mcp-http` monta `/mcp` con la receta JWT y `authorize`. |
 | 0.10.0-draft | 2026-11-11 | **Explorer profesional y documento público configurable.** Petición del usuario: un explorer tipo Apollo Sandbox con Vue + shadcn y paleta de GitHub. (1) **ADR-29** se enmienda: el explorer pasa de HTML a mano a una app Vue 3 + TypeScript + Tailwind + shadcn-vue + CodeMirror compilada con Vite a un único HTML inline, commiteado y embebido con `include_str!`; el runtime sigue sin CDN ni `eval` y la CSP no cambia. (2) **RF-239/241/242**: `authorize` exime solo el documento cuando `public_explorer(true)` (por defecto `false`); el explorer gana esquema/documentación por introspección, autocompletado, variables/cabeceras, respuesta, SSE e historial con tema Primer claro/oscuro. (3) **G-06/G-08/G-09** cubren el HTML único y el documento público; el demo activa `public_explorer(true)`. (4) **§21**: fase 0.11 con aceptación en navegador. (5) **§22**: **V24** (tamaño, CSP y reproducibilidad del bundle). (6) **§26.9**: el demo monta el explorer público y las operaciones siguen con JWT. |
 | 0.10.1-draft | 2026-11-11 | **El explorer adopta el sistema de diseño del sitio público.** Petición del usuario: alinear la UI con el design system de la documentación. (1) **RF-241** cambia la paleta Primer por «oxide forge»: neutros cálidos, óxido `#ff5a1f`, ámbar `#ffb347`, verde ácido `#a3e635`, arco `#4f9dff` y magenta `#ff3d7f`; tipografías Space Grotesk/Inter/JetBrains Mono con degradación a fuentes del sistema, sin descargas externas. (2) **§21/fase 0.11**: la casilla pasa a exigir tema oscuro por defecto y variante clara; el documento sube a `0.10.1-draft`. (3) El resaltado de CodeMirror deja de depender de `@uiw/codemirror-theme-github` y pasa a un tema propio que consume las variables CSS del design system, de modo que el cambio claro/oscuro es inmediato y el artefacto sigue siendo un único HTML sin red ni `eval`. |
+| 0.10.2-draft | 2026-11-11 | **Tab indenta y acepta la sugerencia del editor.** Petición del usuario: el editor de CodeMirror no indentaba al tabular y el autocompletado debía funcionar. (1) **RF-241**: el editor DEBE indentar la línea o la selección con Tab, desindentar con Shift+Tab y aceptar la sugerencia activa con Tab cuando el desplegable está abierto; además autocompleta al escribir y con Ctrl+Espacio. (2) **§21/fase 0.11**: la casilla del editor incorpora Tab; el documento sube a `0.10.2-draft`. (3) El cambio vive en la extensión de teclas del explorer y no altera el artefacto autocontenido ni la CSP. |
+| 0.10.3-draft | 2026-11-11 | **El montaje de `/graphql` se configura por entorno.** Petición del usuario: ver dónde se configuran `path`, `explorer`, `public_explorer` y `max_depth`. (1) **§26.9**: el bloque `--graphql` de `main.rs` consume `config/graphql_config.rs`, que expone `GRAPHQL_PATH`, `GRAPHQL_EXPLORER`, `GRAPHQL_PUBLIC_EXPLORER` y `GRAPHQL_MAX_DEPTH` con los valores que antes estaban fijos; el demo mantiene el explorer público para G-09 y en producción se desactiva con `GRAPHQL_EXPLORER=false` o se protege con `GRAPHQL_PUBLIC_EXPLORER=false`. (2) El README del demo documenta las cuatro variables y el listado de argumentos del binario (`--mcp`, `--mcp-http`, `--graphql` y `--explorer-token`), y la guía de la CLI documenta `rdd run --memory` y el reenvío tras `--`. El documento sube a `0.10.3-draft`. |
 | 0.9.0-draft | 2026-11-11 | **GraphQL opcional (`/graphql`): consultas, mutaciones, suscripciones y explorer.** Petición del usuario. Se resuelve con un motor propio, macros y SSE, por las mismas razones de portabilidad que MCP. (1) **§2.1/§2.2**: GraphQL sale de la lista de exclusiones y entra como fase 0.10 opcional, sobre el mismo `HttpApp` y el mismo contenedor; siguen fuera SDL, directivas propias, interfaces, uniones, enums, `@defer`/`@stream`, batching, consultas persistidas y el subprotocolo `graphql-transport-ws`. (2) **§4.1/§4.2/§4.3**: entra `rdd-graphql` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow`); `rdd-axum` gana la feature `graphql`; nueva **RA-021** (la dependencia va en una sola dirección, el motor no arrastra plataformas ni WebSocket y `rdd-hyper` no arrastra `rdd-graphql`). (3) **§4.4**: nuevas **RP-030** (el montaje `/graphql` ejecuta `prepare`, no interpreta el documento y se prueba con G-01 a G-09) y **RP-031** (el stream SSE sale del motor y la plataforma solo lo vuelca; desconectar cancela; sin reintento ni WebSocket). **§4.5**: la suite G no añade casos C. (4) **§8.7**: diagnósticos **RDD0501** (tipo o firma no soportada) y **RDD0502** (nombre duplicado o reservado). (5) **§10.9 nuevo**: `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y `AxumPlatform::graphql`, con el subconjunto del documento, la forma de `errors`, la introspección, el formato `graphql-sse` y **RF-233 a RF-244** (montaje y choque de rutas; POST/GET con su tabla de estados; subconjunto del documento con `max_depth`; validación, ejecución y burbujeo de `null`; introspección; SSE con `next`/`complete` y cancelación; `authorize` e identidad por `ext`/`get`/`resolve`; macros con RDD0501/RDD0502; explorer embebido con CSP; configuración; feature de la fachada; validación del esquema y errores internos). (6) **§12.6**: feature `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y re-export como `rdd::graphql`. (7) **§20**: suite G-01 a G-09 contra el motor y un servidor real. (8) **§21**: fase 0.10 con aceptación de dos usuarios, 401 en explorer y suscripción, explorer sin red, SSE y errores con `locations`/`path`. (9) **§22**: **V22** (clientes GraphQL reales e introspección/GET/SSE) y **V23** (expansión de macros y coste de `max_depth`). (10) **§23**: **ADR-26** (motor propio), **ADR-27** (macros en vez de SDL), **ADR-28** (suscripciones solo por SSE) y **ADR-29** (explorer propio embebido). (11) **§26.9**: el demo monta `/graphql` con JWT, un esquema sobre los casos de uso, una suscripción sobre `TaskFeed` filtrada por dueño y el explorer. |
 
 ---
@@ -3694,14 +3697,42 @@ if std::env::args().skip(1).any(|arg| arg == "--graphql") {
         .mutation(app_graphql::Mutation)
         .subscription(app_graphql::Subscription)
         .build()?;
+    let gql = config::graphql_config::load();
     let graphql = GraphqlHttp::new(schema).config(
         GraphqlHttpConfig::new()
-            .public_explorer(true)
+            .path(gql.path)
+            .explorer(gql.explorer)
+            .public_explorer(gql.public_explorer)
+            .max_depth(gql.max_depth)
             .authorize(require_session),
     );
     return app
         .run_on(AxumPlatform::new().graphql(graphql), &addr)
         .await;
+}
+```
+
+El montaje sale de `config/graphql_config.rs`, que centraliza las cuatro opciones
+de `GraphqlHttpConfig` (§10.9, RF-242) como variables de entorno:
+`GRAPHQL_PATH` (`/graphql` por defecto), `GRAPHQL_EXPLORER` (`true`),
+`GRAPHQL_PUBLIC_EXPLORER` (`true` en el demo) y `GRAPHQL_MAX_DEPTH` (`16`).
+El demo conserva el explorer público para que G-09 pueda abrir el documento sin
+token; en producción basta `GRAPHQL_EXPLORER=false` para que una petición ya
+autorizada reciba 404 (RF-241) —sin credenciales, `authorize` responde 401
+antes— o `GRAPHQL_PUBLIC_EXPLORER=false` para exigir `authorize` también al
+documento.
+
+```rust
+// config/graphql_config.rs — montaje de `/graphql` (§26.9)
+pub fn load() -> GraphqlConfig {
+    GraphqlConfig {
+        path: super::env_or("GRAPHQL_PATH", "/graphql"),
+        explorer: super::env_or("GRAPHQL_EXPLORER", "true") == "true",
+        public_explorer: super::env_or("GRAPHQL_PUBLIC_EXPLORER", "true") == "true",
+        max_depth: super::env_or("GRAPHQL_MAX_DEPTH", "16")
+            .parse()
+            .unwrap_or(16),
+    }
 }
 ```
 
@@ -3716,6 +3747,11 @@ nuevo initializer `config/explorer_config.rs`, ajustable por
 `EXPLORER_USER_ID` y `EXPLORER_EMAIL`; el UUID fijo conserva las tareas del
 explorer entre arranques. El token no se registra en la base y caduca con
 `JWT_TTL_SECS` (§26.3).
+
+El binario reconoce cuatro argumentos: `--mcp` (stdio, sin puerto), `--mcp-http`
+(`/mcp`), `--graphql` (`GRAPHQL_PATH`) y `--explorer-token` (imprime el Bearer y
+sigue). Los tres modos de servidor son excluyentes y se evalúan en ese orden; el
+README del demo mantiene el listado y los ejemplos de combinación.
 
 ```rust
 // config/explorer_config.rs — identidad del token de explorer (§26.9)

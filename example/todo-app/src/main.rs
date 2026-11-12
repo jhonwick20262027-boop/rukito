@@ -139,9 +139,13 @@ async fn main() -> Result<()> {
             .mutation(app_graphql::Mutation)
             .subscription(app_graphql::Subscription)
             .build()?;
+        let gql = config::graphql_config::load();
         let graphql = GraphqlHttp::new(schema).config(
             GraphqlHttpConfig::new()
-                .public_explorer(true)
+                .path(gql.path)
+                .explorer(gql.explorer)
+                .public_explorer(gql.public_explorer)
+                .max_depth(gql.max_depth)
                 .authorize(require_session),
         );
         return app

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GraphQL en rdd: esquema Rust, explorer y suscripciones SSE</title>
+  <meta name="description" content="Monta /graphql sobre el mismo contenedor de rdd: esquema desde tipos Rust, consultas, mutaciones, suscripciones por SSE y explorer embebido.">
+  <meta name="keywords" content="rdd GraphQL, Rust GraphQL, GraphqlHttp, explorer GraphQL, SSE, subscriptions, rdd-graphql">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-192.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="GraphQL en rdd: esquema Rust, explorer y suscripciones SSE">
+  <meta property="og:description" content="Monta /graphql sobre el mismo contenedor de rdd: esquema desde tipos Rust, consultas, mutaciones, suscripciones por SSE y explorer embebido.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="GraphQL en rdd: esquema Rust, explorer y suscripciones SSE">
+  <meta name="twitter:description" content="Esquema desde tipos Rust, consultas, mutaciones, SSE y explorer embebido.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html#article",
+        "headline": "GraphQL en rdd: esquema Rust, explorer y suscripciones SSE",
+        "description": "Monta /graphql sobre el mismo contenedor de rdd: esquema desde tipos Rust, consultas, mutaciones, suscripciones por SSE y explorer embebido.",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html",
+        "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html",
+        "inLanguage": "es",
+        "proficiencyLevel": "Intermediate",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "name": "rdd"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "dateModified": "2026-11-11",
+        "about": [
+          { "@type": "Thing", "name": "GraphQL" },
+          { "@type": "Thing", "name": "Rust" },
+          { "@type": "Thing", "name": "Server-Sent Events" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Inicio", "item": "https://jhonwick20262027-boop.github.io/rukito/" },
+          { "@type": "ListItem", "position": 2, "name": "GraphQL", "item": "https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body data-root=".." data-nav="guide">
+  <div id="site-header-root"></div>
+
+  <script src="../assets/js/highlight.js"></script>
+  <script src="../assets/js/site.js"></script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="inicio-rapido.html">Guía rápida</a>
+        <a href="arquitectura.html">Arquitectura</a>
+        <a href="cli.html">CLI</a>
+        <a href="graphql.html" class="active">GraphQL</a>
+        <a href="tiempo-real.html">Tiempo real</a>
+        <a href="jwt-explorer.html">JWT en el explorer</a>
+        <a href="../especificacion.html">Especificación</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Inicio</a><span class="sep">/</span><span class="here">GraphQL</span>
+      </nav>
+
+      <h1>GraphQL en rdd</h1>
+      <p>GraphQL es una entrada opcional sobre el mismo <code>HttpApp</code> y el mismo
+      contenedor: los resolutores llaman a los casos de uso y la identidad la siguen
+      dejando los middlewares globales. No sustituye a REST; convive con él.</p>
+
+      <section class="section">
+        <h2>Activar la feature y montar <code>/graphql</code></h2>
+        <p>La fachada declara la feature <code>graphql</code>, que trae el motor, las
+        macros y el montaje de la plataforma:</p>
+        <pre data-lang="toml"><code>rdd = { version = "0.1", features = ["graphql"] }</code></pre>
+        <p>El montaje va en <code>main.rs</code>, después de componer la app:</p>
+        <pre data-lang="rust"><code>use rdd::AxumPlatform;
+use rdd::graphql::{GraphqlHttp, GraphqlHttpConfig, Schema};
+
+let schema = Schema::builder()
+    .query(app_graphql::Query)
+    .mutation(app_graphql::Mutation)
+    .subscription(app_graphql::Subscription)
+    .build()?;
+let graphql = GraphqlHttp::new(schema).config(
+    GraphqlHttpConfig::new()
+        .path("/graphql")
+        .explorer(true)
+        .public_explorer(false)
+        .max_depth(16)
+        .authorize(require_session),
+);
+
+App::new()
+    .module(tasks::module())
+    .run_on(AxumPlatform::new().graphql(graphql), "0.0.0.0:3000")
+    .await</code></pre>
+        <ul>
+          <li><code>GraphqlHttpConfig::new()</code> ya deja <code>/graphql</code>, explorer activo, <code>public_explorer(false)</code> y profundidad 16; los setters existen para cambiarlo.</li>
+          <li>Un <code>path</code> vacío o sin <code>/</code> inicial, un <code>max_depth</code> de 0, un choque con una ruta HTTP, un canal, <code>/mcp</code> u otro <code>/graphql</code> impiden arrancar (RF-233, RF-242).</li>
+          <li>Sin la feature o sin <code>.graphql(...)</code>, el router no cambia: <code>/graphql</code> responde el 404 del <code>fallback</code>.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>El esquema es el tipo Rust</h2>
+        <p>No hay SDL aparte ni codegen en build. Las macros publican los tipos y las
+        raíces; <code>snake_case</code> se expone como <code>camelCase</code>, el doc
+        comment se convierte en <code>description</code> y <code>#[graphql(skip)]</code>
+        deja un campo fuera del esquema:</p>
+        <pre data-lang="rust"><code>use rdd::GraphqlObject;
+use rdd::graphql::{GraphqlContext, GraphqlInput, GraphqlStream, graphql_object};
+use rdd::prelude::*;
+use uuid::Uuid;
+
+/// Tarea tal como la ve un cliente GraphQL.
+#[derive(GraphqlObject)]
+pub struct Task {
+    pub id: Uuid,          // se publica como ID
+    pub title: String,
+    pub done: bool,
+    // Un campo que no deba viajar se excluye con `#[graphql(skip)]`.
+}
+
+#[derive(GraphqlInput)]
+pub struct CreateTaskInput {
+    pub title: String,
+}
+
+#[graphql_object(query)]
+impl Query {
+    /// Tareas del dueño del token.
+    async fn tasks(&amp;self, ctx: &amp;GraphqlContext) -&gt; Result&lt;Vec&lt;Task&gt;&gt; {
+        let session = ctx.ext::&lt;Session&gt;().ok_or(Error::Unauthorized)?;
+        let svc = ctx.resolve::&lt;TasksService&gt;()?;
+        let tasks = svc.list_of(session.id, None, None).await?;
+        Ok(tasks
+            .into_iter()
+            .map(|task| Task::from(TaskResponse::from(task)))
+            .collect())
+    }
+}
+
+#[graphql_object(mutation)]
+impl Mutation {
+    async fn create_task(
+        &amp;self,
+        ctx: &amp;GraphqlContext,
+        input: CreateTaskInput,
+    ) -&gt; Result&lt;Task&gt; {
+        let session = ctx.ext::&lt;Session&gt;().ok_or(Error::Unauthorized)?;
+        let svc = ctx.resolve::&lt;TasksService&gt;()?;
+        let task = svc.create(session.id, input.title, None).await?;
+        Ok(Task::from(TaskResponse::from(task)))
+    }
+}
+
+#[graphql_object(subscription)]
+impl Subscription {
+    async fn task_changed(
+        &amp;self,
+        ctx: &amp;GraphqlContext,
+    ) -&gt; Result&lt;GraphqlStream&lt;Task&gt;&gt; {
+        // … una cola alimentada por el hub de §10.5
+    }
+}</code></pre>
+        <ul>
+          <li>El tipo GraphQL vive en <code>presentation/</code> y se construye desde el DTO (<code>TaskResponse</code>); publicar el agregado directamente acoplaría el esquema al dominio.</li>
+          <li>En un <code>impl</code> de raíz cada método es <code>async</code>, recibe <code>&amp;GraphqlContext</code> y devuelve <code>rdd::Result&lt;T&gt;</code>; en <code>subscription</code>, <code>GraphqlStream&lt;T&gt;</code>.</li>
+          <li>Un tipo o una firma no soportada es el diagnóstico <strong>RDD0501</strong>; un nombre duplicado o reservado (<code>__</code>) es <strong>RDD0502</strong>.</li>
+          <li><code>SchemaBuilder::build</code> valida el esquema al arrancar: dos raíces con el mismo campo, un tipo repetido con definiciones distintas o una raíz sin campos fallan antes de abrir el socket.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>Configuración</h2>
+        <table>
+          <tr><th>Opción</th><th>Por defecto</th><th>Qué hace</th></tr>
+          <tr><td><code>path</code></td><td><code>/graphql</code></td><td>Ruta del montaje; normalizada como una ruta HTTP.</td></tr>
+          <tr><td><code>explorer</code></td><td><code>true</code></td><td><code>GET</code> sin <code>query</code> sirve la UI; con <code>false</code> responde 404 tras autorizar.</td></tr>
+          <tr><td><code>public_explorer</code></td><td><code>false</code></td><td><code>true</code> exime solo el documento HTML del guardián; las operaciones siguen exigiendo el Bearer.</td></tr>
+          <tr><td><code>max_depth</code></td><td><code>16</code></td><td>Anidamiento máximo de conjuntos de selección; al superarlo hay error de validación sin ejecutar resolutores.</td></tr>
+          <tr><td><code>authorize</code></td><td>sin guardián</td><td>Corre después de los globales y antes de parsear; un <code>Err</code> es Problem Details.</td></tr>
+        </table>
+        <p>El demo lee estas opciones del entorno (<code>GRAPHQL_PATH</code>,
+        <code>GRAPHQL_EXPLORER</code>, <code>GRAPHQL_PUBLIC_EXPLORER</code> y
+        <code>GRAPHQL_MAX_DEPTH</code>) y sube <code>public_explorer</code> a
+        <code>true</code> por defecto para que el explorer se abra sin sesión; es una
+        decisión del demo, no del framework.</p>
+      </section>
+
+      <section class="section">
+        <h2>Consultar sin explorer</h2>
+        <p>Las operaciones son un <code>POST</code> JSON con <code>{query,
+        operationName?, variables?}</code>. La cadena global ya corrió, así que el
+        guardián solo confirma la identidad que dejó el JWT:</p>
+        <pre data-lang="bash"><code>TOKEN=$(curl -s -X POST localhost:3000/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"una-clave-larga"}' \
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+
+curl -s localhost:3000/graphql \
+  -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ tasks { id title done } }"}'</code></pre>
+        <pre data-lang="json"><code>{
+  "data": {
+    "tasks": [{ "id": "…", "title": "comprar pan", "done": false }]
+  }
+}</code></pre>
+        <table>
+          <tr><th>Situación</th><th>HTTP</th><th>Cuerpo</th></tr>
+          <tr><td>Consulta o mutación válida</td><td>200</td><td>JSON <code>{data, errors?}</code></td></tr>
+          <tr><td>Error de documento, validación o ejecución</td><td>200</td><td>JSON <code>{data?, errors}</code> con <code>locations</code> y <code>path</code></td></tr>
+          <tr><td><code>GET</code> con consulta</td><td>200</td><td>JSON</td></tr>
+          <tr><td><code>GET</code> con mutación o suscripción</td><td>405</td><td>Problem Details + <code>Allow: POST</code></td></tr>
+          <tr><td><code>Content-Type</code> distinto de <code>application/json</code></td><td>415</td><td>Problem Details</td></tr>
+          <tr><td>JSON ilegible o falta <code>query</code></td><td>400</td><td>Problem Details</td></tr>
+          <tr><td><code>authorize</code> o un global rechazan</td><td>401/403</td><td>Problem Details</td></tr>
+          <tr><td>Límite de <code>RateLimit</code></td><td>429</td><td>Problem Details</td></tr>
+        </table>
+        <p>Los errores de GraphQL viajan con <strong>200</strong> en <code>errors</code>,
+        como manda la especificación del lenguaje; solo los errores de transporte son
+        4xx. <code>message</code> nunca filtra el detalle interno: se registra con
+        <code>tracing</code>.</p>
+      </section>
+
+      <section class="section">
+        <h2>Suscripciones por SSE</h2>
+        <p>Las suscripciones viajan por <code>text/event-stream</code>, no por
+        WebSocket. Un <code>POST</code> con <code>Accept: text/event-stream</code>
+        devuelve <code>event: next</code> por cada evento y <code>event: complete</code>
+        al cerrar; sin ese <code>Accept</code> la respuesta es 406:</p>
+        <pre data-lang="bash"><code>curl -N -s -X POST localhost:3000/graphql \
+  -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -H 'accept: text/event-stream' \
+  -d '{"query":"subscription { taskChanged { id title done } }"}'</code></pre>
+        <pre data-lang="text"><code>event: next
+data: {"data":{"taskChanged":{"id":"…","title":"comprar pan","done":false}}}
+
+: ping
+
+event: complete
+data: {}</code></pre>
+        <ul>
+          <li>La suscripción exige un único campo raíz; el resultado se filtra por identidad en el resolutor, porque el hub es de todos.</li>
+          <li>No hay reanudación (<code>Last-Event-ID</code> se ignora) ni transporte WebSocket para suscripciones.</li>
+          <li>Si el cliente desconecta, la suscripción se cancela al cerrarse la cola y no queda tarea huérfana.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>El explorer</h2>
+        <p><code>GET /graphql</code> sin <code>query</code> sirve una app Vue 3 +
+        TypeScript embebida en el binario: sin CDN, sin recursos externos y con CSP
+        propia. Incluye:</p>
+        <ul>
+          <li>Editor CodeMirror 6 con resaltado y autocompletado GraphQL: sugiere al escribir y con <kbd>Ctrl</kbd>+<kbd>Espacio</kbd>; <kbd>Tab</kbd> indenta la línea o la selección y, con el desplegable abierto, acepta la sugerencia activa.</li>
+          <li>Árbol de esquema y documentación generados desde <code>__schema</code>, pestañas de variables y cabeceras, historial local y ejecución con <kbd>Ctrl</kbd>+<kbd>Enter</kbd>.</li>
+          <li>Suscripciones SSE con botón de detener; la petición va por <code>fetch</code> porque <code>EventSource</code> no admite <code>POST</code>.</li>
+          <li>Errores con <code>locations</code>/<code>path</code>, estado HTTP, tiempo y cuerpo JSON.</li>
+        </ul>
+        <p>La introspección que carga el esquema también es una operación: necesita el
+        <code>Authorization: Bearer</code> en la pestaña <strong>Cabeceras</strong>. La
+        guía <a href="jwt-explorer.html">JWT en el explorer</a> explica cómo
+        pegarlo.</p>
+        <p><strong>Producción:</strong> deja <code>explorer(false)</code> o
+        <code>GRAPHQL_EXPLORER=false</code>. Con el explorer desactivado, una petición
+        sin credenciales recibe primero el 401 del guardián y, ya autorizada, el 404.
+        <code>public_explorer(true)</code> solo exime el documento HTML, nunca las
+        operaciones.</p>
+        <p>Requisitos completos: RF-233 a RF-244 en la
+        <a href="../especificacion.html">especificación</a> (§10.9).</p>
+      </section>
+
+      <nav class="doc-pager" aria-label="Navegación de la guía">
+        <a class="pager-link prev" href="cli.html"><span class="dir">← Anterior</span><span class="title">CLI</span></a>
+        <a class="pager-link next" href="tiempo-real.html"><span class="dir">Siguiente →</span><span class="title">Tiempo real</span></a>
+      </nav>
+    </main>
+  </article>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      RDD.enhanceCode(document);
+    });
+  </script>
+</body>
+</html>

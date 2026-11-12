@@ -96,6 +96,9 @@
         <a href="inicio-rapido.html">Guía rápida</a>
         <a href="arquitectura.html">Arquitectura</a>
         <a href="cli.html" class="active">CLI</a>
+        <a href="graphql.html">GraphQL</a>
+        <a href="tiempo-real.html">Tiempo real</a>
+        <a href="jwt-explorer.html">JWT en el explorer</a>
         <a href="../especificacion.html">Especificación</a>
       </div>
     </aside>
@@ -138,7 +141,7 @@
 
       <section class="section">
         <h3>Run</h3>
-        <pre data-lang="bash"><code>rdd run</code></pre>
+        <pre data-lang="bash"><code>rdd run [--memory] [-- &lt;args de la app&gt;]</code></pre>
         <p>Ejecuta la aplicación del proyecto actual.</p>
         <ul>
           <li>Carga la configuración <code>rdd.toml</code> y <code>.env</code></li>
@@ -146,6 +149,8 @@
           <li>Crea el runtime Tokio</li>
           <li>Compone routes y middlewares en <code>HttpApp</code></li>
           <li>Abre el <code>TcpListener</code> y entrega a la plataforma</li>
+          <li><code>--memory</code> deja <code>RDD_MEMORY=1</code> para arrancar sin base de datos (RF-015)</li>
+          <li>Después de <code>--</code>, los argumentos se reenvían al binario; por ejemplo <code>rdd run -- --graphql</code></li>
         </ul>
       </section>
 
@@ -227,7 +232,7 @@ todo-app-ddd/
       </section>
       <nav class="doc-pager" aria-label="Navegación de la guía">
         <a class="pager-link prev" href="arquitectura.html"><span class="dir">← Anterior</span><span class="title">Arquitectura</span></a>
-        <a class="pager-link next disabled" aria-disabled="true"><span class="dir">Siguiente →</span><span class="title">Fin de la guía</span></a>
+        <a class="pager-link next" href="graphql.html"><span class="dir">Siguiente →</span><span class="title">GraphQL</span></a>
       </nav>
     </main>
   </article>

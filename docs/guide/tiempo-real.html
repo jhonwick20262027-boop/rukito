@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tiempo real con rdd-socket: WebSocket, salas y presencia</title>
+  <meta name="description" content="Canal WebSocket en rdd: .socket, SocketHandler, hub de salas de rdd-socket, handshake con JWT, límites y códigos de cierre. Sin Socket.IO.">
+  <meta name="keywords" content="rdd WebSocket, rdd-socket, Socket.IO, salas, presencia, Hub, tiempo real Rust">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-192.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Tiempo real con rdd-socket: WebSocket, salas y presencia">
+  <meta property="og:description" content="Canal WebSocket en rdd: .socket, SocketHandler, hub de salas, handshake con JWT, límites y códigos de cierre. Sin Socket.IO.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Tiempo real con rdd-socket: WebSocket, salas y presencia">
+  <meta name="twitter:description" content="WebSocket nativo, hub de salas y handshake con JWT. Sin Socket.IO.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html#article",
+        "headline": "Tiempo real con rdd-socket: WebSocket, salas y presencia",
+        "description": "Canal WebSocket en rdd: .socket, SocketHandler, hub de salas, handshake con JWT, límites y códigos de cierre. Sin Socket.IO.",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html",
+        "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html",
+        "inLanguage": "es",
+        "proficiencyLevel": "Intermediate",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "name": "rdd"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "dateModified": "2026-11-11",
+        "about": [
+          { "@type": "Thing", "name": "WebSocket" },
+          { "@type": "Thing", "name": "Rust" },
+          { "@type": "Thing", "name": "Tiempo real" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Inicio", "item": "https://jhonwick20262027-boop.github.io/rukito/" },
+          { "@type": "ListItem", "position": 2, "name": "Tiempo real", "item": "https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body data-root=".." data-nav="guide">
+  <div id="site-header-root"></div>
+
+  <script src="../assets/js/highlight.js"></script>
+  <script src="../assets/js/site.js"></script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="inicio-rapido.html">Guía rápida</a>
+        <a href="arquitectura.html">Arquitectura</a>
+        <a href="cli.html">CLI</a>
+        <a href="graphql.html">GraphQL</a>
+        <a href="tiempo-real.html" class="active">Tiempo real</a>
+        <a href="jwt-explorer.html">JWT en el explorer</a>
+        <a href="../especificacion.html">Especificación</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Inicio</a><span class="sep">/</span><span class="here">Tiempo real</span>
+      </nav>
+
+      <h1>Tiempo real con rdd-socket</h1>
+      <p>rdd ofrece un canal WebSocket opcional sobre el mismo servidor: el núcleo
+      decide el handshake y la plataforma transporta las tramas. Las salas y la
+      presencia viven en <code>rdd-socket</code>. El REST sigue siendo el camino de
+      escritura: los eventos nacen en los controllers y salen por el canal.</p>
+
+      <section class="section">
+        <h2>WebSocket nativo, no Socket.IO</h2>
+        <p>El canal habla <strong>WebSocket estándar</strong> (RFC 6455) con tramas
+        de texto que tú defines. <strong>No implementa Socket.IO</strong>: no hay
+        handshake Engine.IO, ni <code>polling</code>, ni eventos con nombre, ni
+        reconexión automática. Un cliente de Socket.IO no puede conectarse a
+        <code>/ws/tasks</code>; usa un cliente WebSocket normal y decide el formato
+        de los mensajes.</p>
+        <p>Si lo que necesitas son datos reactivos de GraphQL, las suscripciones ya
+        viajan por SSE y no hace falta abrir un WebSocket. Consulta la guía
+        <a href="graphql.html">GraphQL</a>.</p>
+      </section>
+
+      <section class="section">
+        <h2>El puerto del núcleo</h2>
+        <p>Un canal es un <code>SocketHandler</code>: <code>authorize</code> decide
+        antes del 101 y <code>handle</code> vive mientras la conexión vive. La
+        plataforma solo traduce tramas; nunca interpreta los mensajes.</p>
+        <pre data-lang="rust"><code>pub trait SocketHandler: Send + Sync + 'static {
+    /// Antes del 101; un Err se materializa en Problem Details (RF-198).
+    fn authorize(&amp;self, _ctx: &amp;SocketContext) -&gt; Result&lt;()&gt; { Ok(()) }
+
+    /// Vive mientras la conexión vive; al volver, el canal cierra con 1000.
+    fn handle(
+        &amp;self,
+        ctx: SocketContext,
+        conn: Box&lt;dyn SocketConnection&gt;,
+    ) -&gt; BoxFuture&lt;'static, Result&lt;()&gt;&gt;;
+}
+
+pub enum SocketMessage {
+    Text(String),
+    Binary(Bytes),
+    Ping(Bytes),
+    Pong(Bytes),
+    Close(Option&lt;u16&gt;, String),
+}</code></pre>
+        <ul>
+          <li><code>SocketContext</code> lleva <code>path</code>, <code>params</code>, el <code>container</code> de la app y las <code>extensions</code> que dejaron los globales.</li>
+          <li><code>authorize</code> corre <strong>después</strong> de la cadena global completa (CORS, JWT, RateLimit) y <strong>antes</strong> del 101. Un rechazo es una respuesta HTTP normal, sin cambio de protocolo.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>Registrar un canal</h2>
+        <p>El canal se declara en <code>App</code>, no en un módulo, y no participa del
+        404/405 del <code>fallback</code>:</p>
+        <pre data-lang="toml"><code># La feature `socket` trae el hub de §10.5 y el transporte WS de `rdd-axum`.
+rdd = { version = "0.1", features = ["socket"] }</code></pre>
+        <pre data-lang="rust"><code>let feed = modules::tasks::TaskFeed::new();
+
+let app = App::new()
+    .middleware(Cors::from_config()?)
+    .middleware(JwtMiddleware::new(keys))
+    .middleware(RateLimit::new(100, Duration::from_secs(60), rate_key)?)
+    // El handler y el controller comparten el mismo hub.
+    .provide(feed.clone())
+    .socket("/ws/tasks", feed)
+    .module(tasks::module());</code></pre>
+        <p><code>.socket(...)</code> existe con o sin la feature; esa feature añade el
+        hub y el transporte. Una plataforma sin soporte de upgrades responde 501 y las
+        pruebas del canal quedan exentas.</p>
+      </section>
+
+      <section class="section">
+        <h2>El handler del demo</h2>
+        <p><code>TaskFeed</code> exige sesión, se suscribe a la sala y reenvía cada
+        evento; un suscriptor atrasado se cierra con 1013 en vez de perder mensajes en
+        silencio:</p>
+        <pre data-lang="rust"><code>use rdd::http::BoxFuture;
+use rdd::prelude::*;
+use rdd::{Hub, Lagged, Payload};
+
+#[derive(Clone)]
+pub struct TaskFeed {
+    hub: Hub,
+}
+
+impl SocketHandler for TaskFeed {
+    /// Sin sesión no hay 101: el handshake responde 401 (RF-198).
+    fn authorize(&amp;self, ctx: &amp;SocketContext) -&gt; Result&lt;()&gt; {
+        ctx.ext::&lt;Session&gt;().map(|_| ()).ok_or(Error::Unauthorized)
+    }
+
+    fn handle(
+        &amp;self,
+        _ctx: SocketContext,
+        mut conn: Box&lt;dyn SocketConnection&gt;,
+    ) -&gt; BoxFuture&lt;'static, Result&lt;()&gt;&gt; {
+        let hub = self.hub.clone();
+        Box::pin(async move {
+            let mut sub = hub.subscribe("tasks");
+            conn.send(SocketMessage::Text(
+                serde_json::json!({ "type": "ready", "topic": "tasks" }).to_string(),
+            ))
+            .await?;
+
+            loop {
+                tokio::select! {
+                    incoming = conn.recv() =&gt; match incoming {
+                        Some(Ok(SocketMessage::Close(_, _))) | None =&gt; break,
+                        Some(Ok(_)) =&gt; {}
+                        Some(Err(err)) =&gt; return Err(err),
+                    },
+                    event = sub.recv() =&gt; match event {
+                        Ok(Payload::Text(text)) =&gt; {
+                            conn.send(SocketMessage::Text(text)).await?;
+                        }
+                        Ok(Payload::Json(value)) =&gt; {
+                            conn.send(SocketMessage::Text(value.to_string())).await?;
+                        }
+                        Ok(Payload::Binary(bytes)) =&gt; {
+                            conn.send(SocketMessage::Binary(bytes)).await?;
+                        }
+                        Err(Lagged(_)) =&gt; {
+                            conn.close(1013, "cliente lento".to_owned()).await;
+                            return Ok(());
+                        }
+                    },
+                }
+            }
+            Ok(())
+        })
+    }
+}</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>El hub: salas y presencia</h2>
+        <pre data-lang="rust"><code>let hub = Hub::new();
+let mut sub = hub.subscribe("tasks");          // entrar a la sala
+
+hub.broadcast("tasks", serde_json::json!({ "type": "created" })).await;
+assert_eq!(hub.members("tasks").len(), 1);     // presencia: suscripciones vivas
+
+match sub.recv().await {
+    Ok(Payload::Json(value)) =&gt; println!("{value}"),
+    Ok(Payload::Text(text)) =&gt; println!("{text}"),
+    Ok(Payload::Binary(bytes)) =&gt; println!("{} bytes", bytes.len()),
+    Err(Lagged(skipped)) =&gt; eprintln!("perdí {skipped} mensajes"),
+}</code></pre>
+        <ul>
+          <li><code>subscribe(topic)</code> devuelve una <code>Subscription</code> viva mientras se sostenga; soltarla es salir de la sala y <code>members</code> lo refleja.</li>
+          <li><code>broadcast</code> no bloquea ni serializa la entrega: cada suscripción tiene su propio anillo de 64 mensajes.</li>
+          <li>El hub es <strong>local al proceso</strong>: sin historial, sin persistencia y sin coordinación entre réplicas. Para varias instancias hace falta un broker externo, que queda fuera del framework.</li>
+          <li>Se registra como singleton en el contenedor; un handler lo obtiene por <code>ctx.container</code> o por inyección.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>Handshake, límites y cierres</h2>
+        <table>
+          <tr><th>Situación</th><th>Resultado</th></tr>
+          <tr><td>Cadena global completa y <code>authorize</code> en <code>Ok</code></td><td>101 Switching Protocols y <code>handle</code></td></tr>
+          <tr><td>Un global o <code>authorize</code> rechazan</td><td>Problem Details 401/403/429; <strong>no</strong> hay 101</td></tr>
+          <tr><td><code>handle</code> termina en <code>Ok</code></td><td>Cierre 1000</td></tr>
+          <tr><td>Error o <code>panic</code> en <code>handle</code></td><td>Cierre 1011; el <code>panic</code> se aísla por conexión</td></tr>
+          <tr><td>Apagado de la app</td><td>Cierre 1001 dentro de <code>shutdown_grace</code></td></tr>
+          <tr><td>Mensaje entrante mayor a 1 MiB</td><td>Cierre 1009 sin entregarlo al handler</td></tr>
+          <tr><td>Cliente que no drena la cola de salida</td><td>Cierre 1013; <code>send</code> devuelve <code>Err</code></td></tr>
+        </table>
+        <p>Los límites son <code>Limits::socket_message_limit_bytes</code> (1 MiB) y
+        <code>Limits::socket_outbound_queue</code> (64).</p>
+      </section>
+
+      <section class="section">
+        <h2>Conectar desde un cliente</h2>
+        <p>El handshake es una petición HTTP más: la identidad viaja en la cabecera
+        <code>Authorization</code> y el JWT global la deja en las extensiones. Un
+        cliente con cabeceras propias (Node, Rust, <code>websocat</code>) funciona
+        directo:</p>
+        <pre data-lang="js"><code>import WebSocket from "ws";
+
+const socket = new WebSocket("ws://127.0.0.1:3000/ws/tasks", {
+  headers: { authorization: `Bearer ${process.env.TOKEN}` },
+});
+
+socket.on("message", (data) =&gt; console.log(JSON.parse(data.toString())));
+socket.on("close", (code) =&gt; console.log("cierre", code));</code></pre>
+        <pre data-lang="bash"><code>websocat -H "Authorization: Bearer $TOKEN" ws://127.0.0.1:3000/ws/tasks</code></pre>
+        <p><strong>Navegador:</strong> <code>new WebSocket()</code> no permite fijar
+        cabeceras, y el <code>JwtMiddleware</code> del demo solo lee
+        <code>Authorization</code>. Para conectar desde una página necesitas algo que
+        ponga la cabecera antes del handshake (un proxy que la inyecte, o un
+        middleware propio que lea una cookie o un <code>?token=</code> y valide antes
+        de <code>authorize</code>). rdd no trae ese puente: es una decisión de la app,
+        no del framework.</p>
+      </section>
+
+      <section class="section">
+        <h2>Los eventos del demo</h2>
+        <p>El middleware <code>TaskEvents</code> observa el resultado de las rutas REST
+        y publica en el hub sin tocar los controllers. Los mensajes son JSON:</p>
+        <pre data-lang="json"><code>{ "type": "ready", "topic": "tasks" }
+{ "type": "created", "task": { "id": "…", "title": "comprar pan", "done": false } }
+{ "type": "updated", "task": { "id": "…", "title": "comprar pan", "done": true } }
+{ "type": "deleted", "id": "…" }</code></pre>
+        <p>Flujo completo: <code>POST /tasks</code> → caso de uso → middleware
+        <code>TaskEvents</code> → <code>hub.broadcast("tasks", …)</code> → todos los
+        clientes conectados a <code>/ws/tasks</code>.</p>
+        <p>Requisitos completos: RF-194 a RF-204 en la
+        <a href="../especificacion.html">especificación</a> (§10.4 y §10.5); la
+        aceptación del demo está en el anexo §26.7.</p>
+      </section>
+
+      <nav class="doc-pager" aria-label="Navegación de la guía">
+        <a class="pager-link prev" href="graphql.html"><span class="dir">← Anterior</span><span class="title">GraphQL</span></a>
+        <a class="pager-link next" href="jwt-explorer.html"><span class="dir">Siguiente →</span><span class="title">JWT en el explorer</span></a>
+      </nav>
+    </main>
+  </article>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      RDD.enhanceCode(document);
+    });
+  </script>
+</body>
+</html>

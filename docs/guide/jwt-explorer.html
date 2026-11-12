@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JWT en el explorer de GraphQL: cómo autenticar las operaciones</title>
+  <meta name="description" content="Abre el explorer de GraphQL de rdd con un Bearer: obtén un token con --explorer-token o con /auth/login, pégalo en la pestaña Cabeceras y ejecuta consultas y suscripciones.">
+  <meta name="keywords" content="rdd JWT, GraphQL explorer, Bearer token, Authorization, --explorer-token, autenticación Rust">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-192.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="JWT en el explorer de GraphQL: cómo autenticar las operaciones">
+  <meta property="og:description" content="Obtén un Bearer, pégalo en la pestaña Cabeceras y ejecuta consultas y suscripciones desde el explorer.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="JWT en el explorer de GraphQL">
+  <meta name="twitter:description" content="Obtén un Bearer, pégalo en la pestaña Cabeceras y ejecuta operaciones.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html#article",
+        "headline": "JWT en el explorer de GraphQL: cómo autenticar las operaciones",
+        "description": "Abre el explorer de GraphQL de rdd con un Bearer: obtén un token, pégalo en la pestaña Cabeceras y ejecuta consultas y suscripciones.",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html",
+        "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html",
+        "inLanguage": "es",
+        "proficiencyLevel": "Beginner",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "name": "rdd"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "dateModified": "2026-11-11",
+        "about": [
+          { "@type": "Thing", "name": "JSON Web Token" },
+          { "@type": "Thing", "name": "GraphQL" },
+          { "@type": "Thing", "name": "Autenticación" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Inicio", "item": "https://jhonwick20262027-boop.github.io/rukito/" },
+          { "@type": "ListItem", "position": 2, "name": "JWT en el explorer", "item": "https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body data-root=".." data-nav="guide">
+  <div id="site-header-root"></div>
+
+  <script src="../assets/js/highlight.js"></script>
+  <script src="../assets/js/site.js"></script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="inicio-rapido.html">Guía rápida</a>
+        <a href="arquitectura.html">Arquitectura</a>
+        <a href="cli.html">CLI</a>
+        <a href="graphql.html">GraphQL</a>
+        <a href="tiempo-real.html">Tiempo real</a>
+        <a href="jwt-explorer.html" class="active">JWT en el explorer</a>
+        <a href="../especificacion.html">Especificación</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Inicio</a><span class="sep">/</span><span class="here">JWT en el explorer</span>
+      </nav>
+
+      <h1>JWT en el explorer</h1>
+      <p>El explorer se sirve sin sesión, pero <strong>cada operación</strong> —incluida
+      la introspección que carga el esquema— pasa por el guardián. Sin un
+      <code>Authorization: Bearer</code> válido, el panel responde 401. Esta guía
+      obtiene el token y lo deja puesto en la pestaña <strong>Cabeceras</strong>.</p>
+
+      <section class="section">
+        <h2>1. Arranca el demo con <code>/graphql</code></h2>
+        <p>El demo necesita <code>JWT_SECRET</code> en <code>.env</code>; sin él no
+        arranca. Con <code>--explorer-token</code> imprime un Bearer de preview firmado
+        con la misma clave del servidor y sigue arrancando:</p>
+        <pre data-lang="bash"><code>cargo run -- --graphql --explorer-token
+
+# EXPLORER_TOKEN=eyJhbGciOiJIUzI1NiIs…
+# Servidor escuchando en 0.0.0.0:3000</code></pre>
+        <ul>
+          <li>Copia solo el valor, sin el prefijo <code>EXPLORER_TOKEN=</code>.</li>
+          <li>La identidad sale de <code>config/explorer_config.rs</code>; la firma es la del servidor y caduca con <code>JWT_TTL_SECS</code> (3600 s por omisión).</li>
+          <li>Es una ayuda de desarrollo: imprime un JWT válido en la salida estándar. No lo uses en producción ni lo dejes en un log.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>2. O obtén el token de un usuario real</h2>
+        <p>Si prefieres probar con una cuenta (y sus tareas), registra y haz login por
+        REST. La respuesta trae <code>access_token</code>:</p>
+        <pre data-lang="bash"><code>curl -s -X POST localhost:3000/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"email":"ana@example.com","password":"una-clave-larga"}'
+
+TOKEN=$(curl -s -X POST localhost:3000/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"ana@example.com","password":"una-clave-larga"}' \
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')</code></pre>
+        <p>Los resolutores leen la identidad con <code>ctx.ext::&lt;Session&gt;()</code>;
+        por eso el token del login y el de <code>--explorer-token</code> se usan igual.</p>
+      </section>
+
+      <section class="section">
+        <h2>3. Pégalo en la pestaña Cabeceras</h2>
+        <ol>
+          <li>Abre <code>http://localhost:3000/graphql</code> (usa tu <code>PORT</code> si lo cambiaste).</li>
+          <li>Entra en la pestaña <strong>Cabeceras</strong>, junto a Operación y Variables.</li>
+          <li>Escribe un objeto JSON con valores de tipo cadena:</li>
+        </ol>
+        <pre data-lang="json"><code>{
+  "Authorization": "Bearer &lt;tu-token&gt;"
+}</code></pre>
+        <ul>
+          <li>El objeto se fusiona con <code>Content-Type: application/json</code> y <code>Accept</code>, que el explorer pone solo.</li>
+          <li>Cada valor debe ser una cadena; un número o un booleano dan error antes de enviar.</li>
+          <li>Si el JSON está mal formado, el panel lo dice y no hace la petición.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>4. Recarga el esquema con el token</h2>
+        <p>La introspección se lanzó al abrir la página, antes de que hubiera cabeceras.
+        Pulsa el botón de recargar del encabezado —«Recargar el esquema con las
+        cabeceras actuales»— o el de la pestaña del esquema. Cuando termine, el
+        indicador muestra <strong>Esquema listo</strong> y el número de tipos; el árbol
+        y el autocompletado ya salen del esquema real.</p>
+        <p>Si el token falta o caducó, el panel de esquema muestra el 401 en Problem
+        Details. Pega uno nuevo y vuelve a recargar.</p>
+      </section>
+
+      <section class="section">
+        <h2>5. Ejecuta</h2>
+        <p>Con el token puesto, escribe una operación y pulsa <strong>Ejecutar</strong>
+        o <kbd>Ctrl</kbd>+<kbd>Enter</kbd>:</p>
+        <pre data-lang="graphql"><code>query {
+  tasks {
+    id
+    title
+    done
+  }
+}</code></pre>
+        <p>Una mutación con variables usa la pestaña <strong>Variables</strong>:</p>
+        <pre data-lang="graphql"><code>mutation Crear($input: CreateTaskInput!) {
+  createTask(input: $input) {
+    id
+    title
+    done
+  }
+}</code></pre>
+        <pre data-lang="json"><code>{
+  "input": { "title": "comprar pan" }
+}</code></pre>
+        <p>El panel derecho muestra el estado HTTP, el tiempo, el tamaño y el JSON. Los
+        errores de GraphQL llegan con 200 y <code>errors</code>; un 401 significa que
+        el Bearer no llegó, caducó o el guardián lo rechazó.</p>
+      </section>
+
+      <section class="section">
+        <h2>6. Suscripciones</h2>
+        <p>Una suscripción usa las mismas cabeceras y se abre como stream SSE. El
+        explorer detecta el tipo por la palabra clave, envía
+        <code>Accept: text/event-stream</code> y va pintando cada <code>event:
+        next</code>; el botón de detener cancela la petición.</p>
+        <pre data-lang="graphql"><code>subscription {
+  taskChanged {
+    id
+    title
+    done
+  }
+}</code></pre>
+        <p>El primer evento no aparece hasta que algo cambia: en otra terminal, crea o
+        completa una tarea por REST con el mismo token. Si el token caduca a mitad del
+        stream, la suscripción se corta: renueva el Bearer y vuelve a ejecutar.</p>
+      </section>
+
+      <section class="section">
+        <h2>Qué protege y qué no</h2>
+        <table>
+          <tr><th>Configuración</th><th>Efecto</th></tr>
+          <tr><td><code>public_explorer(false)</code> (framework)</td><td>El propio documento HTML exige sesión; sin credenciales la respuesta es 401.</td></tr>
+          <tr><td><code>public_explorer(true)</code> (demo por defecto)</td><td>El HTML se sirve sin sesión; <strong>las operaciones siguen exigiendo el Bearer</strong>.</td></tr>
+          <tr><td><code>explorer(false)</code></td><td>No hay UI: 404 tras autorizar (401 primero si falta la credencial).</td></tr>
+          <tr><td><code>authorize(require_session)</code></td><td>Sin sesión no se ejecuta ninguna operación ni la introspección.</td></tr>
+        </table>
+        <p><strong>Producción:</strong> desactiva el explorer o, como mínimo, el acceso
+        público; no arranques con <code>--explorer-token</code>; usa un
+        <code>JWT_SECRET</code> real y rota los tokens con una vida corta. El explorer
+        guarda el historial local con las cabeceras que pegaste: no uses una máquina
+        compartida con un token de producción.</p>
+        <p>Más detalle: §10.9 (explorer y <code>authorize</code>) y §26.9 (demo con JWT)
+        en la <a href="../especificacion.html">especificación</a>.</p>
+      </section>
+
+      <nav class="doc-pager" aria-label="Navegación de la guía">
+        <a class="pager-link prev" href="tiempo-real.html"><span class="dir">← Anterior</span><span class="title">Tiempo real</span></a>
+        <a class="pager-link next disabled" aria-disabled="true"><span class="dir">Siguiente →</span><span class="title">Fin de la guía</span></a>
+      </nav>
+    </main>
+  </article>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      RDD.enhanceCode(document);
+    });
+  </script>
+</body>
+</html>

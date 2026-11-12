@@ -27,6 +27,33 @@ firmado con una clave pública (RF-063, RN-030).
 | `JWT_TTL_SECS` | Vida del token. Ausente o inválida → 3600. |
 | `ADMIN_EMAIL` | El correo que se registre con este valor nace `admin`. Vacío → nadie es admin. |
 | `DATABASE_URL` | `sqlite://todo-app.db`. |
+| `GRAPHQL_PATH` | Ruta del montaje con `--graphql`. Por defecto `/graphql`. |
+| `GRAPHQL_EXPLORER` | `true` sirve la UI; `false` desactiva el explorer (404 tras autorizar). |
+| `GRAPHQL_PUBLIC_EXPLORER` | `true` sirve la UI sin sesión; las operaciones siguen exigiendo el Bearer. |
+| `GRAPHQL_MAX_DEPTH` | Anidamiento máximo de conjuntos de selección. Por defecto 16. |
+
+## Modos de arranque
+
+El REST arranca siempre; los modos son excluyentes entre sí (`--mcp` gana a
+`--mcp-http`, que gana a `--graphql`) y `--explorer-token` se puede combinar con
+cualquiera: imprime el Bearer y sigue arrancando.
+
+```bash
+cargo run -- --graphql --explorer-token   # REST + /graphql + token de preview
+cargo run -- --mcp-http                   # REST + /mcp
+cargo run -- --mcp                        # MCP por stdio, sin puerto
+```
+
+| Argumento | Efecto |
+|---|---|
+| `--graphql` | Monta `GRAPHQL_PATH` (por defecto `/graphql`) con el esquema de los casos de uso y SSE para suscripciones. |
+| `--explorer-token` | Imprime `EXPLORER_TOKEN=<jwt>` para la identidad de `config/explorer_config.rs` y continúa. |
+| `--mcp-http` | Monta `/mcp` sobre el mismo servidor; exige el JWT de la cadena global. |
+| `--mcp` | Sirve MCP por stdio; no abre puerto. |
+
+Con `--graphql`, `GET /graphql` sin `query` sirve la UI (sin sesión si
+`GRAPHQL_PUBLIC_EXPLORER=true`) y las operaciones exigen `Authorization: Bearer`.
+`--mcp-http` añade `POST` y `DELETE` en `/mcp`.
 
 ## Rutas
 

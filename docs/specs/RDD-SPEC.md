@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.12.0-draft |
+| Versión del documento | 0.13.0-draft |
 | Fecha | 2026-11-12 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
@@ -40,7 +40,7 @@
 
 ## 2. Alcance
 
-### 2.1 Dentro del alcance (fases 0.1 a 0.13)
+### 2.1 Dentro del alcance (fases 0.1 a 0.14)
 
 - Servidor REST con controladores declarativos por macros, sobre una interfaz de plataforma (§4.4). **Axum es la plataforma por defecto** (`rdd-axum`).
 - Building blocks DDD mínimos: `Aggregate`, `Service`, `Repo<T>`, `Error` de dominio.
@@ -57,6 +57,7 @@
 - **OpenAPI** opcional (fase 0.12, §10.10): el crate `rdd-openapi` modela el documento OpenAPI 3.1 con un builder tipado y una validación de arranque que compara las operaciones documentadas con las rutas montadas. La documentación se sirve en `/api-docs` (alias `/docs` y `/swagger`) y el JSON en `/api-docs/openapi.json`; la UI es una app Vue 3 + shadcn-vue con el tema «oxide forge» compilada a un único HTML embebido, y el montaje lo hace `rdd-axum` con la feature `openapi` (ADR-30). Como GraphQL, no genera el documento desde los controllers: lo compone la app y el framework lo valida (RP-032, RA-022).
 - **Rendimiento medido** (fase 0.12): el crate interno `rdd-bench` mide HTTP con keep-alive y eco WebSocket contra un `AxumPlatform` real en un puerto efímero, calcula p50/p95/p99 y tasas, y publica un informe JSON versionado que alimenta la página `docs/benchmark.html` del sitio (ADR-31).
 - **Archivos estáticos** opcionales (fase 0.13, §10.11): el crate `rdd-static` sirve un directorio del disco con resolución segura de rutas, MIME, ETag, caché, índice y fallback de SPA; es neutral —solo depende de `rdd-core`— y el montaje lo hace `rdd-axum` con la feature `static-files` (ADR-32, RP-033). Los archivos se leen en tiempo de petición: no hay *hot reload*, vigilancia de archivos ni empaquetado de assets en el binario; los únicos artefactos embebidos siguen siendo el explorer (§10.9) y la UI de OpenAPI (§10.10).
+- **Trabajos en segundo plano** opcionales (fase 0.14, §10.12): el crate neutral `rdd-jobs` define el puerto `Queue`, el contrato `Job`, el `Worker` con concurrencia, reintentos con espera exponencial, *lease* de visibilidad, *dead-letter* e idempotencia de encolado; `InMemoryQueue` cubre pruebas y `SqliteQueue` vive en `rdd-sqlite` con la feature `jobs` (ADR-33). La entrega es **at-least-once**: un trabajo puede ejecutarse más de una vez y el handler debe ser idempotente. Redis, los brokers externos y el cron quedan fuera de esta fase.
 
 ### 2.2 Fuera del alcance (explícito)
 
@@ -84,6 +85,9 @@
 | Benchmark como criterio de CI o comparación entre máquinas | `rdd-bench` publica un informe reproducible con su entorno (§20); no es una compuerta de rendimiento ni un número absoluto (ADR-31). |
 | **Hot reload / recarga en caliente de archivos estáticos** | `rdd-static` lee el archivo en cada petición, pero no vigila el directorio ni reinicia nada: el navegador recarga y el servidor sirve la versión actual del disco, sin watcher, sin WebSocket de desarrollo y sin recompilar. Un watcher de desarrollo queda fuera de 0.x (§10.11, ADR-32). |
 | Empaquetar los archivos estáticos en el binario, minificarlos o procesarlos | El montaje sirve el directorio tal cual, con MIME por extensión; no hay bundler, huella de contenido ni transformación. Los únicos HTML embebidos son el explorer y la UI de OpenAPI, que no son archivos de usuario (§10.9, §10.10). |
+| **Redis como backend de colas, brokers externos (NATS/Kafka/RabbitMQ) y colas entre servicios** | La fase 0.14 entrega el puerto `Queue` con `InMemoryQueue` y `SqliteQueue`; un adaptador Redis o un broker entran después sin tocar `Worker` ni los handlers (§10.12, ADR-33). La primera fila de esta tabla sigue excluyendo el bus de eventos. |
+| Entrega exactamente una vez | La cola garantiza **at-least-once**: un *lease* vencido o un proceso caído puede repetir el trabajo. `idempotency_key` deduplica el **encolado**, no la ejecución; el handler debe ser idempotente (§10.12, RF-263). |
+| Cron, tareas recurrentes, prioridades, cancelación y panel de administración | Solo hay trabajos de una ejecución con `run_at` (incluido el reintento); no hay calendario, prioridad, cancelación ni UI de colas en 0.x (§10.12, RF-264). |
 | Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. §26 muestra cómo escribir JWT y roles **a nivel de aplicación** con ese mecanismo, que es lo único que el framework promete hoy. |
 | Motores sin adaptador publicado | El puerto `DbAdapter` (§12) es la vía de extensión. SQLite está implementado en `rdd-sqlite` y es el adaptador predeterminado; Oracle, Cassandra y DynamoDB no están previstos. |
 | Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
@@ -124,7 +128,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd-hyper/                # plataforma propia (fase 0.5)
 │   ├── rdd-platform-tests/       # suite de conformidad de plataformas (§4.5)
 │   ├── rdd-db-tests/             # suite de conformidad de adaptadores (§12.4)
-│   ├── rdd-sqlite/               # adaptador SQLite predeterminado (sqlx)
+│   ├── rdd-sqlite/               # adaptador SQLite predeterminado (sqlx); `SqliteQueue` con la feature `jobs` (fase 0.14)
 │   ├── rdd-postgres/             # adaptador PostgreSQL (sqlx)
 │   ├── rdd-mysql/                # adaptador MySQL/MariaDB (sqlx)
 │   ├── rdd-mongodb/              # adaptador MongoDB (fase 0.6)
@@ -137,6 +141,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd-graphql/              # motor GraphQL propio: esquema, parser, ejecutor, SSE y explorer (fases 0.10–0.11)
 │   ├── rdd-openapi/              # documento OpenAPI 3.1, validación de rutas y UI embebida (fase 0.12)
 │   ├── rdd-static/               # archivos estáticos: rutas seguras, MIME, caché y SPA (fase 0.13)
+│   ├── rdd-jobs/                 # puerto Queue, Job, Worker e InMemoryQueue (fase 0.14)
 │   ├── rdd-bench/                # arnés interno de rendimiento HTTP y WebSocket (fase 0.12, no se publica)
 │   ├── rdd-prisma/               # parser de schema.prisma + generador
 │   └── rdd-cli/                  # binario `rdd`
@@ -159,6 +164,8 @@ rdd-mcp  = "..."                          # opcional: servidor MCP por stdio (§
 # rdd = { version = "...", features = ["openapi"] }
 # o, con archivos estáticos de la fase 0.13:
 # rdd = { version = "...", features = ["static-files"] }
+# o, con la cola SQLite de la fase 0.14:
+# rdd = { version = "...", features = ["jobs-sqlite"] }
 uuid     = { version = "1", features = ["v4", "serde"] }   # el id del agregado (§7.2)
 # o, sin Axum:
 # rdd = { version = "...", default-features = false, features = ["hyper", "sqlite"] }
@@ -174,13 +181,15 @@ rdd-core ◄───┼── rdd (fachada) ──► [feature axum]   rdd-axum
      │       │                 ├─► [feature mcp]    rdd-mcp
      │       │                 ├─► [feature graphql] rdd-graphql
      │       │                 ├─► [feature openapi] rdd-openapi
-     │       │                 └─► [feature static-files] rdd-static
+     │       │                 ├─► [feature static-files] rdd-static
+     │       │                 └─► [feature jobs]   rdd-jobs
      ├── rdd-axum, rdd-hyper
      ├── rdd-axum ──► rdd-mcp (solo feature `mcp-http`, RA-020)
      ├── rdd-axum ──► rdd-graphql (solo feature `graphql`, RA-021)
      ├── rdd-axum ──► rdd-openapi (solo feature `openapi`, RA-022)
      ├── rdd-axum ──► rdd-static (solo feature `static-files`, RA-023)
-     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql, rdd-openapi, rdd-static
+     ├── rdd-sqlite ──► rdd-jobs (solo feature `jobs`, RA-024)
+     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql, rdd-openapi, rdd-static, rdd-jobs
      ├── rdd-sqlite, rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
      ├── rdd-platform-tests ──► (dev) cada plataforma
      └── rdd-db-tests ────────► (dev) cada adaptador
@@ -192,8 +201,8 @@ rdd-bench ──► rdd-axum (herramienta interna, nadie depende de ella)
 |---|---|---|
 | `rdd-core` | `http`, `bytes`, `futures`, `tokio`, `serde`, `serde_json`, `tracing`, `uuid`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower-http`, cualquier plataforma, **cualquier driver de BD** (`sqlx`, `mongodb`, `redis`, `tiberius`), Prisma, Node |
 | `rdd-macros` | `syn`, `quote`, `proc-macro2`, crate de diagnósticos | `rdd-core` |
-| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp`, `rdd-graphql`, `rdd-openapi` y `rdd-static` (opcionales por feature) | — |
-| `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
+| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp`, `rdd-graphql`, `rdd-openapi`, `rdd-static` y `rdd-jobs` (opcionales por feature) | — |
+| `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow`; `rdd-jobs` solo con la feature `jobs` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http`; `rdd-mcp` solo con la feature `mcp-http`; `rdd-graphql` solo con la feature `graphql`; `rdd-openapi` solo con la feature `openapi`; `rdd-static` solo con la feature `static-files` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
 | `rdd-cors`, `rdd-logger` | `rdd-core`, `http`, `bytes`, `serde`, `thiserror`, `toml`, `tracing` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
@@ -202,6 +211,7 @@ rdd-bench ──► rdd-axum (herramienta interna, nadie depende de ella)
 | `rdd-graphql` | `rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-openapi` | `rdd-core`, `serde`, `serde_json`, `bytes`, `anyhow` | `axum`, `hyper`, `tower`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-static` | `rdd-core`, `anyhow`, `bytes`, `mime_guess`, `tokio` (feature `fs`) | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
+| `rdd-jobs` | `rdd-core`, `serde`, `serde_json`, `tokio`, `tracing`, `anyhow` | `axum`, `hyper`, `tower`, cualquier plataforma, cualquier driver de BD (`sqlx`, `mongodb`, `redis`, `tiberius`), `rdd-sqlite`, `rdd-cli` |
 | `rdd-bench` | `rdd-core`, `rdd-axum` (con `ws`), `hyper`, `hyper-util`, `http`, `http-body-util`, `tokio-tungstenite`, `serde`, `serde_json`, `tokio`, `bytes`, `futures`, `anyhow`, `tracing` | cualquier crate del framework (es una herramienta interna; no se publica ni lo usa ningún otro crate) |
 | `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
@@ -258,6 +268,14 @@ solo en `rdd-static` porque la plataforma no debe elegir tipos MIME ni arrastrar
 `tower-http` para algo que es una tabla por extensión. El crate no vigila el
 directorio ni empaqueta los archivos: lee el archivo en cada petición (ADR-32).
 
+La cola de trabajos repite el reparto una vez más: `rdd-jobs` define el puerto
+`Queue`, el contrato `Job`, el `Worker` y una `InMemoryQueue` para pruebas, sin
+conocer ningún motor; `rdd-sqlite` implementa `SqliteQueue` con la feature `jobs`
+y solo traduce el puerto a SQL (§10.12). La app compone el `Worker` con sus
+handlers y lo ejecuta junto al servidor; ni el router ni `HttpApp` saben que
+existe una cola. `rdd-hyper` no arrastra `rdd-jobs` y un adaptador Redis futuro
+entra por el mismo puerto sin tocar `Worker` ni los handlers (RA-024, ADR-33).
+
 | ID | Requisito |
 |---|---|
 | RA-011 | `rdd-core`, `rdd-cors` y `rdd-logger` NO DEBEN tener a `axum` ni `hyper` en su árbol de dependencias. CI DEBE verificarlo (`cargo tree -p rdd-core` y regla `bans` de `cargo-deny`). |
@@ -272,6 +290,7 @@ directorio ni empaqueta los archivos: lee el archivo en cada petición (ADR-32).
 | RA-020 | La dependencia entre `rdd-axum` y `rdd-mcp` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-mcp` con la feature `mcp-http`, y `rdd-mcp` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma. La fachada declara `mcp-http = ["mcp", "axum/mcp-http"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-mcp` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-mcp`). |
 | RA-022 | La dependencia entre `rdd-axum` y `rdd-openapi` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-openapi` con la feature `openapi`, y `rdd-openapi` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower ni de un driver de BD: solo de `rdd-core` y crates neutrales. El documento, el builder, la validación de rutas y el HTML de la UI no tocan el router; `OpenApiHttp` (§10.10) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-openapi` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-openapi`). `rdd-bench` es una herramienta interna que ningún crate del framework usa (ADR-31). |
 | RA-023 | La dependencia entre `rdd-axum` y `rdd-static` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-static` con la feature `static-files`, y `rdd-static` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower, de `tower-http` ni de un driver de BD: solo de `rdd-core` y crates neutrales (`anyhow`, `bytes`, `mime_guess`, `tokio` con `fs`). La resolución de rutas, el MIME, la caché y el SPA no tocan el router; `StaticFiles::handle` (§10.11) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `static-files = ["dep:rdd-static", "rdd-axum/static-files"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-static` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-static`). |
+| RA-024 | `rdd-jobs` NO DEBE depender de ninguna plataforma, de Tower, de un driver de BD ni de `rdd-sqlite`: solo de `rdd-core` y crates neutrales (`serde`, `serde_json`, `tokio`, `tracing`, `anyhow`). El puerto `Queue`, el `Worker` y la `InMemoryQueue` no tocan SQL ni el router. La dependencia con el motor va en una sola dirección: `rdd-sqlite` PUEDE depender de `rdd-jobs` con la feature `jobs` y NO al revés; ningún otro adaptador lo arrastra. La fachada declara `jobs = ["dep:rdd-jobs"]` y `jobs-sqlite = ["jobs", "sqlite", "rdd-sqlite/jobs"]`; `jobs-sqlite` sin `sqlite` es imposible por construcción y `rdd-hyper` no arrastra `rdd-jobs`. CI DEBE verificar `cargo tree -p rdd-jobs` (sin plataformas ni drivers), `cargo tree -p rdd-sqlite -e features` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-jobs`). |
 
 ### 4.3 Stack tecnológico
 
@@ -304,6 +323,7 @@ directorio ni empaqueta los archivos: lee el archivo en cada petición (ADR-32).
 | UI de la documentación | Vue 3 + TypeScript + Tailwind + shadcn-vue + Lucide con el tema «oxide forge», compilada con Vite a un único HTML | `rdd-openapi/ui` | Mismo stack y misma paleta que el explorer; el artefacto se embebe con `include_str!` y no usa CDN ni `eval` (§10.10, ADR-30). |
 | Arnés de rendimiento | `hyper` con keep-alive y `tokio-tungstenite` contra un `AxumPlatform` real en puerto efímero | `rdd-bench` | Mide el camino HTTP y el canal completos —router, cadena de middlewares y transporte—, no funciones aisladas; el informe es reproducible y versionado (§20, ADR-31). |
 | Archivos estáticos | `tokio::fs` para leer el archivo pedido y `mime_guess` para el `Content-Type` por extensión | `rdd-static` | Lectura en tiempo de petición, sin empaquetar ni vigilar el directorio; la tabla MIME es una dependencia pequeña y evita que la plataforma elija tipos (§10.11, ADR-32). |
+| Cola de trabajos | puerto `Queue` + `Worker` sobre `tokio`; `SqliteQueue` con `sqlx` (una sentencia `UPDATE … RETURNING` por reserva), WAL y `busy_timeout` | `rdd-jobs`, `rdd-sqlite` (feature `jobs`) | La semántica vive en un crate neutral y el motor solo persiste; SQLite da durabilidad local sin infraestructura nueva y deja Redis como adaptador posterior (§10.12, ADR-33). |
 | Errores | `thiserror` + `anyhow` (interno) | núcleo | Errores tipados en el borde, contexto interno. |
 | Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
 | IDs | `uuid` | núcleo | Estándar. |
@@ -435,7 +455,7 @@ async fn conformance() {
 }
 ```
 
-La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023). El montaje `/mcp` no añade casos C: su suite es la M de §20 y se ejecuta contra `rdd-axum` con la feature `mcp-http` (RP-029); `dispatch` no lo sirve porque el montaje vive en la plataforma, así que una petición a `/mcp` por `dispatch` recibe el 404 del `fallback`. `/graphql` sigue la misma regla: su suite es la G de §20, se ejecuta contra `rdd-axum` con la feature `graphql` (RP-030) y no añade casos C. `/api-docs` también: su suite es la O de §20, se ejecuta contra `rdd-axum` con la feature `openapi` (RP-032) y no añade casos C. El montaje estático sigue la regla: su suite es la S de §20, se ejecuta contra `rdd-axum` con la feature `static-files` (RP-033) y no añade casos C; `dispatch` no sirve el directorio porque el montaje vive en la plataforma.
+La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023). El montaje `/mcp` no añade casos C: su suite es la M de §20 y se ejecuta contra `rdd-axum` con la feature `mcp-http` (RP-029); `dispatch` no lo sirve porque el montaje vive en la plataforma, así que una petición a `/mcp` por `dispatch` recibe el 404 del `fallback`. `/graphql` sigue la misma regla: su suite es la G de §20, se ejecuta contra `rdd-axum` con la feature `graphql` (RP-030) y no añade casos C. `/api-docs` también: su suite es la O de §20, se ejecuta contra `rdd-axum` con la feature `openapi` (RP-032) y no añade casos C. El montaje estático sigue la regla: su suite es la S de §20, se ejecuta contra `rdd-axum` con la feature `static-files` (RP-033) y no añade casos C; `dispatch` no sirve el directorio porque el montaje vive en la plataforma. La cola de trabajos tampoco añade casos C: no es una entrada HTTP y su suite es la J de §20, que corre en proceso con `InMemoryQueue` y contra un archivo SQLite temporal (RF-261 a RF-268).
 
 | Caso | Verifica | Requisitos |
 |---|---|---|
@@ -474,6 +494,8 @@ La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el 
 | Una conexión viva no es `Request`/`Response` | Puerto de actualización mínimo (§10.4); la plataforma conserva el transporte y el núcleo, la semántica |
 | Más código a mantener (`rdd-cors` propio, extractores propios, suite) | Alcance acotado por fases (§21) |
 | Protocolo MCP a mano; stdio en 0.7 y HTTP en 0.9 | Subconjunto de seis métodos y cinco códigos de error (§10.6); el transporte remoto reutiliza protocolo y tools (ADR-21, ADR-23) |
+| Entrega at-least-once: un trabajo puede ejecutarse dos veces | El handler debe ser idempotente; `idempotency_key` evita el doble encolado y el `lease` acota la ventana de duplicado (§10.12, RF-262, RF-263) |
+| SQLite tiene un solo escritor | WAL y `busy_timeout` con una cola por base; para más volumen, el puerto `Queue` deja entrar Redis o un broker después (§2.2, ADR-33) |
 | SSE no cabe en un `Response` con cuerpo en memoria | La cola de eventos es neutral y la plataforma la vuelca en su cuerpo (`Body::from_stream`); `GET` y reanudación quedan fuera (§2.2, ADR-24) |
 
 ---
@@ -1870,6 +1892,149 @@ text/html`: nunca convierte una petición de API o de asset en `index.html`.
 | RF-259 | El `Content-Type` DEBE salir de la extensión con `mime_guess`, con `charset=utf-8` para los tipos textuales. Un directorio (incluida la raíz del montaje) DEBE servirse con el índice configurado, y con `spa(true)` una ruta sin extensión y con `Accept: text/html` DEBE devolver el índice de la raíz; una ruta con extensión o sin `Accept: text/html` NO DEBE recibir el fallback. La caché DEBE ser `no-cache` para el índice y para los archivos fuera de los prefijos inmutables, y `public, max-age=31536000, immutable` bajo un prefijo inmutable. El `ETag` DEBE ser fuerte y derivarse de tamaño y fecha de modificación, de modo que un cambio en disco se vea en la petición siguiente sin reiniciar el servidor. |
 | RF-260 | `authorize(&Request)` DEBE ejecutarse después de los globales y antes de resolver la ruta; `Err` se responde con el mapeo del núcleo a Problem Details (§10.3) y con `public(true)` se omite. La fachada DEBE declarar `static-files = ["dep:rdd-static", "rdd-axum/static-files"]` y reexportar `StaticFiles`, `StaticFilesConfig`, `AuthorizeFn`, `DEFAULT_MOUNT` y `DEFAULT_INDEX` (también como `rdd::static_files`); `rdd-axum` DEBE declarar `static-files = ["dep:rdd-static"]` y `rdd-hyper` NO DEBE arrastrarlo (RA-023). Activar `static-files` sin `axum` es un error de compilación claro (RP-012). La suite S-01 a S-08 (§20) DEBE cubrirlo y NO DEBE existir vigilancia de archivos, recarga en caliente ni empaquetado de los archivos en el binario. |
 
+### 10.12 Trabajos en segundo plano (`rdd-jobs`)
+
+Una cola de trabajos no es una entrada HTTP, pero sigue el mismo reparto que las
+demás capacidades: la semántica vive en un crate neutral y el motor solo
+persiste. `rdd-jobs` define el puerto `Queue`, el contrato `Job`, el `Worker` y
+una `InMemoryQueue` para pruebas y desarrollo; `rdd-sqlite` implementa
+`SqliteQueue` con la feature `jobs` (§4.2, RA-024). La app compone el `Worker`
+con sus handlers y lo ejecuta junto al servidor con el mismo `ShutdownSignal`
+(RF-013); ni el router ni `HttpApp` saben que existe una cola. **SQLite primero**:
+la fase 0.14 no trae Redis ni brokers, y un adaptador Redis entra después por el
+mismo puerto sin tocar `Worker`, los handlers ni la app (ADR-33).
+
+```rust
+// rdd-jobs — puerto neutral (§10.12)
+pub trait Job: serde::Serialize + serde::de::DeserializeOwned + Send + 'static {
+    const KIND: &'static str;
+}
+
+pub struct JobId(pub Uuid);
+pub struct NewJob { /* kind, payload, run_at, max_attempts, idempotency_key */ }
+pub struct ReservedJob { /* id, kind, payload, attempt, max_attempts */ }
+pub struct JobRecord { /* id, kind, payload, attempt, last_error, run_at */ }
+
+pub trait Queue: Send + Sync + 'static {
+    fn enqueue(&self, job: NewJob) -> BoxFuture<'_, rdd_core::Result<JobId>>;
+    fn reserve(&self, lease: Duration) -> BoxFuture<'_, rdd_core::Result<Option<ReservedJob>>>;
+    fn renew(&self, id: JobId, lease: Duration) -> BoxFuture<'_, rdd_core::Result<()>>;
+    fn complete(&self, id: JobId) -> BoxFuture<'_, rdd_core::Result<()>>;
+    fn fail(&self, id: JobId, error: String, retry_at: Option<SystemTime>)
+        -> BoxFuture<'_, rdd_core::Result<()>>;
+    fn dead_letters(&self, limit: usize) -> BoxFuture<'_, rdd_core::Result<Vec<JobRecord>>>;
+    fn requeue(&self, id: JobId) -> BoxFuture<'_, rdd_core::Result<()>>;
+}
+
+pub trait JobHandler<J: Job>: Send + Sync + 'static {
+    fn handle(&self, job: J, ctx: JobContext) -> BoxFuture<'static, rdd_core::Result<()>>;
+}
+
+impl JobContext {
+    pub fn id(&self) -> JobId;
+    pub fn attempt(&self) -> u32;
+    pub fn resolve<T: Send + Sync + 'static>(&self) -> rdd_core::Result<Arc<T>>;
+}
+```
+
+El handler es un adaptador de entrada más, como el controller, la tool MCP o el
+resolver GraphQL: llama al caso de uso y resuelve sus dependencias del mismo
+contenedor (`ctx.resolve::<T>()`). La identidad no viaja por extensiones HTTP
+porque no hay petición: el payload del trabajo lleva el `owner_id` y el handler
+lo pasa al caso de uso, de modo que el filtro por dueño de §26.5 sigue vigente.
+
+```rust
+// main.rs — la app compone el worker junto al servidor
+let queue = SqliteQueue::connect(&database_url).await?;
+let worker = Worker::new(queue)
+    .register::<CompleteTask>(CompleteTaskHandler)
+    .config(
+        WorkerConfig::new()
+            .concurrency(4)
+            .lease(Duration::from_secs(30))
+            .max_attempts(3)
+            .backoff(Duration::from_millis(500))
+            .shutdown_grace(Duration::from_secs(30)),
+    );
+tokio::spawn(worker.run(shutdown.clone()));
+```
+
+**Semántica.** La entrega es **at-least-once**: un *lease* vencido, un proceso
+caído o un reinicio pueden volver a entregar un trabajo. No hay exactly-once y el
+framework no lo simula; el handler debe ser idempotente y la `idempotency_key`
+solo deduplica el **encolado**.
+
+| Situación | Comportamiento |
+|---|---|
+| `enqueue` | Estado `pending` con `run_at`, `max_attempts` e `idempotency_key` opcional; devuelve el `JobId` |
+| `enqueue` con una clave ya registrada | Devuelve el `JobId` existente sin crear otra fila ni reiniciar sus intentos |
+| `reserve` | Atómico: elige un `pending` elegible, incrementa `attempt` y fija `lease_until = now + lease` |
+| `renew` | Extiende el lease de un trabajo en curso |
+| `complete` | Estado terminal; repetirlo es idempotente |
+| `fail` con `attempt < max_attempts` | Vuelve a `pending` con `run_at = now + base × 2^(attempt-1)`, limitado por `max_backoff` |
+| `fail` con `attempt ≥ max_attempts` | Pasa a `dead`; se lista con `dead_letters` y vuelve con `requeue(id)` |
+| Lease vencido sin `complete` | El trabajo vuelve a ser elegible; puede ejecutarse otra vez |
+| `KIND` sin handler registrado | Se trata como fallo y termina en `dead` con el error; el worker sigue |
+| `Err` o `panic` del handler | Se trata como fallo; el worker y el servidor siguen vivos |
+| `ShutdownSignal` | El worker deja de reservar, espera lo en curso hasta `shutdown_grace` y lo no terminado vuelve por vencimiento del lease |
+
+No hay orden garantizado entre trabajos elegibles, ni prioridad, ni cron, ni
+cancelación: solo trabajos de una ejecución con `run_at`, que es lo que necesitan
+los reintentos. La `InMemoryQueue` usa `tokio::sync::Mutex` y `tokio::time`, de
+modo que las pruebas pueden congelar el reloj con `tokio::time::pause` para
+verificar leases y esperas sin dormir.
+
+**SQLite.** `SqliteQueue::connect(url)` abre la conexión con WAL y
+`busy_timeout`, comprueba que la tabla existe y falla al arrancar nombrando la
+migración que falta si no; **no crea ni migra tablas**. El DDL se publica como
+`SqliteQueue::SCHEMA` para que el proyecto lo versione con `rdd migrate` (el
+servidor no migra al arrancar, §13). La reserva es una sola sentencia
+`UPDATE … RETURNING`, así que dos procesos sobre la misma base no entregan el
+mismo trabajo por una carrera; el índice único de `idempotency_key` lo aplica el
+motor. Los tiempos se guardan como milisegundos desde `UNIX_EPOCH`.
+
+```sql
+-- migrations/0003_jobs.sql — DDL publicado por SqliteQueue::SCHEMA
+CREATE TABLE rdd_jobs (
+    id              TEXT PRIMARY KEY,
+    kind            TEXT NOT NULL,
+    payload         TEXT NOT NULL,
+    state           TEXT NOT NULL DEFAULT 'pending',
+    attempt         INTEGER NOT NULL DEFAULT 0,
+    max_attempts    INTEGER NOT NULL,
+    run_at          INTEGER NOT NULL,
+    lease_until     INTEGER,
+    idempotency_key TEXT UNIQUE,
+    last_error      TEXT
+);
+CREATE INDEX rdd_jobs_ready ON rdd_jobs (state, run_at, lease_until);
+```
+
+```sql
+-- reserva atómica (RF-266)
+UPDATE rdd_jobs
+SET attempt = attempt + 1, lease_until = ?2
+WHERE id = (
+    SELECT id FROM rdd_jobs
+    WHERE state = 'pending' AND run_at <= ?1
+      AND (lease_until IS NULL OR lease_until <= ?1)
+    ORDER BY run_at, id
+    LIMIT 1
+)
+RETURNING id, kind, payload, attempt, max_attempts;
+```
+
+| ID | Requisito |
+|---|---|
+| RF-261 | El crate `rdd-jobs` DEBE exponer `Job`, `JobId`, `Queue`, `Worker`, `WorkerConfig`, `JobContext`, `JobState` e `InMemoryQueue`, y NO DEBE depender de plataformas, Tower, drivers de BD ni `rdd-sqlite` (RA-024). `Job` DEBE asociar `KIND` a un payload `serde`; `JobContext` DEBE dar `id`, `attempt` y `resolve::<T>()` desde el contenedor de la app, como `ToolContext` y `GraphqlContext`. |
+| RF-262 | `Queue::enqueue(NewJob)` DEBE persistir el trabajo en estado `pending` con `run_at`, `max_attempts` (por defecto 3) e `idempotency_key` opcional, y devolver `JobId`. Con una clave ya registrada DEBE devolver el `JobId` existente sin crear otra fila ni reiniciar sus intentos. `InMemoryQueue` y `SqliteQueue` DEBEN compartir esa semántica y NO DEBEN prometer orden entre trabajos elegibles. |
+| RF-263 | `reserve` DEBE ser atómico: elige un trabajo `pending` con `run_at <= now` cuyo `lease_until` sea nulo o haya vencido, incrementa `attempt` y fija `lease_until = now + lease`, devolviendo `ReservedJob` o `None`. `renew` DEBE extender el lease de un trabajo en curso y `complete` DEBE dejarlo en estado terminal de forma idempotente. Un lease vencido sin `complete` DEBE volver a ser elegible: la entrega es **at-least-once** y el framework NO DEBE prometer exactly-once. |
+| RF-264 | Un `Err` del handler, un `panic` o un `KIND` sin handler registrado DEBEN contar como fallo. Si `attempt < max_attempts`, el trabajo DEBE volver a `pending` con `run_at = now + base × 2^(attempt-1)` limitado por `max_backoff`; si no, DEBE pasar a `dead`. `dead_letters(limit)` DEBE listar los muertos con su último error y `requeue(id)` DEBE devolver uno a `pending` reiniciando `attempt`. NO DEBE haber cron, recurrencia, prioridad ni cancelación en esta fase. |
+| RF-265 | `Worker` DEBE registrar handlers por `KIND` con `register::<J>(handler)`, ejecutar hasta `concurrency` trabajos a la vez, renovar el lease de los trabajos en curso y llamar `complete` o `fail` según el resultado. Un `panic` NO DEBE tumbar el worker ni el servidor. Ante `ShutdownSignal` DEBE dejar de reservar, esperar los trabajos en curso hasta `shutdown_grace` y dejar que los no terminados vuelvan por vencimiento del lease; pasado el plazo DEBE abortar y salir. `run(shutdown)` DEBE devolver `Ok` al cerrar ordenadamente. |
+| RF-266 | Con la feature `jobs`, `rdd-sqlite` DEBE exponer `SqliteQueue` con `connect(url)`, `SCHEMA`, `dead_letters` y `requeue`. `connect` DEBE abrir la conexión con WAL y `busy_timeout`, comprobar que la tabla existe y fallar al arrancar nombrando la migración que falta si no; NO DEBE crear ni migrar tablas. La reserva DEBE ser una sola sentencia `UPDATE … RETURNING` (o una transacción equivalente) para que dos procesos sobre la misma base no entreguen el mismo trabajo por una carrera, y el índice único de `idempotency_key` DEBE aplicarlo el motor. La durabilidad DEBE sobrevivir al cierre abrupto del proceso. |
+| RF-267 | La fachada DEBE declarar `jobs = ["dep:rdd-jobs"]` y `jobs-sqlite = ["jobs", "sqlite", "rdd-sqlite/jobs"]`, y reexportar `rdd_jobs` como `rdd::jobs` con `Job`, `JobId`, `Queue`, `Worker`, `WorkerConfig`, `JobContext`, `JobState` e `InMemoryQueue`; con `jobs-sqlite` DEBE añadir `SqliteQueue`. La cola NO DEBE montarse en el router ni registrarse en `run_main`: la app compone el worker y lo ejecuta con el mismo `ShutdownSignal` del servidor (RF-013, RA-024). |
+| RF-268 | `example/todo-app --worker` DEBE ejecutar un worker sobre la misma base SQLite del demo: `PUT /tasks/:id/complete` DEBE validar la tarea, encolar `tasks.complete` con `owner_id` en el payload, usar `complete:<task_id>` como `idempotency_key` y responder 202 con el `JobId`; el handler DEBE aplicar el caso de uso, respetar el dueño y ser idempotente. Sin `--worker` la ruta sigue siendo síncrona. La suite J-01 a J-08 (§20) DEBE cubrirlo y NO DEBE existir adaptador Redis, broker, cron ni exactly-once en esta fase. |
+
 ---
 
 ## 11. Sistema de middlewares
@@ -2259,7 +2424,12 @@ sus macros (RF-243), sin nada que registrar; `openapi` activa `rdd-openapi` y
 `static-files` activa `rdd-static` y `rdd-axum/static-files` y re-exporta
 `StaticFiles`, `StaticFilesConfig`, `AuthorizeFn`, `DEFAULT_MOUNT` y
 `DEFAULT_INDEX` (también como `rdd::static_files`, RF-260), sin nada que
-registrar. Es `run_main` —el código que expande `#[rdd::main]`— y no un
+registrar; `jobs` activa `rdd-jobs` y reexporta el puerto, `Job`, `JobId`,
+`Worker`, `WorkerConfig`, `JobContext`, `JobState` e `InMemoryQueue` como
+`rdd::jobs`; `jobs-sqlite` activa `jobs`, `sqlite` y `rdd-sqlite/jobs` y añade
+`SqliteQueue` al mismo reexport (RF-267). La cola no se monta en el router ni se
+registra en `run_main`: la app compone el `Worker` y lo ejecuta junto al servidor
+(§10.12). Es `run_main` —el código que expande `#[rdd::main]`— y no un
 inicializador global, porque la fachada solo puede ejecutar código en el camino
 que ella misma genera, igual que RP-012 con la plataforma.
 `register()` es idempotente y hace ambas cosas: `declare` para sus esquemas e
@@ -2880,6 +3050,24 @@ vive en la plataforma (§4.5) y no modifican archivos del repositorio.
 | S-07 | `authorize` corre después de los globales: un rechazo produce 401/403 y no toca el disco; un montaje que choca con `/health`, otro montaje solapado o una configuración inválida impiden arrancar nombrando el prefijo | RF-255, RF-257, RF-260 |
 | S-08 | `example/todo-app --static` sirve `client/` en `/site`: la página, el CSS con su MIME, un `HEAD` de `app.js` y un 404 en Problem Details | RF-256, RF-259, §26.11 |
 
+### Suite de trabajos en segundo plano (`rdd-jobs`)
+
+Los casos J-01 a J-06 corren en proceso contra `InMemoryQueue` y congelan el
+reloj con `tokio::time::pause`; J-07 usa un archivo SQLite temporal y dos colas
+sobre la misma base; J-08 lanza el demo con `--worker`. No añaden casos C porque
+la cola no es una entrada HTTP (§4.5).
+
+| Caso | Verifica | Requisitos |
+|---|---|---|
+| J-01 | `enqueue` devuelve un `JobId`, el worker registrado por `KIND` recibe el payload y `complete` deja el trabajo terminal; un `KIND` sin handler termina en `dead` con el error y el worker sigue | RF-261, RF-262, RF-264, RF-265 |
+| J-02 | Un handler que falla dos veces y acierta a la tercera produce tres intentos y dos esperas con `run_at = base × 2^(attempt-1)`; el reloj congelado confirma que no se reserva antes de tiempo | RF-263, RF-264 |
+| J-03 | Un handler que siempre falla llega a `dead` al agotar `max_attempts`; `dead_letters` lo lista con el último error y `requeue` lo devuelve a `pending` con `attempt` reiniciado y permite completarlo | RF-264 |
+| J-04 | Reservar sin `complete`, avanzar el reloj más allá del lease y volver a reservar entrega el mismo trabajo con `attempt` incrementado; `complete` repetido no falla y el trabajo no se vuelve a entregar | RF-263 |
+| J-05 | Con `concurrency(1)` y una señal de apagado, el worker deja de reservar, el trabajo en curso termina dentro de `shutdown_grace` y uno no terminado vuelve a ser elegible al vencer su lease; `run` devuelve `Ok` | RF-265 |
+| J-06 | Dos `enqueue` con la misma `idempotency_key` devuelven el mismo `JobId` y solo hay un trabajo; con N trabajos distintos y `concurrency(4)` cada uno se completa una vez y no se pierde ninguno | RF-262, RF-265 |
+| J-07 | `SqliteQueue::connect` con la migración aplicada persiste el trabajo y lo recupera tras reconectar; dos colas sobre el mismo archivo reservan trabajos distintos en paralelo; una clave repetida choca en el índice único; sin la tabla, `connect` falla al arrancar nombrando la migración | RF-262, RF-263, RF-266 |
+| J-08 | `example/todo-app --worker`: `PUT /tasks/:id/complete` responde 202 con el `JobId` y la tarea queda completada por el worker; repetir la petición con la misma clave no duplica el trabajo; un usuario no completa la tarea de otro; sin `--worker` la ruta sigue siendo síncrona | RF-264, RF-265, RF-268, §26.12 |
+
 ### Suite de rendimiento (`rdd-bench`)
 
 El arnés `rdd-bench` no es una prueba de corrección: mide un binario `--release` en
@@ -3243,6 +3431,48 @@ responde el 404 canónico; un montaje que choca con una ruta existente o se
 solapa con otro aborta el arranque; no hay watcher ni recarga en caliente; la
 suite S pasa completa y `cargo tree -p rdd-static` cumple RA-023.
 
+### Fase 0.14 — Trabajos en segundo plano (`rdd-jobs`)
+
+**Entrega:** crate neutral `rdd-jobs` (puerto `Queue`, `Job`, `Worker` e
+`InMemoryQueue`), `SqliteQueue` en `rdd-sqlite` con la feature `jobs`, demo
+`--worker` y casos J-01 a J-08. Redis, los brokers y el cron quedan
+explícitamente fuera (§2.2, ADR-33).
+
+- [ ] `rdd-jobs`: `Job` con `KIND`, `JobId`, `Queue`, `Worker`, `WorkerConfig`,
+      `JobContext`, `JobState` e `InMemoryQueue`; sin plataformas ni drivers
+      (RF-261, RA-024)
+- [ ] Encolado con `run_at`, `max_attempts` e `idempotency_key` única; clave
+      repetida devuelve el mismo `JobId` sin reiniciar intentos (RF-262)
+- [ ] Reserva atómica con incremento de `attempt` y `lease_until`; `renew` y
+      `complete` idempotente; lease vencido reentregable (RF-263)
+- [ ] Reintentos con espera exponencial y tope, `dead` al agotar intentos,
+      `dead_letters` y `requeue`; sin cron ni prioridad (RF-264)
+- [ ] `Worker` con concurrencia, registro por `KIND`, renovación de lease,
+      aislamiento de `panic` y apagado ordenado con `shutdown_grace` (RF-265)
+- [ ] `SqliteQueue` con `SCHEMA`, WAL, `busy_timeout`, reserva en una sentencia
+      `UPDATE … RETURNING`, índice único de idempotencia y fallo de arranque si
+      falta la migración (RF-266)
+- [ ] Features `jobs` y `jobs-sqlite` de la fachada con re-export como
+      `rdd::jobs`; `jobs-sqlite` añade `SqliteQueue` (RF-267, RA-024)
+- [ ] Demo `--worker`: migración `0003_jobs.sql`, configuración `WORKER_*`, cola
+      sobre la misma base y `PUT /tasks/:id/complete` asíncrono con 202 y
+      `JobId`; sin `--worker` la ruta sigue síncrona (§26.12)
+- [ ] Casos J-01 a J-07 en `crates/rdd/tests/jobs.rs` y J-08 en
+      `example/todo-app/tests/jobs.rs` (RF-261 a RF-268)
+- [ ] RA-024 verificada: `cargo tree -p rdd-jobs` sin plataformas ni drivers,
+      `cargo tree -p rdd-sqlite -e features` sin plataformas y
+      `cargo tree -p rdd-hyper` sin `rdd-jobs`
+- [ ] Docs regenerados y `specVersion` a `0.13.0-draft`
+
+**Aceptación:** un trabajo encolado con la misma `idempotency_key` no se
+duplica; el worker lo ejecuta, reintenta con espera exponencial y lo manda a
+`dead` al agotar intentos; un lease vencido lo reentrega y el handler idempotente
+lo soporta; un `panic` no tumba el worker; el apagado espera lo en curso; la cola
+SQLite sobrevive a reconectar y dos procesos no reservan el mismo trabajo por una
+carrera; el demo completa una tarea por el worker y responde 202 con el `JobId`;
+no hay Redis, broker, cron ni exactly-once; la suite J pasa completa y
+`cargo tree -p rdd-jobs` cumple RA-024.
+
 ### Criterios transversales (todas las fases)
 
 - [ ] `cargo clippy -- -D warnings`, `cargo fmt --check` y `cargo test` en CI
@@ -3255,6 +3485,7 @@ suite S pasa completa y `cargo tree -p rdd-static` cumple RA-023.
 - [ ] RA-021 verificada en CI (`rdd-graphql` no arrastra plataformas, Tower, WebSocket ni drivers y `rdd-hyper` no arrastra `rdd-graphql`)
 - [ ] RA-022 verificada en CI (`rdd-openapi` no arrastra plataformas ni drivers y `rdd-hyper` no arrastra `rdd-openapi`)
 - [ ] RA-023 verificada en CI (`rdd-static` no arrastra plataformas, Tower ni drivers y `rdd-hyper` no arrastra `rdd-static`)
+- [ ] RA-024 verificada en CI (`rdd-jobs` no arrastra plataformas ni drivers, `rdd-sqlite` no arrastra plataformas y `rdd-hyper` no arrastra `rdd-jobs`)
 - [ ] Cobertura de pruebas de integración para cada requisito `RF-` marcado como DEBE
 - [ ] Cada diagnóstico de macro tiene un test `trybuild` con su mensaje esperado
 - [ ] Documentación con ejemplo ejecutable (`cargo test --doc`) por cada API pública
@@ -3294,6 +3525,7 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | V25 | UI OpenAPI Vue + shadcn-vue compilada a un solo HTML: medir el bundle, comprobar que `vite-plugin-singlefile` no deja `src`/`href` externos, `eval` ni peticiones a terceros, que la CSP `default-src 'none'` no rompe los estilos ni el script inline, y que el documento embebido se escapa sin cerrar el `script` (`</script>` en descripciones). Verificar que *Try it* funciona en el mismo origen y que `npm ci && npm run build` es reproducible sin red. | 0.12 | §10.10, RF-251, ADR-30 |
 | V26 | Estabilidad de los percentiles del arnés: cuántas muestras y qué ventana hacen que p99 no oscile más de un 10 % entre ejecuciones en la misma máquina; confirmar que el keep-alive de `hyper` y el eco WebSocket de `tokio-tungstenite` no acumulan memoria ni conexiones y que el informe con `errors` 0 es reproducible. | 0.12 | §20, RF-253, ADR-31 |
 | V27 | Archivos estáticos en los sistemas objetivo: si leer un archivo mientras otro proceso lo reescribe (editor, despliegue) devuelve contenido parcial en Windows, si la resolución del `ETag` por fecha de modificación basta en todos los sistemas de archivos usados y si `mime_guess` cubre las extensiones del sitio. Verificar también que la canonicalización detecta enlaces simbólicos que escapan a la raíz en Windows. Un watcher de desarrollo se evaluó y queda fuera por decisión (§2.2, ADR-32); no se implementa. | 0.13 | §10.11, RF-258, RF-259 |
+| V28 | SQLite como cola durable: confirmar que la versión de SQLite empaquetada por `sqlx` 0.9 soporta `UPDATE … RETURNING` (3.35+), que WAL y `busy_timeout` se comportan igual en Windows y Linux con dos procesos, que la resolución del reloj basta para `run_at`/`lease_until` en milisegundos y que un trabajo sobrevive a un cierre abrupto (kill, no apagado ordenado). Verificar además que el índice único con `idempotency_key` nula permite varias filas y que `SqliteQueue` detecta la tabla ausente sin crear nada. | 0.14 | §10.12, RF-262, RF-263, RF-266 |
 
 ---
 
@@ -3333,6 +3565,7 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | ADR-30 | **El documento OpenAPI lo compone la aplicación y la UI viene embebida.** `rdd-openapi` modela OpenAPI 3.1, valida el documento y lo contrasta con las rutas montadas; la UI Vue + shadcn-vue con el tema del explorer se compila a un único HTML y se embebe con `include_str!`, servida en `/api-docs` con alias `/docs` y `/swagger` y el documento en `path/openapi.json`. | (a) Generar el documento desde los controllers con una macro; (b) servir Swagger UI o Redoc desde CDN; (c) generar YAML estático en build; (d) embeber solo el JSON y dejar la UI al usuario. | (a) acopla la documentación a la tabla de rutas y no cubre operaciones que no son CRUD ni descripciones que decide la app; además obliga a introspeccionar tipos en compilación. (b) rompe el modo offline y la CSP, y ya se descartó para el explorer (ADR-29). (c) crea una segunda fuente de verdad que puede divergir del binario y no conoce los alias ni el montaje. (d) deja al usuario sin la UI que pide la fase. Componer el documento en código deja la validación al arrancar —incluido el contraste con las rutas montadas— y la UI comparte tema, build y garantías de CSP con `/graphql`. |
 | ADR-31 | **El benchmark es una herramienta interna reproducible, no una compuerta de CI.** `rdd-bench` mide `AxumPlatform` real en un puerto efímero, publica `docs/assets/benchmarks.json` y la página lo embebe de forma idempotente. | (a) Umbral de rendimiento en CI que rompa el build; (b) publicación automática en cada release; (c) `criterion` en proceso sobre `dispatch`. | (a) es frágil: la varianza de una máquina de CI haría fallar cambios correctos y el número no representa el despliegue. (b) exige infraestructura y un runner estable que §2.2 mantiene fuera. (c) mide el núcleo en proceso, no la pila HTTP ni WebSocket completa, y no describe la latencia que ve un cliente. El arnés se ejecuta a mano, registra el entorno para que la comparación sea honesta y su informe es un dato, no un contrato. |
 | ADR-32 | **Los archivos estáticos se sirven desde el disco con un crate neutral y montaje en la plataforma; sin *hot reload* ni empaquetado.** `rdd-static` resuelve la ruta, valida el traversal, elige MIME y caché, aplica índice y SPA y devuelve una respuesta de `rdd_core::http`; `AxumPlatform::static_files` (feature `static-files`) lee el cuerpo, ejecuta `prepare` y traduce la respuesta. El archivo se lee en cada petición: el servidor sirve siempre lo que hay en disco y el navegador recarga, sin vigilar directorios ni reiniciar el proceso. | (a) `tower_http::services::ServeDir` en `rdd-axum`; (b) embeber el directorio en el binario (`include_dir`/`rust-embed`); (c) un watcher/HMR de desarrollo en el framework; (d) un bundler propio que minifique y huellé los assets. | (a) ata la funcionalidad a una plataforma y a Tower, rompe RA-023/ADR-11 y no cubre `rdd-hyper`; además deja la seguridad de rutas y la política de caché fuera del contrato. (b) obliga a recompilar para cambiar un CSS y contradice la petición de servir archivos del proyecto; los únicos embebidos siguen siendo las dos UIs del framework. (c) es una herramienta de desarrollo que §2.2 mantiene fuera: añade un watcher, un canal de recarga y más superficie sin mejorar el contrato de servir archivos. (d) convierte al framework en un bundler ajeno a su alcance. La lectura en tiempo de petición hace que el cambio en disco se vea sin reiniciar, que es el único «recargar» que se promete. |
+| ADR-33 | **Colas durables sobre SQLite con un puerto neutral; Redis después.** `rdd-jobs` define `Queue`, `Job`, `Worker` y `InMemoryQueue` con entrega at-least-once, *lease* de visibilidad, reintentos con espera exponencial, *dead-letter* e idempotencia de encolado; `SqliteQueue` (feature `jobs` de `rdd-sqlite`) persiste en una tabla versionada por migración y reserva con una sola sentencia atómica. La app compone el worker y lo ejecuta con el mismo `ShutdownSignal` del servidor; Redis o un broker entran después por el mismo puerto sin tocar la app. | (a) Redis como backend de colas desde el inicio; (b) solo `InMemoryQueue`, sin durabilidad; (c) un broker externo (NATS/Kafka/RabbitMQ); (d) un crate de colas de terceros atado a `sqlx` o a un motor. | El usuario pidió empezar por SQLite sin perder el foco de Redis: SQLite ya es el adaptador local por defecto, no añade infraestructura y da durabilidad real, mientras el puerto deja Redis como siguiente adaptador. (b) pierde los trabajos al reiniciar y no sirve para el demo. (c) contradice §2.2 y P1: un broker es la primera fila del fuera de alcance y no hace falta para una app de un proceso. (d) ata la semántica al driver elegido, repite el problema que RA-014 evita con `DbAdapter` y deja la idempotencia, el lease y el dead-letter fuera del contrato. La entrega es at-least-once porque prometer exactly-once sobre un lease sería mentir: el handler idempotente y la `idempotency_key` son la mitigación honesta. |
 
 ---
 
@@ -3368,6 +3601,7 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.10.2-draft | 2026-11-11 | **Tab indenta y acepta la sugerencia del editor.** Petición del usuario: el editor de CodeMirror no indentaba al tabular y el autocompletado debía funcionar. (1) **RF-241**: el editor DEBE indentar la línea o la selección con Tab, desindentar con Shift+Tab y aceptar la sugerencia activa con Tab cuando el desplegable está abierto; además autocompleta al escribir y con Ctrl+Espacio. (2) **§21/fase 0.11**: la casilla del editor incorpora Tab; el documento sube a `0.10.2-draft`. (3) El cambio vive en la extensión de teclas del explorer y no altera el artefacto autocontenido ni la CSP. |
 | 0.11.0-draft | 2026-11-12 | **Documentación OpenAPI (`/api-docs`) y benchmarks reproducibles.** Petición del usuario: documentar por HTTP con una UI del mismo stack y tema que el explorer, y publicar un menú de rendimiento con gráficos. (1) **§2.1/§2.2**: OpenAPI entra como fase 0.12 opcional; siguen fuera la generación automática desde controllers, Swagger UI/Redoc desde CDN y el benchmark como compuerta de CI. (2) **§4.1/§4.2/§4.3/§4.4**: entran `rdd-openapi` (neutral, sin plataformas) y `rdd-bench` (herramienta interna); `rdd-axum` gana la feature `openapi`; nueva **RA-022** (solo `rdd-axum` depende de `rdd-openapi` y `rdd-hyper` no lo arrastra) y **RP-032** (el montaje `/api-docs` valida el documento al arrancar, no interpreta la UI y se prueba con O-01 a O-06). (3) **§10.10 nuevo**: modelo OpenAPI 3.1, `OpenApiBuilder`, `OpenApi::validate`, `OpenApi::check_routes`, `OpenApiHttp`, `OpenApiHttpConfig`, `AxumPlatform::openapi` y **RF-245 a RF-252** (modelo y validación; montaje con alias y JSON; solo `GET` con 405/404/413; validación bidireccional de rutas; `authorize` con `public_docs`; configuración; UI Vue 3 + TS estricto + Tailwind + shadcn-vue con el tema oxide forge, autocontenida y *Try it* del mismo origen; feature de la fachada). (4) **§12.6**: feature `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]` y re-export como `rdd::openapi`. (5) **§20**: suites O-01 a O-06 y la metodología de `rdd-bench` con **RF-253** (arnés HTTP/WS con p50/p95/p99 y entorno) y **RF-254** (informe y página idempotentes). (6) **§21**: fase 0.12 con aceptación de UI, JSON, 405, validación al arrancar y informe sin errores; criterio transversal de RA-022. (7) **§22**: **V25** (bundle, CSP, escape del documento embebido y reproducibilidad de la UI) y **V26** (estabilidad de percentiles y ausencia de fugas en el arnés). (8) **§23**: **ADR-30** (documento compuesto por la app y UI embebida, en vez de macro, CDN o YAML estático) y **ADR-31** (benchmark interno reproducible, no compuerta de CI). (9) **§26.9/§26.10**: el demo acumula `--mcp-http`, `--graphql` y `--openapi`, y documenta las diez rutas con su documento, su montaje y su configuración. (10) **Sitio**: `docs/benchmark.html`, `docs/assets/benchmarks.json`, `scripts/build-benchmark-page.mjs`, el ítem *Benchmark* en nav, buscador, portada, sitemap y `llms.txt`. (11) **UI**: el cuerpo del *Try it* se edita con CodeMirror —resaltado de JSON e indentación automática y con `Tab`/`Shift-Tab`, igual que el explorer—. El documento sube a `0.11.0-draft`. |
 | 0.12.0-draft | 2026-11-12 | **Archivos estáticos (`rdd-static`) sin *hot reload*.** Petición del usuario: implementar solo el módulo de archivos estáticos y dejar la recarga en caliente fuera del desarrollo. (1) **§2.1/§2.2**: los archivos estáticos entran como fase 0.13 opcional; se excluyen explícitamente el *hot reload*/watcher, el empaquetado de assets en el binario y su transformación. (2) **§4.1/§4.2/§4.3/§4.4**: entra `rdd-static` (neutral: `rdd-core`, `anyhow`, `bytes`, `mime_guess` y `tokio` con `fs`); `rdd-axum` gana la feature `static-files`; nueva **RA-023** (solo `rdd-axum` depende de `rdd-static` y `rdd-hyper` no lo arrastra) y **RP-033** (el montaje ejecuta `prepare`, no interpreta la ruta y devuelve el 404 canónico sin repetir la cadena global). (3) **§10.11 nuevo**: `StaticFiles`, `StaticFilesConfig`, `AuthorizeFn`, la resolución con decodificación previa al corte de segmentos, la canonicalización bajo la raíz, el MIME con `charset` textual, ETag/304, la caché `no-cache`/`immutable`, el índice, el SPA acotado, `dotfiles` y **RF-255 a RF-260**. (4) **§12.6**: feature `static-files = ["dep:rdd-static", "rdd-axum/static-files"]` y re-export como `rdd::static_files`. (5) **§20**: suite S-01 a S-08 contra un servidor real y el demo. (6) **§21**: fase 0.13 con aceptación de página, assets, `HEAD`, 304, traversal bloqueado, 404 canónico y montajes inválidos; criterio transversal de RA-023. (7) **§22**: **V27** (lectura mientras se reescribe el archivo, resolución del ETag, cobertura de `mime_guess` y enlaces que escapan en Windows). (8) **§23**: **ADR-32** (disco + crate neutral + montaje, frente a `ServeDir`, embeber, watcher o bundler). (9) **§26.2/§26.11**: el demo acumula `--static`, sirve `client/` en `/site` con `STATIC_*` y sus tests S-08. El documento sube a `0.12.0-draft`. |
+| 0.13.0-draft | 2026-11-12 | **Trabajos en segundo plano (`rdd-jobs`) con SQLite primero.** Petición del usuario: trabajar con workers y colas usando SQLite, sin perder el foco de Redis para después. (1) **§2.1/§2.2**: los trabajos entran como fase 0.14 opcional; se excluyen Redis como backend de colas, los brokers externos, exactly-once y el cron/prioridad/cancelación. (2) **§4.1/§4.2/§4.3/§4.4**: entra `rdd-jobs` (neutral: `rdd-core`, `serde`, `serde_json`, `tokio`, `tracing`, `anyhow`); `rdd-sqlite` gana la feature `jobs`; nueva **RA-024** (solo `rdd-sqlite` depende de `rdd-jobs`, y `rdd-hyper` no lo arrastra). (3) **§10.12 nuevo**: `Job`, `JobId`, `Queue`, `Worker`, `WorkerConfig`, `JobContext`, `InMemoryQueue`, la semántica at-least-once con lease, reintentos con espera exponencial, dead-letter e idempotencia de encolado, `SqliteQueue` con `SCHEMA`/WAL/`busy_timeout`/`UPDATE … RETURNING` y **RF-261 a RF-268**. (4) **§12.6**: features `jobs = ["dep:rdd-jobs"]` y `jobs-sqlite = ["jobs", "sqlite", "rdd-sqlite/jobs"]` con re-export como `rdd::jobs`. (5) **§20**: suite J-01 a J-08 en proceso y contra el demo. (6) **§21**: fase 0.14 con aceptación de idempotencia, reintentos, lease, dead-letter, apagado, durabilidad y demo asíncrono; criterio transversal de RA-024. (7) **§22**: **V28** (`UPDATE … RETURNING`, WAL y `busy_timeout` en dos procesos, resolución del reloj, durabilidad tras kill y clave única nula). (8) **§23**: **ADR-33** (SQLite durable con puerto neutral y Redis después, frente a Redis desde el inicio, memoria, broker o crate de terceros). (9) **§26.2/§26.9/§26.12**: el demo gana `--worker`, la migración `0003_jobs.sql`, `config/jobs_config.rs`, el módulo `worker/` y la completación asíncrona con 202; sin `--worker` la ruta sigue síncrona. El documento sube a `0.13.0-draft`. |
 | 0.10.4-draft | 2026-11-11 | **Las raíces GraphQL del demo se separan por archivo.** Petición del usuario: mutaciones, consultas y tipos estaban mezclados en `app_graphql.rs`. (1) **§26.9**: las raíces viven en `src/graphql/{query,mutation,subscription}.rs` y `mod.rs` solo reexporta; la macro emite un `impl GraphqlRoot` por bloque anotado, así que no puede haber dos sobre la misma raíz y publicar raíces por módulo exigiría cambiar la macro y enmendar RF-240. (2) `CreateTaskInput` baja a `modules/tasks/presentation/task_graphql.rs` junto a `Task` y el módulo lo reexporta (RA-004): el contrato GraphQL lo publica el módulo dueño. (3) El demo pasa a `mod graphql;` y `.query(graphql::Query)`, sin cambios de comportamiento. El documento sube a `0.10.4-draft`. |
 | 0.10.3-draft | 2026-11-11 | **El montaje de `/graphql` se configura por entorno.** Petición del usuario: ver dónde se configuran `path`, `explorer`, `public_explorer` y `max_depth`. (1) **§26.9**: el bloque `--graphql` de `main.rs` consume `config/graphql_config.rs`, que expone `GRAPHQL_PATH`, `GRAPHQL_EXPLORER`, `GRAPHQL_PUBLIC_EXPLORER` y `GRAPHQL_MAX_DEPTH` con los valores que antes estaban fijos; el demo mantiene el explorer público para G-09 y en producción se desactiva con `GRAPHQL_EXPLORER=false` o se protege con `GRAPHQL_PUBLIC_EXPLORER=false`. (2) El README del demo documenta las cuatro variables y el listado de argumentos del binario (`--mcp`, `--mcp-http`, `--graphql` y `--explorer-token`), y la guía de la CLI documenta `rdd run --memory` y el reenvío tras `--`. El documento sube a `0.10.3-draft`. |
 | 0.9.0-draft | 2026-11-11 | **GraphQL opcional (`/graphql`): consultas, mutaciones, suscripciones y explorer.** Petición del usuario. Se resuelve con un motor propio, macros y SSE, por las mismas razones de portabilidad que MCP. (1) **§2.1/§2.2**: GraphQL sale de la lista de exclusiones y entra como fase 0.10 opcional, sobre el mismo `HttpApp` y el mismo contenedor; siguen fuera SDL, directivas propias, interfaces, uniones, enums, `@defer`/`@stream`, batching, consultas persistidas y el subprotocolo `graphql-transport-ws`. (2) **§4.1/§4.2/§4.3**: entra `rdd-graphql` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow`); `rdd-axum` gana la feature `graphql`; nueva **RA-021** (la dependencia va en una sola dirección, el motor no arrastra plataformas ni WebSocket y `rdd-hyper` no arrastra `rdd-graphql`). (3) **§4.4**: nuevas **RP-030** (el montaje `/graphql` ejecuta `prepare`, no interpreta el documento y se prueba con G-01 a G-09) y **RP-031** (el stream SSE sale del motor y la plataforma solo lo vuelca; desconectar cancela; sin reintento ni WebSocket). **§4.5**: la suite G no añade casos C. (4) **§8.7**: diagnósticos **RDD0501** (tipo o firma no soportada) y **RDD0502** (nombre duplicado o reservado). (5) **§10.9 nuevo**: `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y `AxumPlatform::graphql`, con el subconjunto del documento, la forma de `errors`, la introspección, el formato `graphql-sse` y **RF-233 a RF-244** (montaje y choque de rutas; POST/GET con su tabla de estados; subconjunto del documento con `max_depth`; validación, ejecución y burbujeo de `null`; introspección; SSE con `next`/`complete` y cancelación; `authorize` e identidad por `ext`/`get`/`resolve`; macros con RDD0501/RDD0502; explorer embebido con CSP; configuración; feature de la fachada; validación del esquema y errores internos). (6) **§12.6**: feature `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y re-export como `rdd::graphql`. (7) **§20**: suite G-01 a G-09 contra el motor y un servidor real. (8) **§21**: fase 0.10 con aceptación de dos usuarios, 401 en explorer y suscripción, explorer sin red, SSE y errores con `locations`/`path`. (9) **§22**: **V22** (clientes GraphQL reales e introspección/GET/SSE) y **V23** (expansión de macros y coste de `max_depth`). (10) **§23**: **ADR-26** (motor propio), **ADR-27** (macros en vez de SDL), **ADR-28** (suscripciones solo por SSE) y **ADR-29** (explorer propio embebido). (11) **§26.9**: el demo monta `/graphql` con JWT, un esquema sobre los casos de uso, una suscripción sobre `TaskFeed` filtrada por dueño y el explorer. |
@@ -3578,11 +3812,13 @@ example/todo-app/
 │       └── style.css
 ├── migrations/
 │   ├── 0001_tasks.sql          # lo genera el CLI (RF-192)
-│   └── 0002_users.sql          # lo añade el demo
+│   ├── 0002_users.sql          # lo añade el demo
+│   └── 0003_jobs.sql           # tabla de la cola, DDL de SqliteQueue::SCHEMA (§26.12)
 ├── src/
 │   ├── config/
 │   │   ├── explorer_config.rs  # identidad del Bearer de preview (§26.9)
 │   │   ├── graphql_config.rs   # ruta, explorer y max_depth (§26.9)
+│   │   ├── jobs_config.rs      # concurrencia, lease y reintentos del worker (§26.12)
 │   │   ├── jwt_config.rs       # secreto, expiración y ADMIN_EMAIL, solo del entorno
 │   │   ├── mcp_config.rs       # MCP_ALLOWED_ORIGINS para el montaje /mcp (§26.8)
 │   │   ├── openapi_config.rs   # ruta, UI y políticas de /api-docs (§26.10)
@@ -3608,10 +3844,14 @@ example/todo-app/
 │   │           └── task_tools.rs    # tools MCP de §26.7
 │   ├── openapi/                # documento OpenAPI 3.1 del demo (§26.10)
 │   │   └── mod.rs
+│   ├── worker/                 # worker de §10.12, no es un módulo
+│   │   ├── mod.rs
+│   │   └── complete_task.rs    # handler de tasks.complete
 │   └── main.rs
 └── tests/
     ├── acceptance.rs           # 401, 403, 429 y preflight
     ├── graphql.rs              # G-09: el binario con --graphql
+    ├── jobs.rs                 # J-08: el binario con --worker
     ├── mcp_stdio.rs            # M-09: el binario con --mcp
     ├── mcp_http.rs             # M-16: el binario con --mcp-http
     └── static_files.rs         # S-08: el binario con --static
@@ -4198,13 +4438,14 @@ nuevo initializer `config/explorer_config.rs`, ajustable por
 explorer entre arranques. El token no se registra en la base y caduca con
 `JWT_TTL_SECS` (§26.3).
 
-El binario reconoce seis argumentos: `--mcp` (stdio, sin puerto),
+El binario reconoce siete argumentos: `--mcp` (stdio, sin puerto),
 `--explorer-token` (imprime el Bearer y sigue), `--mcp-http` (`/mcp`),
-`--graphql` (`GRAPHQL_PATH`), `--openapi` (`OPENAPI_PATH`, §26.10) y `--static`
-(`STATIC_MOUNT`, §26.11). `--mcp` sigue siendo excluyente porque no abre puerto;
-los cuatro montajes de servidor se **acumulan** sobre un solo `AxumPlatform`, así
-que `--graphql --openapi --static` sirve el explorer, la documentación y la
-página del demo a la vez. El README del demo mantiene el listado y los ejemplos
+`--graphql` (`GRAPHQL_PATH`), `--openapi` (`OPENAPI_PATH`, §26.10), `--static`
+(`STATIC_MOUNT`, §26.11) y `--worker` (cola de §26.12). `--mcp` sigue siendo
+excluyente porque no abre puerto; los cuatro montajes de servidor se **acumulan**
+sobre un solo `AxumPlatform`, así que `--graphql --openapi --static` sirve el
+explorer, la documentación y la página del demo a la vez, y `--worker` se
+combina con ellos porque el worker corre junto al servidor y comparte la base. El README del demo mantiene el listado y los ejemplos
 de combinación.
 
 ```rust
@@ -4419,3 +4660,157 @@ o cambiar `STATIC_MOUNT`/el prefijo inmutable si se edita un archivo cacheado.
 `app.js` no lleva cuerpo y que una ruta inexistente responde 404 en Problem
 Details. En vivo, `GET /site/` muestra la portada, `/site/assets/style.css` y
 `/site/assets/app.js` se sirven con su tipo y `/site/no-existe` responde 404.
+
+### 26.12 Trabajos en segundo plano del demo
+
+`example/todo-app --worker` ejecuta el worker de §10.12 junto al servidor REST,
+sobre la misma base SQLite del demo. El modo se acumula con `--graphql`,
+`--openapi` y `--static`; `--mcp` sigue siendo excluyente porque no abre puerto.
+La feature se añade al `Cargo.toml` del demo:
+
+```toml
+rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi", "static-files", "jobs-sqlite"] }
+```
+
+La tabla la crea una migración versionada, no el arranque: el DDL es el de
+`SqliteQueue::SCHEMA` (§10.12) y `rdd migrate` lo registra en
+`migrations/0003_jobs.sql`. `SqliteQueue::connect` comprueba que existe y falla
+nombrando esa migración si falta (RF-266).
+
+La política del worker sale de `config/jobs_config.rs`:
+
+```rust
+// config/jobs_config.rs — política de `--worker` (§10.12, RF-265)
+pub struct JobsConfig {
+    pub concurrency: usize,
+    pub lease_secs: u64,
+    pub max_attempts: u32,
+    pub backoff_ms: u64,
+    pub shutdown_grace_secs: u64,
+}
+
+pub fn load() -> JobsConfig {
+    JobsConfig {
+        concurrency: super::env_or("WORKER_CONCURRENCY", "4").parse().unwrap_or(4),
+        lease_secs: super::env_or("WORKER_LEASE_SECS", "30").parse().unwrap_or(30),
+        max_attempts: super::env_or("WORKER_MAX_ATTEMPTS", "3").parse().unwrap_or(3),
+        backoff_ms: super::env_or("WORKER_BACKOFF_MS", "500").parse().unwrap_or(500),
+        shutdown_grace_secs: super::env_or("WORKER_SHUTDOWN_GRACE_SECS", "30")
+            .parse()
+            .unwrap_or(30),
+    }
+}
+```
+
+| Variable | Por defecto | Efecto |
+|---|---|---|
+| `WORKER_CONCURRENCY` | `4` | Trabajos ejecutados a la vez |
+| `WORKER_LEASE_SECS` | `30` | Vigencia del *lease*; un trabajo sin `complete` vuelve a ser elegible al vencer |
+| `WORKER_MAX_ATTEMPTS` | `3` | Intentos antes de pasar a `dead` |
+| `WORKER_BACKOFF_MS` | `500` | Base de la espera exponencial entre intentos |
+| `WORKER_SHUTDOWN_GRACE_SECS` | `30` | Espera máxima a los trabajos en curso al apagar |
+
+El trabajo y su handler viven en `src/worker/`, fuera de `modules/`, porque la
+cola es transversal: el handler llama al caso de uso público del módulo `tasks`
+(RA-004) y no duplica la regla de negocio.
+
+```rust
+// worker/complete_task.rs — handler de `tasks.complete` (§10.12)
+use rdd::jobs::{BoxFuture, Job, JobContext, JobHandler};
+use rdd::Result;
+use uuid::Uuid;
+
+use crate::modules::tasks::TasksService;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct CompleteTask {
+    pub task_id: Uuid,
+    pub owner_id: Uuid,
+}
+
+impl Job for CompleteTask {
+    const KIND: &'static str = "tasks.complete";
+}
+
+pub struct CompleteTaskHandler;
+
+impl JobHandler<CompleteTask> for CompleteTaskHandler {
+    fn handle(&self, job: CompleteTask, ctx: JobContext) -> BoxFuture<'static, Result<()>> {
+        Box::pin(async move {
+            // Repetir la completación no cambia nada: el handler es idempotente.
+            let svc = ctx.resolve::<TasksService>()?;
+            svc.update_of(job.owner_id, job.task_id, None, Some(true))
+                .await?;
+            Ok(())
+        })
+    }
+}
+```
+
+El controller gana una ruta asíncrona al lado de la síncrona: `PUT` sigue
+completando en el acto y `POST /tasks/:id/complete` encola y responde **202** con
+el `JobId`. La ruta lee la tarea con `get_of` (lectura filtrada por dueño, 404 si
+es ajena) y usa `complete:<task_id>` como clave de idempotencia, de modo que dos
+peticiones seguidas no crean dos trabajos. El módulo registra la cola como
+`TaskQueue`, un envoltorio clonable de `Arc<dyn Queue>`, en el mismo contenedor
+que resuelve el handler.
+
+```rust
+// modules/tasks/presentation/tasks_controller.rs — completación asíncrona (§26.12)
+#[post("/:id/complete", status = 202)]
+async fn complete_async(
+    svc: TasksService,
+    queue: TaskQueue,
+    session: Session,
+    id: Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let task = svc.get_of(session.id, *id).await?;
+    let job_id = queue
+        .enqueue(
+            NewJob::new(&CompleteTask {
+                task_id: task.id,
+                owner_id: session.id,
+            })
+            .idempotency_key(format!("tasks.complete:{}", task.id)),
+        )
+        .await?;
+    Ok(Json(serde_json::json!({ "job_id": job_id.0 })))
+}
+```
+
+El bloque de `main.rs` se ejecuta antes de arrancar el servidor, para que
+`--worker` se combine con los montajes. El worker no abre puerto y comparte el
+`ShutdownSignal` de la plataforma (RF-265, RF-267):
+
+```rust
+// main.rs — `--worker` (§10.12, §26.12)
+if std::env::args().skip(1).any(|arg| arg == "--worker") {
+    let jobs = config::jobs_config::load();
+    let queue = SqliteQueue::connect(&database_url).await?;
+    let worker = Worker::new(queue)
+        .register::<CompleteTask>(CompleteTaskHandler)
+        .config(
+            WorkerConfig::new()
+                .concurrency(jobs.concurrency)
+                .lease(Duration::from_secs(jobs.lease_secs))
+                .max_attempts(jobs.max_attempts)
+                .backoff(Duration::from_millis(jobs.backoff_ms))
+                .shutdown_grace(Duration::from_secs(jobs.shutdown_grace_secs)),
+        );
+    tokio::spawn(worker.run(shutdown.clone()));
+}
+```
+
+**Sin Redis ni broker.** El demo no necesita infraestructura extra: la cola es
+una tabla en la misma base SQLite y el worker corre en el mismo proceso. Redis y
+los brokers quedan para un adaptador posterior sobre el mismo puerto `Queue`
+(§2.2, ADR-33), y no hay cron, prioridad ni cancelación.
+
+**Verificación (J-08).** `tests/jobs.rs` levanta el binario con `--worker` y
+`RDD_MEMORY=1` en un puerto efímero, registra dos usuarios y crea una tarea con
+cada uno. Comprueba que `POST /tasks/:id/complete` responde 202 con un `job_id`,
+que la tarea queda `done` al consultarla por REST, que repetir la petición no
+crea un trabajo nuevo y que el usuario B no completa la tarea de A. Con el mismo
+binario sin `--worker`, `PUT /tasks/:id/complete` sigue respondiendo 200 de forma
+síncrona. Al apagar con la señal de siempre, el worker termina lo que tenía en
+curso dentro de `WORKER_SHUTDOWN_GRACE_SECS`.

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Archivos estáticos en rdd: montaje, caché y seguridad de rutas</title>
+  <meta name="description" content="Sirve un directorio del disco con rdd-static: montaje en /site, defensa contra traversal, MIME, ETag, caché inmutable, índice y fallback de SPA.">
+  <meta name="keywords" content="rdd archivos estáticos, Rust static files, StaticFiles, StaticFilesConfig, rdd-static, SPA, ETag, traversal">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/guide/static.html">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-192.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Archivos estáticos en rdd: montaje, caché y seguridad de rutas">
+  <meta property="og:description" content="Sirve un directorio del disco con rdd-static: montaje en /site, defensa contra traversal, MIME, ETag, caché inmutable, índice y fallback de SPA.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/guide/static.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Archivos estáticos en rdd: montaje, caché y seguridad de rutas">
+  <meta name="twitter:description" content="Montaje en /site, defensa contra traversal, MIME, ETag, caché inmutable, índice y SPA.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/guide/static.html#article",
+        "headline": "Archivos estáticos en rdd: montaje, caché y seguridad de rutas",
+        "description": "Sirve un directorio del disco con rdd-static: montaje en /site, defensa contra traversal, MIME, ETag, caché inmutable, índice y fallback de SPA.",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/guide/static.html",
+        "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/guide/static.html",
+        "inLanguage": "es",
+        "proficiencyLevel": "Intermediate",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "name": "rdd"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "dateModified": "2026-11-12",
+        "about": [
+          { "@type": "Thing", "name": "Archivos estáticos" },
+          { "@type": "Thing", "name": "Rust" },
+          { "@type": "Thing", "name": "Caché HTTP" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Inicio", "item": "https://jhonwick20262027-boop.github.io/rukito/" },
+          { "@type": "ListItem", "position": 2, "name": "Archivos estáticos", "item": "https://jhonwick20262027-boop.github.io/rukito/guide/static.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body data-root=".." data-nav="guide">
+  <div id="site-header-root"></div>
+
+  <script src="../assets/js/highlight.js"></script>
+  <script src="../assets/js/site.js"></script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="inicio-rapido.html">Guía rápida</a>
+        <a href="arquitectura.html">Arquitectura</a>
+        <a href="cli.html">CLI</a>
+        <a href="graphql.html">GraphQL</a>
+        <a href="tiempo-real.html">Tiempo real</a>
+        <a href="jwt-explorer.html">JWT en el explorer</a>
+        <a href="static.html" class="active">Archivos estáticos</a>
+        <a href="../especificacion.html">Especificación</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Inicio</a><span class="sep">/</span><span class="here">Archivos estáticos</span>
+      </nav>
+
+      <h1>Archivos estáticos en rdd</h1>
+      <p>Servir un directorio del disco es otra entrada opcional sobre el mismo
+      <code>HttpApp</code>: la resolución, la seguridad de rutas, el MIME, la
+      caché y el SPA viven en <code>rdd-static</code>; el montaje en el router lo
+      aporta <code>rdd-axum</code>. La cadena global —CORS, JWT, RateLimit— corre
+      igual que para una ruta de la API.</p>
+
+      <section class="section">
+        <h2>Activar la feature y montar <code>/site</code></h2>
+        <p>La fachada declara la feature <code>static-files</code>, que trae el
+        crate neutral y el montaje de la plataforma:</p>
+        <pre data-lang="toml"><code>rdd = { version = "0.1", features = ["static-files"] }</code></pre>
+        <p>El montaje va en <code>main.rs</code>, después de componer la app. La
+        raíz se canonicaliza al construir <code>StaticFiles</code> y la
+        configuración se valida antes de abrir el socket:</p>
+        <pre data-lang="rust"><code>use rdd::{AxumPlatform, StaticFiles, StaticFilesConfig};
+
+let files = StaticFiles::new("client")?.config(
+    StaticFilesConfig::new()
+        .mount("/site")
+        .spa(true)
+        .public(false)
+        .dotfiles(false)
+        .immutable("/assets")
+        .authorize(require_session),
+)?;
+
+App::new()
+    .module(tasks::module())
+    .run_on(AxumPlatform::new().static_files(files), "0.0.0.0:3000")
+    .await</code></pre>
+        <ul>
+          <li>Un directorio inexistente o que no sea una carpeta es un error de arranque, no un 404 por petición.</li>
+          <li>El montaje cubre el prefijo exacto, su barra final y todo su subárbol; las rutas literales del núcleo (<code>/health</code>, <code>/tasks</code>) conservan prioridad.</li>
+          <li>Un choque exacto con una ruta HTTP, un canal, <code>/mcp</code>, <code>/graphql</code>, <code>/api-docs</code> o su JSON, o dos montajes iguales o solapados impiden arrancar (RF-257).</li>
+          <li>Sin la feature o sin <code>.static_files(...)</code>, el router no cambia: una petición a ese prefijo recibe el 404 del <code>fallback</code>.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>Configuración</h2>
+        <table>
+          <tr><th>Opción</th><th>Por defecto</th><th>Qué hace</th></tr>
+          <tr><td><code>mount</code></td><td><code>/</code></td><td>Prefijo literal donde se monta el directorio.</td></tr>
+          <tr><td><code>index</code></td><td><code>index.html</code></td><td>Archivo que se sirve al pedir un directorio, también en la raíz del montaje.</td></tr>
+          <tr><td><code>spa</code></td><td><code>false</code></td><td>Devuelve el índice de la raíz ante una ruta sin extensión y con <code>Accept: text/html</code>.</td></tr>
+          <tr><td><code>public</code></td><td><code>false</code></td><td><code>true</code> omite <code>authorize</code>; los middlewares globales corren igual.</td></tr>
+          <tr><td><code>dotfiles</code></td><td><code>false</code></td><td><code>true</code> permite servir archivos y carpetas que empiezan por punto.</td></tr>
+          <tr><td><code>immutable</code></td><td><code>/assets</code></td><td>Prefijo con caché inmutable; puede llamarse varias veces.</td></tr>
+          <tr><td><code>authorize</code></td><td>sin guardián</td><td>Corre después de los globales y antes de tocar el disco; un <code>Err</code> es Problem Details.</td></tr>
+        </table>
+        <p><code>validate</code> exige un prefijo literal (con <code>/</code> inicial,
+        normalizado y sin <code>:</code>, <code>*</code>, <code>{</code>,
+        <code>}</code>, <code>?</code>, <code>#</code>, <code>\</code> ni espacios),
+        un índice que sea un nombre simple y prefijos inmutables literales. Un valor
+        inválido impide el arranque nombrando el valor (RF-255).</p>
+      </section>
+
+      <section class="section">
+        <h2>Resolución y seguridad de rutas</h2>
+        <p>La ruta se decodifica (<code>%XX</code>) <strong>antes</strong> de
+        dividirla en segmentos, así que <code>%2e%2e%2f</code> cuenta como
+        <code>../</code>. Ningún segmento puede ser vacío, <code>.</code> o
+        <code>..</code>, ni contener <code>\</code>, <code>:</code>,
+        <code>*</code>, <code>?</code>, <code>"</code>, <code>&lt;</code>,
+        <code>&gt;</code>, <code>|</code> o caracteres de control; los que empiezan
+        por punto solo pasan con <code>dotfiles(true)</code>.</p>
+        <p>El candidato se canonicaliza y se exige que su ruta real siga bajo la raíz
+        canonicalizada: un enlace simbólico que escape tampoco se sirve. Una ruta que
+        no resuelve no revela si el archivo existe: <code>handle</code> devuelve
+        <code>None</code> y la plataforma responde el <strong>404 canónico</strong>
+        del núcleo, sin repetir la cadena global (ya corrió en
+        <code>prepare</code>).</p>
+      </section>
+
+      <section class="section">
+        <h2>Respuestas y caché</h2>
+        <table>
+          <tr><th>Petición</th><th>Respuesta</th></tr>
+          <tr><td><code>GET</code> de un archivo existente</td><td>200 con <code>Content-Type</code>, <code>Content-Length</code>, <code>ETag</code>, <code>Cache-Control</code> y <code>X-Content-Type-Options: nosniff</code></td></tr>
+          <tr><td><code>GET</code>/<code>HEAD</code> de un directorio</td><td>200 con el índice configurado</td></tr>
+          <tr><td><code>HEAD</code></td><td>Las mismas cabeceras que <code>GET</code>, sin cuerpo y con <code>Content-Length</code> real</td></tr>
+          <tr><td><code>If-None-Match</code> coincide (incluye <code>W/</code> y <code>*</code>)</td><td>304 sin cuerpo con <code>ETag</code>, <code>Cache-Control</code> y <code>nosniff</code></td></tr>
+          <tr><td>Método distinto de <code>GET</code>/<code>HEAD</code></td><td>405 Problem Details con <code>Allow: GET, HEAD</code></td></tr>
+          <tr><td>Ruta ausente, traversal, archivo oculto o enlace que escapa</td><td>404 Problem Details canónico</td></tr>
+          <tr><td><code>authorize</code> rechaza (y <code>public(false)</code>)</td><td>401/403 Problem Details, antes de tocar el disco</td></tr>
+          <tr><td>Cuerpo mayor a <code>limits.body_limit_bytes</code></td><td>413 Problem Details (RP-006)</td></tr>
+        </table>
+        <p>El <code>Content-Type</code> sale de la extensión con
+        <code>mime_guess</code>; los tipos textuales (<code>text/*</code>,
+        <code>+json</code>, <code>+xml</code>, <code>application/json</code>,
+        <code>application/javascript</code>, <code>image/svg+xml</code>) llevan
+        <code>charset=utf-8</code>. El índice y los archivos fuera de los prefijos
+        inmutables usan <code>Cache-Control: no-cache</code>; bajo un prefijo
+        <code>immutable</code> la respuesta es
+        <code>public, max-age=31536000, immutable</code>.</p>
+        <p>El <code>ETag</code> es fuerte y se deriva de tamaño y fecha de
+        modificación, así que un cambio en disco se ve en la petición siguiente sin
+        reiniciar el servidor. El fallback de SPA solo se aplica a rutas
+        <strong>sin extensión</strong> y con <code>Accept: text/html</code>: nunca
+        convierte una petición de API o de asset en <code>index.html</code>.</p>
+      </section>
+
+      <section class="section">
+        <h2>El demo: <code>--static</code></h2>
+        <p><code>example/todo-app --static</code> sirve <code>client/</code> en
+        <code>/site</code> sobre el mismo servidor y el mismo contenedor. El modo se
+        acumula con <code>--mcp-http</code>, <code>--graphql</code> y
+        <code>--openapi</code>, y la política sale del entorno:</p>
+        <table>
+          <tr><th>Variable</th><th>Por defecto</th><th>Efecto</th></tr>
+          <tr><td><code>STATIC_DIR</code></td><td><code>client</code></td><td>Directorio servido; debe existir al arrancar</td></tr>
+          <tr><td><code>STATIC_MOUNT</code></td><td><code>/site</code></td><td>Prefijo literal del montaje</td></tr>
+          <tr><td><code>STATIC_SPA</code></td><td><code>false</code></td><td>Fallback de SPA para rutas sin extensión</td></tr>
+          <tr><td><code>STATIC_PUBLIC</code></td><td><code>true</code></td><td><code>false</code> activa <code>require_session</code></td></tr>
+          <tr><td><code>STATIC_DOTFILES</code></td><td><code>false</code></td><td><code>true</code> sirve archivos ocultos</td></tr>
+        </table>
+        <pre data-lang="bash"><code>cargo run -p todo-app -- --static
+curl -sI localhost:3000/site/                     # 200 text/html, no-cache
+curl -sI localhost:3000/site/assets/style.css     # 200 text/css, immutable
+curl -s  localhost:3000/site/no-existe            # 404 Problem Details</code></pre>
+        <p><code>STATIC_PUBLIC=true</code> es una decisión del demo, igual que el
+        explorer y el documento: la página se lee sin JWT y la API que consume sigue
+        exigiendo el token. En producción se pone <code>STATIC_PUBLIC=false</code> y
+        <code>authorize</code> protege el directorio.</p>
+      </section>
+
+      <section class="section">
+        <h2>Producción y límites</h2>
+        <ul>
+          <li>No hay <em>hot reload</em> ni watcher: cada petición lee el archivo del disco. Al editarlo basta con recargar el navegador; el servidor no reinicia ni empaqueta los archivos en el binario.</li>
+          <li>Los assets bajo <code>/assets</code> son inmutables por contrato: en desarrollo cambia el nombre del archivo o el prefijo si editas uno ya cacheado.</li>
+          <li>Sirve detrás de tu proxy con TLS; el framework no añade compresión ni rangos parciales en esta fase.</li>
+          <li>El cuerpo se limita con <code>limits.body_limit_bytes</code> y por encima se responde 413 sin tocar el disco (RP-006).</li>
+        </ul>
+        <p>Requisitos completos: RF-255 a RF-260 en la
+        <a href="../especificacion.html">especificación</a> (§10.11).</p>
+      </section>
+
+      <nav class="doc-pager" aria-label="Navegación de la guía">
+        <a class="pager-link prev" href="jwt-explorer.html"><span class="dir">← Anterior</span><span class="title">JWT en el explorer</span></a>
+        <a class="pager-link next disabled" aria-disabled="true"><span class="dir">Siguiente →</span><span class="title">Fin de la guía</span></a>
+      </nav>
+    </main>
+  </article>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      RDD.enhanceCode(document);
+    });
+  </script>
+</body>
+</html>

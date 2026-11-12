@@ -15,3 +15,8 @@ crates/rdd-graphql/explorer/.vite/
 crates/rdd-openapi/ui/node_modules/
 crates/rdd-openapi/ui/dist/
 crates/rdd-openapi/ui/.vite/
+
+# Configuración de build de esta máquina: wrapper de rustc y target windows-gnu.
+# El repo compila en Linux, macOS y Windows sin configuración local.
+.cargo/config.toml
+scripts/rustc-gnu.exe

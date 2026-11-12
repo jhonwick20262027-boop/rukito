@@ -39,6 +39,7 @@ type AuthorizeFn = Arc<dyn Fn(&Request) -> rdd_core::Result<()> + Send + Sync>;
 pub struct GraphqlHttpConfig {
     path: String,
     explorer: bool,
+    public_explorer: bool,
     max_depth: usize,
     authorize: Option<AuthorizeFn>,
 }
@@ -55,6 +56,7 @@ impl GraphqlHttpConfig {
         Self {
             path: "/graphql".to_owned(),
             explorer: true,
+            public_explorer: false,
             max_depth: crate::DEFAULT_MAX_DEPTH,
             authorize: None,
         }
@@ -78,6 +80,13 @@ impl GraphqlHttpConfig {
         self
     }
 
+    /// Si es `true`, el documento del explorer se sirve sin ejecutar
+    /// `authorize`; las operaciones siguen exigiendo el guardián (RF-239, RF-242).
+    pub fn public_explorer(mut self, enabled: bool) -> Self {
+        self.public_explorer = enabled;
+        self
+    }
+
     /// Se ejecuta después de los globales; `Err` se responde como Problem Details.
     pub fn authorize<F>(mut self, f: F) -> Self
     where
@@ -95,6 +104,11 @@ impl GraphqlHttpConfig {
     /// Si el explorer está habilitado.
     pub fn explorer_enabled(&self) -> bool {
         self.explorer
+    }
+
+    /// Si el documento del explorer se sirve sin ejecutar `authorize`.
+    pub fn public_explorer_enabled(&self) -> bool {
+        self.public_explorer
     }
 
     /// Profundidad máxima configurada.
@@ -157,6 +171,7 @@ impl GraphqlHttp {
         let instance = normalize_path(req.uri().path());
 
         if let Some(authorize) = &self.config.authorize
+            && !self.serves_public_explorer(&req)
             && let Err(err) = authorize(&req)
         {
             return GraphqlHttpResponse::Json(no_store(error_response_for(&err, &instance)));
@@ -172,6 +187,18 @@ impl GraphqlHttp {
                 &instance,
                 Some("GET, POST"),
             ))),
+        }
+    }
+
+    /// `GET` sin `query` que sirve el documento, solo con `public_explorer(true)`.
+    /// Las operaciones nunca se eximen del guardián (`RF-239`).
+    fn serves_public_explorer(&self, req: &Request) -> bool {
+        if !self.config.public_explorer || !self.config.explorer || req.method().as_str() != "GET" {
+            return false;
+        }
+        match query_params(req.uri()) {
+            Ok(params) => !params.contains_key("query"),
+            Err(()) => false,
         }
     }
 

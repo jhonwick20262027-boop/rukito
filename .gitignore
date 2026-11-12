@@ -5,3 +5,8 @@
 .env
 .env.*
 *.env
+
+# Explorer de GraphQL: dependencias y salida de Vite (el artefacto es src/explorer.html).
+crates/rdd-graphql/explorer/node_modules/
+crates/rdd-graphql/explorer/dist/
+crates/rdd-graphql/explorer/.vite/

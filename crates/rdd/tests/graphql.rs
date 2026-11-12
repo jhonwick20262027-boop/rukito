@@ -808,10 +808,15 @@ async fn g06_get_explorer_y_metodos() {
     );
     let html = String::from_utf8(reply.body.to_vec()).expect("HTML UTF-8");
     assert!(html.to_lowercase().contains("<html"), "{html}");
+    assert!(html.contains("id=\"app\""), "el explorer monta la app Vue");
     assert!(html.contains("text/event-stream"), "el explorer lee SSE");
     assert!(
         !html.contains("src=\"http") && !html.contains("href=\"http"),
         "{html}"
+    );
+    assert!(
+        !html.contains("eval(") && !html.contains("new Function("),
+        "el artefacto no usa eval"
     );
 
     running.stop().await;
@@ -985,6 +990,50 @@ async fn g08_entrada_identidad_y_panico() {
 
     let subscription = send(addr, gql(&json!({ "query": "subscription { counter }" }))).await;
     assert_eq!(subscription.status, StatusCode::UNAUTHORIZED);
+
+    // `public_explorer(true)` exime solo el documento; las operaciones no (RF-242).
+    assert!(!GraphqlHttpConfig::new().public_explorer_enabled());
+    let public = start(
+        GraphqlHttpConfig::new()
+            .public_explorer(true)
+            .authorize(require_identity),
+        TickFeed::default(),
+    )
+    .await;
+    let document = http::Request::builder()
+        .method("GET")
+        .uri("/graphql")
+        .body(Full::new(Bytes::new()))
+        .unwrap();
+    let reply = send(public.addr, document).await;
+    assert_eq!(reply.status, StatusCode::OK);
+    assert_eq!(
+        header_str(&reply.headers, header::CONTENT_TYPE),
+        Some("text/html; charset=utf-8")
+    );
+    assert!(
+        send(public.addr, gql(&json!({ "query": "{ greeting }" })))
+            .await
+            .status
+            == StatusCode::UNAUTHORIZED
+    );
+    let query = format!("/graphql?query={}", encode("{ greeting }"));
+    let get = http::Request::builder()
+        .method("GET")
+        .uri(query)
+        .body(Full::new(Bytes::new()))
+        .unwrap();
+    assert_eq!(
+        send(public.addr, get).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    let subscription = send(
+        public.addr,
+        gql(&json!({ "query": "subscription { counter }" })),
+    )
+    .await;
+    assert_eq!(subscription.status, StatusCode::UNAUTHORIZED);
+    public.stop().await;
 
     // Con token: `ctx.ext` y `ctx.resolve` ven identidad y provider.
     let seen = send(

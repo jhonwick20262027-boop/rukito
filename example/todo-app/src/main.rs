@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 use crate::middleware::{JwtMiddleware, require_mcp::require_session};
 use crate::modules::tasks::presentation::task_tools::{CompleteTask, CreateTask, ListTasks};
-use crate::modules::users::{Role, Session};
+use crate::modules::users::{Role, Session, TokenCodec};
 
 mod app_controller;
 mod app_graphql;
@@ -39,6 +39,22 @@ async fn main() -> Result<()> {
     // token codec como parámetro para que las pruebas puedan pasar el suyo sin
     // tocar el entorno (§26.3).
     let tokens = modules::users::tokens();
+
+    // §26.9: el explorer necesita un Bearer. `--explorer-token` lo imprime para
+    // una identidad de preview (config/explorer_config.rs) sin registro ni login;
+    // la firma es la misma del servidor y caduca con `JWT_TTL_SECS`.
+    if std::env::args()
+        .skip(1)
+        .any(|arg| arg == "--explorer-token")
+    {
+        let (id, email) = config::explorer_config::identity();
+        let session = Session {
+            id,
+            email,
+            role: Role::User,
+        };
+        println!("EXPLORER_TOKEN={}", tokens.issue(&session)?);
+    }
 
     // El mismo hub para el canal y para el controller: los eventos nacen en el
     // REST y salen por `/ws/tasks` (§10.4, §10.5).
@@ -123,8 +139,11 @@ async fn main() -> Result<()> {
             .mutation(app_graphql::Mutation)
             .subscription(app_graphql::Subscription)
             .build()?;
-        let graphql =
-            GraphqlHttp::new(schema).config(GraphqlHttpConfig::new().authorize(require_session));
+        let graphql = GraphqlHttp::new(schema).config(
+            GraphqlHttpConfig::new()
+                .public_explorer(true)
+                .authorize(require_session),
+        );
         return app
             .run_on(AxumPlatform::new().graphql(graphql), &addr)
             .await;

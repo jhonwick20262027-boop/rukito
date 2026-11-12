@@ -241,10 +241,14 @@ async fn g09_dos_usuarios_y_suscripcion() {
     let ana = demo.login("ana@correo.com").await;
     let beto = demo.login("beto@correo.com").await;
 
-    // La identidad va antes que el protocolo: sin Bearer no hay explorer, no hay
-    // consulta y no hay suscripción (RF-239).
-    let (status, _) = demo.send(explorer(None)).await;
-    assert_eq!(status, 401, "explorer sin token");
+    // El documento del explorer es público, pero las operaciones siguen
+    // exigiendo JWT (RF-239, RF-242).
+    let (status, body) = demo.send(explorer(None)).await;
+    assert_eq!(status, 200, "explorer público");
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("<!doctype html") || html.contains("<!DOCTYPE html"));
+    assert!(!html.contains("src=\"http"));
+
     let anonymous = http::Request::builder()
         .method("POST")
         .uri("/graphql")
@@ -267,13 +271,6 @@ async fn g09_dos_usuarios_y_suscripcion() {
         .unwrap();
     let (status, _) = demo.send(anonymous).await;
     assert_eq!(status, 401, "suscripción sin token");
-
-    // El explorer se sirve embebido y sin recursos externos (RF-240).
-    let (status, body) = demo.send(explorer(Some(&ana))).await;
-    assert_eq!(status, 200);
-    let html = String::from_utf8(body.to_vec()).unwrap();
-    assert!(html.contains("<!doctype html") || html.contains("<!DOCTYPE html"));
-    assert!(!html.contains("src=\"http"));
 
     // Crear por mutación: el dueño sale de la sesión, nunca del cuerpo.
     let created = demo

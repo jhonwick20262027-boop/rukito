@@ -6,6 +6,7 @@
 
 pub mod app_config;
 pub mod database_config;
+pub mod explorer_config;
 pub mod jwt_config;
 pub mod mcp_config;
 

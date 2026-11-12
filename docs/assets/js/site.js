@@ -46,10 +46,8 @@
   /* ---------- Header ---------- */
   const NAV = [
     { key: "guide", label: "Guía", href: "guide/index.html" },
-    { key: "arch", label: "Arquitectura", href: "guide/arquitectura.html" },
     { key: "cli", label: "CLI", href: "guide/cli.html" },
     { key: "bench", label: "Benchmark", href: "benchmark.html" },
-    { key: "spec", label: "Especificación", href: "especificacion.html" },
   ];
   const activeNav = document.body.dataset.nav || "";
 

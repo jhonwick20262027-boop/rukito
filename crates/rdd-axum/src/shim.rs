@@ -59,7 +59,7 @@ impl RouteEntry {
 }
 
 /// Por qué no se pudo produce un cuerpo utilizable.
-enum ReadBody {
+pub(crate) enum ReadBody {
     /// RP-006: supera `limits.body_limit_bytes`; se responde 413 sin leer más.
     TooLarge,
     /// El cliente cortó la conexión o el cuerpo vino corrupto.
@@ -70,7 +70,7 @@ enum ReadBody {
 ///
 /// Se abandona el stream en cuanto se pasa del límite: el resto del cuerpo nunca
 /// se lee.
-async fn read_capped(body: Body, limit: usize) -> Result<Bytes, ReadBody> {
+pub(crate) async fn read_capped(body: Body, limit: usize) -> Result<Bytes, ReadBody> {
     let mut stream = body.into_data_stream();
     let mut collected: Vec<u8> = Vec::new();
     while let Some(chunk) = stream.next().await {
@@ -98,14 +98,14 @@ fn problem(status: StatusCode, problem: &Problem) -> Response {
     Response::from_parts(parts, Body::from(body))
 }
 
-fn payload_too_large(limit: usize, path: &str) -> Response {
+pub(crate) fn payload_too_large(limit: usize, path: &str) -> Response {
     problem(
         StatusCode::PAYLOAD_TOO_LARGE,
         &Problem::payload_too_large(limit, path),
     )
 }
 
-fn internal(err: &Error) -> Response {
+pub(crate) fn internal(err: &Error) -> Response {
     let resp = problem_response(
         StatusCode::INTERNAL_SERVER_ERROR,
         &Problem::from_error(err, "/"),
@@ -116,7 +116,7 @@ fn internal(err: &Error) -> Response {
 }
 
 /// `/tasks/` → `/tasks` en el URI de la petición, conservando la query (RP-008).
-fn normalize_uri(uri: &Uri) -> Result<Uri, Error> {
+pub(crate) fn normalize_uri(uri: &Uri) -> Result<Uri, Error> {
     let path = normalize_path(uri.path());
     if path == uri.path() {
         return Ok(uri.clone());

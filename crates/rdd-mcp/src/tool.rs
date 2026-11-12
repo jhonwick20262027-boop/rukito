@@ -6,7 +6,7 @@
 
 use anyhow::anyhow;
 use rdd_core::Error;
-use rdd_core::http::BoxFuture;
+use rdd_core::http::{BoxFuture, Extensions, FromContainer};
 use serde::Serialize;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -37,6 +37,7 @@ pub struct ToolContext {
     progress_token: Option<Value>,
     cancel: CancellationToken,
     out: mpsc::UnboundedSender<Value>,
+    extensions: Extensions,
 }
 
 impl ToolContext {
@@ -44,11 +45,13 @@ impl ToolContext {
         progress_token: Option<Value>,
         cancel: CancellationToken,
         out: mpsc::UnboundedSender<Value>,
+        extensions: Extensions,
     ) -> Self {
         Self {
             progress_token,
             cancel,
             out,
+            extensions,
         }
     }
 
@@ -80,6 +83,29 @@ impl ToolContext {
     /// Completa al cancelarse; se usa con `tokio::select!`.
     pub fn cancelled(&self) -> impl Future<Output = ()> + Send + '_ {
         self.cancel.cancelled()
+    }
+
+    /// Valor que dejó el transporte en las extensiones de la petición (RF-228).
+    ///
+    /// Por stdio son las que sembró `serve_stdio_with`; por HTTP, las que dejó
+    /// la cadena global de `HttpApp::prepare` (por ejemplo, la `Session` que
+    /// insertó el middleware JWT).
+    pub fn ext<T: Clone + Send + Sync + 'static>(&self) -> Option<T> {
+        self.extensions.get::<T>().cloned()
+    }
+
+    /// Servicio del contenedor que dejó la petición (RF-084, RF-228).
+    ///
+    /// Es el mismo mecanismo que `Request::resolve`: la tool no guarda servicios
+    /// ni un dueño fijo, así que un `McpServer` sirve a todos los usuarios y a
+    /// los dos transportes (ADR-25).
+    pub fn resolve<T: FromContainer>(&self) -> rdd_core::Result<T> {
+        let container = self
+            .extensions
+            .get::<std::sync::Arc<rdd_core::di::Container>>()
+            .cloned()
+            .unwrap_or_else(|| std::sync::Arc::clone(rdd_core::di::default_container()));
+        T::from_container(&container)
     }
 }
 

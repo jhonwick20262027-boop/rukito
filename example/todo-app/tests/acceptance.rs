@@ -13,6 +13,8 @@
 
 #[path = "../src/app_controller.rs"]
 mod app_controller;
+#[path = "../src/app_graphql.rs"]
+mod app_graphql;
 #[path = "../src/app_module.rs"]
 mod app_module;
 #[path = "../src/app_service.rs"]

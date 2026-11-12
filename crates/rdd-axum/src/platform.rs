@@ -16,7 +16,7 @@ use axum::{Router, routing::MethodRouter};
 use rdd_core::error::{PlatformError, PlatformResult};
 use rdd_core::http::{
     BoxHandler, HttpApp, Method, Platform, PlatformFuture, RouteDef, ShutdownSignal,
-    to_route_syntax,
+    normalize_path, to_route_syntax,
 };
 use tokio::net::TcpListener;
 use tower::util::BoxCloneSyncService;
@@ -50,6 +50,10 @@ impl Layer<Route> for ErasedLayer {
 #[derive(Clone)]
 pub struct AxumPlatform {
     layers: Vec<ErasedLayer>,
+    #[cfg(feature = "graphql")]
+    graphql: Vec<Arc<rdd_graphql::GraphqlHttp>>,
+    #[cfg(feature = "mcp-http")]
+    mcp: Vec<Arc<rdd_mcp::McpHttp>>,
 }
 
 impl Default for AxumPlatform {
@@ -61,7 +65,36 @@ impl Default for AxumPlatform {
 impl AxumPlatform {
     /// Plataforma sin capas Tower adicionales.
     pub fn new() -> Self {
-        Self { layers: Vec::new() }
+        Self {
+            layers: Vec::new(),
+            #[cfg(feature = "graphql")]
+            graphql: Vec::new(),
+            #[cfg(feature = "mcp-http")]
+            mcp: Vec::new(),
+        }
+    }
+
+    /// Monta un `GraphqlHttp` en su ruta (RF-233, RP-030).
+    ///
+    /// La ruta se sirve con `any(...)` para que la cadena global (CORS, JWT,
+    /// RateLimit) decida antes que el protocolo. Un choque con una ruta HTTP, un
+    /// canal, `/mcp` u otro `/graphql`, o una configuración inválida, impide
+    /// arrancar.
+    #[cfg(feature = "graphql")]
+    pub fn graphql(mut self, graphql: rdd_graphql::GraphqlHttp) -> Self {
+        self.graphql.push(Arc::new(graphql));
+        self
+    }
+
+    /// Monta un `McpHttp` en su ruta (RF-222, RP-029).
+    ///
+    /// La ruta se sirve con `any(...)` para que la cadena global (CORS, JWT,
+    /// RateLimit) decida antes que el protocolo. Un choque con una ruta HTTP o
+    /// un canal, o una ruta inválida o repetida, impide arrancar.
+    #[cfg(feature = "mcp-http")]
+    pub fn mcp(mut self, mcp: rdd_mcp::McpHttp) -> Self {
+        self.mcp.push(Arc::new(mcp));
+        self
     }
 
     /// Añade una capa Tower al servidor (RP-011).
@@ -86,7 +119,21 @@ impl AxumPlatform {
     }
 
     /// Construye el router de Axum con las rutas del núcleo (RP-003, RP-008).
-    fn router(&self, app: Arc<HttpApp>, shutdown: ShutdownSignal) -> Router {
+    fn router(&self, app: Arc<HttpApp>, shutdown: ShutdownSignal) -> PlatformResult<Router> {
+        #[cfg(feature = "mcp-http")]
+        validate_mcp(&self.mcp, &app)?;
+        #[cfg(feature = "graphql")]
+        {
+            #[cfg(feature = "mcp-http")]
+            let mcp_paths: Vec<String> = self
+                .mcp
+                .iter()
+                .map(|mcp| normalize_path(mcp.path()))
+                .collect();
+            #[cfg(not(feature = "mcp-http"))]
+            let mcp_paths: Vec<String> = Vec::new();
+            validate_graphql(&self.graphql, &mcp_paths, &app)?;
+        }
         let limits = app.limits;
         #[cfg(not(feature = "ws"))]
         let _ = shutdown;
@@ -110,6 +157,40 @@ impl AxumPlatform {
             // RP-008: Axum no fusiona `/tasks/` con `/tasks`; se registran las
             // dos grafías y el shim normaliza antes de entregar al núcleo.
             for spelling in spellings(&pattern) {
+                router = router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
+            }
+        }
+
+        #[cfg(feature = "mcp-http")]
+        for mcp in &self.mcp {
+            let path = normalize_path(mcp.path());
+            let handler = {
+                let app = Arc::clone(&app);
+                let mcp = Arc::clone(mcp);
+                move |req: Request| {
+                    let app = Arc::clone(&app);
+                    let mcp = Arc::clone(&mcp);
+                    async move { crate::mcp_http::serve_mcp(app, mcp, req).await }
+                }
+            };
+            for spelling in spellings(&path) {
+                router = router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
+            }
+        }
+
+        #[cfg(feature = "graphql")]
+        for graphql in &self.graphql {
+            let path = normalize_path(graphql.path());
+            let handler = {
+                let app = Arc::clone(&app);
+                let graphql = Arc::clone(graphql);
+                move |req: Request| {
+                    let app = Arc::clone(&app);
+                    let graphql = Arc::clone(&graphql);
+                    async move { crate::graphql_http::serve_graphql(app, graphql, req).await }
+                }
+            };
+            for spelling in spellings(&path) {
                 router = router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
             }
         }
@@ -142,7 +223,7 @@ impl AxumPlatform {
                 router = router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
             }
         }
-        router
+        Ok(router)
     }
 }
 
@@ -163,7 +244,31 @@ impl Platform for AxumPlatform {
     ) -> PlatformResult<PlatformFuture<Result<(), PlatformError>>> {
         let grace = app.limits.shutdown_grace;
         let app = Arc::new(app);
-        let router = self.router(Arc::clone(&app), shutdown.clone());
+        let router = self.router(Arc::clone(&app), shutdown.clone())?;
+
+        // RF-229: al apagar, `/mcp` cancela lo que esté en vuelo y cierra los
+        // flujos SSE para que el drenaje de Axum pueda terminar.
+        #[cfg(feature = "mcp-http")]
+        for mcp in &self.mcp {
+            let mcp = Arc::clone(mcp);
+            let shutdown = shutdown.clone();
+            tokio::spawn(async move {
+                shutdown.wait().await;
+                mcp.shutdown().await;
+            });
+        }
+
+        // RF-238: al apagar, `/graphql` cancela las suscripciones en vuelo para
+        // que el drenaje de Axum pueda terminar.
+        #[cfg(feature = "graphql")]
+        for graphql in &self.graphql {
+            let graphql = Arc::clone(graphql);
+            let shutdown = shutdown.clone();
+            tokio::spawn(async move {
+                shutdown.wait().await;
+                graphql.shutdown().await;
+            });
+        }
 
         // RP-009: al activarse la señal se dejan de aceptar conexiones nuevas y
         // se drenan las en curso. El plazo `shutdown_grace` se impone por fuera:
@@ -241,4 +346,106 @@ fn spellings(pattern: &str) -> Vec<String> {
         return vec![pattern.to_owned()];
     }
     vec![pattern.to_owned(), format!("{pattern}/")]
+}
+
+/// Comprueba el montaje GraphQL antes de arrancar (RF-233, RF-242).
+#[cfg(feature = "graphql")]
+fn validate_graphql(
+    graphqls: &[Arc<rdd_graphql::GraphqlHttp>],
+    mcp_paths: &[String],
+    app: &HttpApp,
+) -> PlatformResult<()> {
+    let mut seen: Vec<String> = Vec::new();
+    for graphql in graphqls {
+        let settings = graphql.settings();
+        settings.validate().map_err(|err| {
+            PlatformError::other(anyhow::anyhow!("configuración GraphQL inválida: {err}"))
+        })?;
+
+        let raw = settings.mount_path();
+        let path = normalize_path(raw);
+        let literal = raw.starts_with('/')
+            && raw != "/"
+            && raw == path
+            && !raw.contains([':', '*', '{', '}', '?', ' ', '\t', '\n']);
+        if !literal {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "ruta GraphQL inválida `{raw}`: se espera una ruta literal como `/graphql`"
+            )));
+        }
+        if seen.contains(&path) {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "ruta GraphQL duplicada `{path}`: ya hay un montaje en esa ruta"
+            )));
+        }
+        if app
+            .routes
+            .iter()
+            .any(|def| normalize_path(&def.path) == path)
+        {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "la ruta GraphQL `{path}` colisiona con una ruta HTTP"
+            )));
+        }
+        if app
+            .upgrades
+            .iter()
+            .any(|upgrade| normalize_path(&upgrade.path) == path)
+        {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "la ruta GraphQL `{path}` colisiona con un canal de actualización"
+            )));
+        }
+        if mcp_paths.contains(&path) {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "la ruta GraphQL `{path}` colisiona con el montaje `/mcp`"
+            )));
+        }
+        seen.push(path);
+    }
+    Ok(())
+}
+
+/// Comprueba rutas de montaje antes de arrancar (RF-222).
+#[cfg(feature = "mcp-http")]
+fn validate_mcp(mcps: &[Arc<rdd_mcp::McpHttp>], app: &HttpApp) -> PlatformResult<()> {
+    let mut seen: Vec<String> = Vec::new();
+    for mcp in mcps {
+        let raw = mcp.path();
+        let path = normalize_path(raw);
+        let literal = raw.starts_with('/')
+            && raw != "/"
+            && raw == path
+            && !raw.contains([':', '*', '{', '}', '?', ' ', '\t', '\n']);
+        if !literal {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "ruta MCP inválida `{raw}`: se espera una ruta literal como `/mcp`"
+            )));
+        }
+        if seen.contains(&path) {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "ruta MCP duplicada `{path}`: ya hay un montaje en esa ruta"
+            )));
+        }
+        if app
+            .routes
+            .iter()
+            .any(|def| normalize_path(&def.path) == path)
+        {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "la ruta MCP `{path}` colisiona con una ruta HTTP"
+            )));
+        }
+        if app
+            .upgrades
+            .iter()
+            .any(|upgrade| normalize_path(&upgrade.path) == path)
+        {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "la ruta MCP `{path}` colisiona con un canal de actualización"
+            )));
+        }
+        seen.push(path);
+    }
+    Ok(())
 }

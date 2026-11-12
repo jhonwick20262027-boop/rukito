@@ -14,12 +14,14 @@ workspace = true
 # RA-018: el protocolo y el transporte solo hablan con el núcleo.
 rdd-core.workspace = true
 anyhow.workspace = true
+bytes.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # `io-util` da `BufReader`/`fill_buf`; `rt` trae `CancellationToken` (§10.6, RF-212).
 tokio      = { workspace = true, features = ["io-util", "io-std", "sync", "rt", "time", "macros"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

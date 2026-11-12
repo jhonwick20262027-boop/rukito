@@ -23,7 +23,8 @@ pub use response::{
     AllowedMethods, IntoResponse, body_to_bytes, into_response, json_response, problem_response,
 };
 pub use routes::{
-    HttpApp, Limits, RouteDef, invoke_guarded, normalize_path, to_route_syntax, with_extensions,
+    HttpApp, Limits, Prepared, RouteDef, invoke_guarded, normalize_path, to_route_syntax,
+    with_extensions,
 };
 pub use types::{
     BoxFuture, BoxHandler, BoxedMiddleware, CoreHandler, FnMiddleware, HandlerFn, Middleware,
@@ -32,7 +33,7 @@ pub use types::{
 };
 
 // Re-exportados de la crate `http`, neutrales entre plataformas (§4.3).
-pub use http::{HeaderMap, HeaderName, HeaderValue, Method, Uri, header};
+pub use http::{Extensions, HeaderMap, HeaderName, HeaderValue, Method, Uri, header};
 
 /// Métodos útiles añadidos a la petición del núcleo (RF-084).
 pub trait RequestExt {

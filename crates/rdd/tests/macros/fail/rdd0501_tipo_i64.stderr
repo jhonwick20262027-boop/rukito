@@ -1,0 +1,6 @@
+error: RDD0501: el campo `total` de `Contador` usa `i64`, que no tiene escalar GraphQL (§10.9)
+         help: publica `i32`, `f64` o `String`; los enteros de 64 bits no viajan en la introspección
+ --> tests/macros/fail/rdd0501_tipo_i64.rs:9:12
+  |
+9 |     total: i64,
+  |            ^^^

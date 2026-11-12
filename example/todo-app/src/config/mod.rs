@@ -7,6 +7,7 @@
 pub mod app_config;
 pub mod database_config;
 pub mod jwt_config;
+pub mod mcp_config;
 
 /// Variable de entorno con valor por defecto; la usan los archivos de al lado.
 pub(crate) fn env_or(key: &str, fallback: &str) -> String {

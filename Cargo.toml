@@ -7,6 +7,7 @@ members = [
     "crates/rdd-core",
     "crates/rdd-cors",
     "crates/rdd-db-tests",
+    "crates/rdd-graphql",
     "crates/rdd-macros",
     "crates/rdd-mcp",
     "crates/rdd-platform-tests",
@@ -44,6 +45,7 @@ rdd-sqlite         = { path = "crates/rdd-sqlite",         version = "0.1.0" }
 rdd-cors           = { path = "crates/rdd-cors",           version = "0.1.0" }
 rdd-logger         = { path = "crates/rdd-logger",         version = "0.1.0" }
 rdd-mcp            = { path = "crates/rdd-mcp",            version = "0.1.0" }
+rdd-graphql        = { path = "crates/rdd-graphql",        version = "0.1.0" }
 rdd-socket         = { path = "crates/rdd-socket",         version = "0.1.0" }
 
 anyhow             = "1.0"

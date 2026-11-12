@@ -1358,8 +1358,12 @@ dependencies = [
  "bytes",
  "dotenvy",
  "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "rdd-axum",
  "rdd-core",
+ "rdd-graphql",
  "rdd-macros",
  "rdd-mcp",
  "rdd-postgres",
@@ -1385,12 +1389,17 @@ dependencies = [
  "http",
  "http-body-util",
  "hyper",
+ "hyper-util",
  "rdd-core",
+ "rdd-graphql",
+ "rdd-mcp",
  "rdd-platform-tests",
  "serde",
+ "serde_json",
  "tokio",
  "tower",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1449,6 +1458,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rdd-graphql"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "rdd-core",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rdd-macros"
 version = "0.1.0"
 dependencies = [
@@ -1462,12 +1485,14 @@ name = "rdd-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "rdd-core",
  "serde",
  "serde_json",
  "tokio",
  "tokio-util",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2135,6 +2160,9 @@ dependencies = [
  "bytes",
  "futures",
  "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "jsonwebtoken",
  "password-hash",
  "rdd",

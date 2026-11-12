@@ -1,0 +1,6 @@
+error: RDD0501: el campo `total` debe ser `async fn` (§10.9)
+         help: los resolutores raíz se ejecutan sin bloquear el runtime
+  --> tests/macros/fail/rdd0501_campo_no_async.rs:12:5
+   |
+12 |     fn total(&self, _ctx: &rdd::graphql::GraphqlContext) -> rdd::Result<u32> {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

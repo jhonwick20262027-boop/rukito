@@ -6,10 +6,18 @@
 
 #[test]
 fn macros_ok() {
-    trybuild::TestCases::new().pass("tests/macros/ok/*.rs");
+    let cases = trybuild::TestCases::new();
+    cases.pass("tests/macros/ok/controller.rs");
+    // §10.9: la fixture de GraphQL solo compila con la feature activa.
+    #[cfg(feature = "graphql")]
+    cases.pass("tests/macros/ok/graphql.rs");
 }
 
 #[test]
 fn macros_fail() {
-    trybuild::TestCases::new().compile_fail("tests/macros/fail/*.rs");
+    let cases = trybuild::TestCases::new();
+    cases.compile_fail("tests/macros/fail/rdd03*.rs");
+    cases.compile_fail("tests/macros/fail/rdd04*.rs");
+    #[cfg(feature = "graphql")]
+    cases.compile_fail("tests/macros/fail/rdd050*.rs");
 }

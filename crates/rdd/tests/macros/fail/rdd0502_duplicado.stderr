@@ -1,0 +1,6 @@
+error: RDD0502: el campo `taskId` está duplicado en `Tarea` (§10.9)
+         help: publica uno de los dos con `#[graphql(name = "…")]`
+  --> tests/macros/fail/rdd0502_duplicado.rs:11:5
+   |
+11 |     other: String,
+   |     ^^^^^

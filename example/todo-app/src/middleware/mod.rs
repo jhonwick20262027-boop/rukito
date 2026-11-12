@@ -7,6 +7,7 @@
 
 pub mod jwt;
 pub mod require_auth;
+pub mod require_mcp;
 pub mod require_role;
 pub mod task_events;
 

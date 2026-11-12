@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rdd_core::Result;
+use rdd_core::http::Extensions;
 use serde_json::Value;
 use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter,
@@ -33,9 +34,14 @@ const MAX_IN_FLIGHT: usize = 64;
 /// Plazo para cancelar y vaciar al cerrar (RF-215).
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
-/// Proceso real: lee `stdin` y escribe `stdout`.
+/// Proceso real: lee `stdin` y escribe `stdout`. Cada tool ve extensiones vacías.
 pub async fn serve_stdio(server: McpServer) -> Result<()> {
-    serve_io(server, tokio::io::stdin(), tokio::io::stdout()).await
+    serve_stdio_with(server, Extensions::new()).await
+}
+
+/// `serve_stdio` sembrando las extensiones de cada `ToolContext` (RF-228).
+pub async fn serve_stdio_with(server: McpServer, ext: Extensions) -> Result<()> {
+    serve_io_with(server, tokio::io::stdin(), tokio::io::stdout(), ext).await
 }
 
 /// Mismo bucle sobre cualquier par lector/escritor; lo usan las pruebas (RF-218).
@@ -44,11 +50,25 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin + Send + 'static,
 {
+    serve_io_with(server, reader, writer, Extensions::new()).await
+}
+
+/// `serve_io` con extensiones para cada `ToolContext` (RF-228).
+pub async fn serve_io_with<R, W>(
+    server: McpServer,
+    reader: R,
+    writer: W,
+    ext: Extensions,
+) -> Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
     let (out, rx) = mpsc::unbounded_channel::<Value>();
     let (broken_tx, mut broken_rx) = mpsc::channel::<()>(1);
     let mut writer_task = tokio::spawn(write_loop(writer, rx, broken_tx));
 
-    let mut connection = Connection::new(Arc::new(server), out.clone());
+    let mut connection = Connection::new(Arc::new(server), out.clone(), ext);
     let mut reader = BufReader::new(reader);
 
     loop {
@@ -90,6 +110,7 @@ where
 struct Connection {
     server: Arc<McpServer>,
     out: mpsc::UnboundedSender<Value>,
+    extensions: Extensions,
     in_flight: Arc<Mutex<HashMap<String, CancellationToken>>>,
     slots: Arc<Semaphore>,
     tasks: JoinSet<()>,
@@ -97,10 +118,15 @@ struct Connection {
 }
 
 impl Connection {
-    fn new(server: Arc<McpServer>, out: mpsc::UnboundedSender<Value>) -> Self {
+    fn new(
+        server: Arc<McpServer>,
+        out: mpsc::UnboundedSender<Value>,
+        extensions: Extensions,
+    ) -> Self {
         Self {
             server,
             out,
+            extensions,
             in_flight: Arc::new(Mutex::new(HashMap::new())),
             slots: Arc::new(Semaphore::new(MAX_IN_FLIGHT)),
             tasks: JoinSet::new(),
@@ -258,9 +284,10 @@ impl Connection {
         } = call;
         let out = self.out.clone();
         let in_flight = Arc::clone(&self.in_flight);
+        let extensions = self.extensions.clone();
 
         self.tasks.spawn(async move {
-            let ctx = ToolContext::new(progress_token, cancel.clone(), out.clone());
+            let ctx = ToolContext::new(progress_token, cancel.clone(), out.clone(), extensions);
             let mut inner = tokio::spawn(async move { tool.call(args, ctx).await });
 
             // RF-212: al cancelarse no se responde; se aborta la tool.

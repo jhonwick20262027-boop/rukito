@@ -26,7 +26,7 @@ pub struct UpdateTaskDto {
     pub done: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TaskResponse {
     pub id: Uuid,
     pub title: String,

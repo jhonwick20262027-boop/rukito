@@ -16,20 +16,36 @@ use crate::tool::{CallToolResult, Tool};
 pub(crate) const SUPPORTED_VERSIONS: &[&str] =
     &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
+/// Versiones servidas por HTTP (RF-225, ADR-24).
+///
+/// Fuera quedan `2025-03-26`, que permitía batching, y `2024-11-05`, que usa el
+/// transporte SSE heredado; ambas siguen disponibles por stdio.
+pub(crate) const HTTP_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18"];
+
 /// `initialize`: negocia la versión y publica capacidades y `serverInfo`.
 pub(crate) fn initialize(
     server: &McpServer,
     id: Option<&Value>,
     params: &Value,
 ) -> Result<Value, RpcError> {
+    initialize_with(server, id, params, SUPPORTED_VERSIONS)
+}
+
+/// `initialize` limitado a un subconjunto de versiones (RF-225).
+pub(crate) fn initialize_with(
+    server: &McpServer,
+    id: Option<&Value>,
+    params: &Value,
+    versions: &[&str],
+) -> Result<Value, RpcError> {
     let requested = params
         .get("protocolVersion")
         .and_then(Value::as_str)
         .ok_or_else(|| RpcError::invalid_params(id, "falta `protocolVersion`"))?;
-    let version = if SUPPORTED_VERSIONS.contains(&requested) {
+    let version = if versions.contains(&requested) {
         requested
     } else {
-        SUPPORTED_VERSIONS[0]
+        versions[0]
     };
 
     Ok(json!({

@@ -21,7 +21,11 @@ use crate::middleware::TaskEvents;
 
 /// Canal de actualización del módulo; `main` lo registra en el contenedor y en
 /// `App::socket` (§10.4, §26.7).
+pub use self::presentation::dto::TaskResponse;
 pub use self::presentation::task_feed::TaskFeed;
+/// El tipo de salida GraphQL se publica con otro nombre para no chocar con el
+/// agregado `Task` (§26.9).
+pub use self::presentation::task_graphql::Task as GraphqlTask;
 
 /// El caso de uso con su adaptador real. La capa HTTP importa este alias en vez
 /// del adaptador, que RA-003 le prohíbe (§14.2).

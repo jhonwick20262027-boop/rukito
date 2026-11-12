@@ -7,7 +7,7 @@
 
 use rdd::http::BoxFuture;
 use rdd::prelude::*;
-use rdd::{Hub, Lagged, Payload};
+use rdd::{Hub, Lagged, Payload, Subscription};
 use uuid::Uuid;
 
 use crate::modules::users::Session;
@@ -31,6 +31,11 @@ impl TaskFeed {
     /// Crea el hub local del canal (RF-203: sin historial ni persistencia).
     pub fn new() -> Self {
         Self { hub: Hub::new() }
+    }
+
+    /// Suscriptor de la sala, para la suscripción GraphQL de §26.9.
+    pub fn subscribe(&self) -> Subscription {
+        self.hub.subscribe(TOPIC)
     }
 
     /// La tarea ya viene en la forma que devuelve `TaskResponse`.

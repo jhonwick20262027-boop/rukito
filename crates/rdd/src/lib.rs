@@ -13,6 +13,14 @@ pub use rdd_core::*;
 
 pub use rdd_macros::{controller, delete, get, main, middleware, module, patch, post, put};
 
+/// JSON, tal cual, para que lo generado por las macros no obligue al proyecto a
+/// declarar `serde_json` (RN-012).
+pub use serde_json;
+
+/// Macros del esquema GraphQL (§10.9, RF-240).
+#[cfg(feature = "graphql")]
+pub use rdd_macros::{GraphqlInput, GraphqlObject, graphql_object};
+
 /// Plataforma por defecto, re-exportada para que el usuario pueda pasarla a
 /// `run_on` o configurarla con capas Tower sin declarar `rdd-axum` (RA-013).
 #[cfg(feature = "axum")]
@@ -38,13 +46,46 @@ pub use rdd_socket::{Hub, Lagged, Payload, Subscription};
 #[cfg(feature = "mcp")]
 pub mod mcp {
     pub use rdd_mcp::{
-        CallToolResult, Content, McpServer, Tool, ToolContext, serve_io, serve_stdio,
+        CallToolResult, Content, Extensions, McpHttp, McpHttpConfig, McpServer, Tool, ToolContext,
+        serve_io, serve_io_with, serve_stdio, serve_stdio_with,
     };
 }
 
-/// Re-export de las tres piezas que documenta §12.6, por comodidad.
+/// Re-export de las piezas que documenta §12.6, por comodidad.
 #[cfg(feature = "mcp")]
-pub use rdd_mcp::{McpServer, Tool, serve_stdio};
+pub use rdd_mcp::{McpServer, Tool, serve_stdio, serve_stdio_with};
+
+/// Transporte MCP sobre Streamable HTTP (§10.8); lo activa la feature
+/// `mcp-http`. El montaje lo aporta `AxumPlatform::mcp` (RA-020).
+#[cfg(feature = "mcp-http")]
+pub use rdd_mcp::{McpHttp, McpHttpConfig, McpHttpResponse};
+
+/// GraphQL como entrada opcional sobre el mismo `HttpApp` (§10.9, RF-243).
+#[cfg(feature = "graphql")]
+pub mod graphql {
+    pub use rdd_graphql::{
+        ArgDef, FieldDef, GraphqlContext, GraphqlHttp, GraphqlHttpConfig, GraphqlHttpResponse,
+        GraphqlInput, GraphqlObjectType, GraphqlOutput, GraphqlRequest, GraphqlRoot, GraphqlStream,
+        GraphqlValue, InputFieldDef, InputObjectDef, ObjectTypeDef, ResolveFn, RootField, RootKind,
+        Schema, SchemaBuilder, SelectedField, SelectionSet, SseStream, SubscribeFn, TypeRef,
+        TypeRegistry, argument, resolved, serialize_typename,
+    };
+
+    pub use rdd_macros::{GraphqlInput, GraphqlObject, graphql_object};
+}
+
+/// GraphQL sin prefijo de módulo, para el código de `main` y los resolutores.
+#[cfg(feature = "graphql")]
+pub use rdd_graphql::{
+    GraphqlContext, GraphqlHttp, GraphqlHttpConfig, GraphqlRequest, GraphqlStream, Schema,
+    SchemaBuilder,
+};
+
+#[cfg(all(feature = "graphql", not(feature = "axum")))]
+compile_error!(
+    "la feature `graphql` necesita la plataforma `axum`: activa `rdd` con \
+     features = [\"axum\", \"graphql\"] (RP-012)"
+);
 
 /// Puebla el registro de adaptadores del núcleo (RF-191).
 ///

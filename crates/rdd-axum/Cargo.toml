@@ -14,10 +14,18 @@ workspace = true
 # Transporte de canales de actualización (§10.4). La fachada la activa con su
 # feature `socket`; sin ella, la plataforma declara `supports_upgrades() == false`.
 ws = ["axum/ws"]
+# Montaje de `/mcp` (§10.8). La dependencia va en un solo sentido: esta
+# plataforma puede depender de `rdd-mcp`, nunca al revés (RA-020).
+mcp-http = ["dep:rdd-mcp"]
+# Montaje de `/graphql` (§10.9, RP-030). El motor tampoco depende de la
+# plataforma (RA-021).
+graphql = ["dep:rdd-graphql"]
 
 [dependencies]
 # RA-012: esta plataforma no depende de `rdd-hyper` ni de ninguna otra plataforma.
 rdd-core.workspace = true
+rdd-graphql = { workspace = true, optional = true }
+rdd-mcp = { workspace = true, optional = true }
 axum.workspace = true
 tower.workspace = true
 
@@ -35,3 +43,8 @@ serde.workspace = true
 # Solo el CLIENTE de pruebas para la suite de conformidad; no es una plataforma
 # (RA-012 sigue cumplida: `rdd-hyper` no entra en este árbol).
 hyper.workspace = true
+# Cliente HTTP de los casos M-10 a M-15 (§20) y cuerpos de streaming para SSE.
+hyper-util.workspace = true
+http-body-util.workspace = true
+serde_json.workspace = true
+uuid.workspace = true

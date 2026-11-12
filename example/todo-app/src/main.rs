@@ -10,17 +10,19 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use rdd::mcp::McpServer;
+use rdd::AxumPlatform;
+use rdd::graphql::{GraphqlHttp, GraphqlHttpConfig, Schema};
+use rdd::mcp::{Extensions, McpHttp, McpHttpConfig, McpServer};
 use rdd::prelude::*;
 use rdd_cors::Cors;
 use uuid::Uuid;
 
-use crate::middleware::JwtMiddleware;
-use crate::modules::tasks::TasksService;
+use crate::middleware::{JwtMiddleware, require_mcp::require_session};
 use crate::modules::tasks::presentation::task_tools::{CompleteTask, CreateTask, ListTasks};
-use crate::modules::users::Session;
+use crate::modules::users::{Role, Session};
 
 mod app_controller;
+mod app_graphql;
 mod app_module;
 mod app_service;
 mod config;
@@ -74,20 +76,58 @@ async fn main() -> Result<()> {
         app
     };
 
-    // §26.7: `--mcp` arranca el mismo contenedor sin abrir puerto. El dueño es el
-    // proceso (`MCP_OWNER_ID`) y el filtro por dueño sigue en el caso de uso.
+    // §26.7 y §26.8: un solo registro de tools para los dos transportes. Las
+    // tools leen la identidad y el service del `ToolContext` (ADR-25).
+    let server = McpServer::new("todo-app", env!("CARGO_PKG_VERSION"))
+        .tool(CreateTask)?
+        .tool(ListTasks)?
+        .tool(CompleteTask)?;
+
+    // §26.7: `--mcp` arranca el mismo contenedor sin abrir puerto. En stdio el
+    // proceso es la identidad, así que se siembra la sesión desde `MCP_OWNER_ID`;
+    // el filtro por dueño sigue en el caso de uso.
     if std::env::args().skip(1).any(|arg| arg == "--mcp") {
         let built = app.connect().await?.build()?;
-        let svc = Arc::new(TasksService::from_container(&built.container)?);
         let owner = std::env::var("MCP_OWNER_ID")
             .ok()
             .and_then(|value| value.parse::<Uuid>().ok())
             .unwrap_or(Uuid::nil());
-        let server = McpServer::new("todo-app", env!("CARGO_PKG_VERSION"))
-            .tool(CreateTask::new(Arc::clone(&svc), owner))?
-            .tool(ListTasks::new(Arc::clone(&svc), owner))?
-            .tool(CompleteTask::new(svc, owner))?;
-        return rdd::mcp::serve_stdio(server).await;
+        let mut ext = Extensions::new();
+        ext.insert(Arc::clone(&built.container));
+        ext.insert(Session {
+            id: owner,
+            email: "mcp@local".to_owned(),
+            role: Role::User,
+        });
+        return rdd::mcp::serve_stdio_with(server, ext).await;
+    }
+
+    // §26.8: `--mcp-http` monta `/mcp` en el mismo router y contenedor. La
+    // identidad la pone el `JwtMiddleware` global y `require_session` la exige
+    // después de la cadena global (RF-231).
+    if std::env::args().skip(1).any(|arg| arg == "--mcp-http") {
+        let mcp = McpHttp::new(server).config(
+            McpHttpConfig::new()
+                .allowed_origins(config::mcp_config::allowed_origins())
+                .authorize(require_session),
+        );
+        return app.run_on(AxumPlatform::new().mcp(mcp), &addr).await;
+    }
+
+    // §26.9: `--graphql` monta `/graphql` sobre el mismo servidor REST y el mismo
+    // contenedor. La cadena global ya corrió en `prepare`, así que `authorize`
+    // solo confirma la sesión que dejó `JwtMiddleware` (RF-239).
+    if std::env::args().skip(1).any(|arg| arg == "--graphql") {
+        let schema = Schema::builder()
+            .query(app_graphql::Query)
+            .mutation(app_graphql::Mutation)
+            .subscription(app_graphql::Subscription)
+            .build()?;
+        let graphql =
+            GraphqlHttp::new(schema).config(GraphqlHttpConfig::new().authorize(require_session));
+        return app
+            .run_on(AxumPlatform::new().graphql(graphql), &addr)
+            .await;
     }
 
     app.run(&addr).await

@@ -9,6 +9,7 @@
 use proc_macro::TokenStream;
 
 mod controller;
+mod graphql;
 mod module;
 
 /// Declara un controller HTTP sobre un `impl` (§8.2).
@@ -38,6 +39,39 @@ pub fn main(args: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn module(args: TokenStream) -> TokenStream {
     module::expand(args.into()).into()
+}
+
+/// Publica un struct como tipo objeto GraphQL (§10.9, RF-240).
+///
+/// Los campos pasan de `snake_case` a `camelCase`; el doc comment es la
+/// `description`; `#[graphql(name = "…")]` publica otro nombre y
+/// `#[graphql(skip)]` excluye el campo.
+#[proc_macro_derive(GraphqlObject, attributes(graphql))]
+pub fn graphql_object_type(input: TokenStream) -> TokenStream {
+    match syn::parse(input) {
+        Ok(input) => graphql::expand_object(input),
+        Err(err) => err.to_compile_error(),
+    }
+    .into()
+}
+
+/// Publica un struct como tipo de entrada GraphQL (§10.9, RF-240).
+#[proc_macro_derive(GraphqlInput, attributes(graphql))]
+pub fn graphql_input(input: TokenStream) -> TokenStream {
+    match syn::parse(input) {
+        Ok(input) => graphql::expand_input(input),
+        Err(err) => err.to_compile_error(),
+    }
+    .into()
+}
+
+/// Publica los métodos de un `impl` como campos raíz (§10.9, RF-240).
+///
+/// `#[graphql_object(query)]`, `#[graphql_object(mutation)]` o
+/// `#[graphql_object(subscription)]`.
+#[proc_macro_attribute]
+pub fn graphql_object(args: TokenStream, item: TokenStream) -> TokenStream {
+    graphql::expand_root(args.into(), item.into()).into()
 }
 
 macro_rules! verbo {

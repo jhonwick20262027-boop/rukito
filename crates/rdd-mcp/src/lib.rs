@@ -40,6 +40,7 @@
 //! probarlo sobre cualquier par lector/escritor, y `serve_stdio` lo conecta a las
 //! tuberías del proceso.
 
+mod http;
 mod jsonrpc;
 mod protocol;
 mod tool;
@@ -52,8 +53,10 @@ use anyhow::anyhow;
 use rdd_core::{Error, Result};
 use serde_json::Value;
 
+pub use http::{McpHttp, McpHttpConfig, McpHttpResponse, SseStream};
+pub use rdd_core::http::Extensions;
 pub use tool::{CallToolResult, Content, Tool, ToolContext};
-pub use transport::{serve_io, serve_stdio};
+pub use transport::{MAX_LINE_BYTES, serve_io, serve_io_with, serve_stdio, serve_stdio_with};
 
 /// Servidor MCP con un registro **fijo** de tools (RF-208).
 ///

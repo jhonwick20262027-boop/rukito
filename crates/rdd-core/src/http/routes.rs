@@ -100,6 +100,19 @@ impl Default for Limits {
     }
 }
 
+/// Resultado de preparar una petición fuera de la tabla de rutas (RP-028).
+///
+/// Los puntos de entrada que no son `RouteDef` —el handshake de §10.4 y el
+/// montaje de `/mcp` de §10.8— necesitan la cadena global y el contenedor, pero
+/// no un handler de ruta. `prepare` los ejecuta y devuelve la petición lista, o
+/// la respuesta con la que un middleware cortocircuitó.
+pub enum Prepared {
+    /// La cadena global terminó: la petición lleva contenedor y extensiones.
+    Continue(Request),
+    /// Un global respondió o falló; es una respuesta HTTP normal.
+    Reject(Response),
+}
+
 /// La aplicación HTTP como datos: rutas, canales, fallback y límites (§4.4).
 ///
 /// El núcleo compone todo lo semántico; la plataforma solo sabe servirlo.
@@ -228,8 +241,8 @@ impl HttpApp {
 
         // Los parámetros entran antes de la cadena, igual que en una ruta (RP-003).
         let req = with_extensions(req, params, None);
-        let chain = close(Arc::clone(&self.container), &self.globals, terminal);
-        match chain(req).await {
+        match self.run_global_chain(req, terminal).await {
+            Err(err) => Negotiation::Reject(error_response_for(&err, &path)),
             Ok(resp) if resp.extensions().get::<UpgradeAccepted>().is_some() => {
                 let handshake = accepted.lock().ok().and_then(|mut slot| slot.take());
                 match handshake {
@@ -243,8 +256,58 @@ impl HttpApp {
                 }
             }
             Ok(resp) => Negotiation::Reject(resp),
-            Err(err) => Negotiation::Reject(error_response_for(&err, &path)),
         }
+    }
+
+    /// Ejecuta la cadena global con el contenedor inyectado y entrega la petición
+    /// tal como quedó, sin buscar en la tabla de rutas (RP-028).
+    ///
+    /// Es el punto de entrada que usan plataformas y adaptadores para rutas que
+    /// no son `RouteDef`: el montaje de `/mcp` (§10.8). Un middleware que
+    /// cortocircuite se devuelve como [`Prepared::Reject`].
+    pub async fn prepare(&self, req: Request) -> Prepared {
+        let path = normalize_path(req.uri().path());
+        let prepared: Arc<std::sync::Mutex<Option<Request>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let slot = Arc::clone(&prepared);
+        let terminal: CoreHandler = Arc::new(move |req: Request| {
+            let slot = Arc::clone(&slot);
+            Box::pin(async move {
+                if let Ok(mut slot) = slot.lock() {
+                    *slot = Some(req);
+                }
+                let mut resp = Response::new(bytes::Bytes::new());
+                *resp.status_mut() = StatusCode::OK;
+                resp.extensions_mut().insert(PreparedAccepted);
+                Ok(resp)
+            })
+        });
+
+        match self.run_global_chain(req, terminal).await {
+            Err(err) => Prepared::Reject(error_response_for(&err, &path)),
+            Ok(resp) if resp.extensions().get::<PreparedAccepted>().is_some() => {
+                match prepared.lock().ok().and_then(|mut slot| slot.take()) {
+                    Some(req) => Prepared::Continue(req),
+                    None => Prepared::Reject(error_response_for(
+                        &Error::internal(anyhow::anyhow!(
+                            "la cadena global terminó sin la petición preparada"
+                        )),
+                        &path,
+                    )),
+                }
+            }
+            Ok(resp) => Prepared::Reject(resp),
+        }
+    }
+
+    /// Cierra la cadena global sobre `terminal` (RP-028).
+    async fn run_global_chain(
+        &self,
+        req: Request,
+        terminal: CoreHandler,
+    ) -> crate::Result<Response> {
+        let chain = close(Arc::clone(&self.container), &self.globals, terminal);
+        chain(req).await
     }
 
     /// Enrutado y ejecución sin servidor: plataforma de referencia en proceso
@@ -452,6 +515,10 @@ type MethodMap = HashMap<Method, BoxHandler>;
 #[derive(Clone, Copy)]
 struct UpgradeAccepted;
 
+/// Marca de la respuesta centinela que emite el terminal de `prepare`.
+#[derive(Clone, Copy)]
+struct PreparedAccepted;
+
 /// Tabla de canales (RF-194), con `matchit` igual que las rutas.
 struct UpgradeTable {
     inner: matchit::Router<Arc<dyn SocketHandler>>,
@@ -580,6 +647,7 @@ pub fn to_route_syntax(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http::RequestExt;
     use crate::http::types::{Middleware, fn_middleware};
     use bytes::Bytes;
 
@@ -866,5 +934,44 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("application/problem+json")
         );
+    }
+
+    #[tokio::test]
+    async fn prepare_ejecuta_los_globales_y_entrega_la_peticion() {
+        let app = app_with(vec![], vec![Arc::new(identity())]);
+        match app.prepare(req(Method::POST, "/mcp")).await {
+            Prepared::Continue(req) => {
+                assert!(req.ext::<Session>().is_some(), "el global no se ejecutó");
+                assert!(
+                    req.extensions()
+                        .get::<Arc<crate::di::Container>>()
+                        .is_some(),
+                    "falta el contenedor de RF-084"
+                );
+            }
+            Prepared::Reject(resp) => panic!("esperaba continuar, llegó {}", resp.status()),
+        }
+    }
+
+    #[tokio::test]
+    async fn prepare_devuelve_la_respuesta_de_un_global_que_corta() {
+        use crate::http::types::fn_middleware;
+
+        let short_circuit = fn_middleware(|_req: Request, _next: crate::http::NextFn| async move {
+            Err(Error::Forbidden)
+        });
+        let app = app_with(vec![], vec![Arc::new(short_circuit)]);
+        match app.prepare(req(Method::POST, "/mcp")).await {
+            Prepared::Reject(resp) => {
+                assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+                assert_eq!(
+                    resp.headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok()),
+                    Some("application/problem+json")
+                );
+            }
+            Prepared::Continue(_) => panic!("un global que rechaza no debe continuar"),
+        }
     }
 }

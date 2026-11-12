@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.7.0-draft |
+| Versión del documento | 0.9.0-draft |
 | Fecha | 2026-11-11 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
@@ -40,7 +40,7 @@
 
 ## 2. Alcance
 
-### 2.1 Dentro del alcance (fases 0.1 a 0.8)
+### 2.1 Dentro del alcance (fases 0.1 a 0.10)
 
 - Servidor REST con controladores declarativos por macros, sobre una interfaz de plataforma (§4.4). **Axum es la plataforma por defecto** (`rdd-axum`).
 - Building blocks DDD mínimos: `Aggregate`, `Service`, `Repo<T>`, `Error` de dominio.
@@ -52,7 +52,8 @@
 - Migraciones y esquema con **Prisma CLI** y generación de código Rust a partir de `schema.prisma`.
 - CLI `rdd` para scaffolding y ejecución.
 - Tiempo real **opcional** (fase 0.8): WebSocket sobre un **puerto de actualización** en el núcleo (§10.4) y el crate `rdd-socket` con un hub de salas y presencia (§10.5). El REST sigue siendo el camino principal: sin el crate y sin `.socket(...)` la app se comporta igual que hoy.
-- Servidor **MCP** opcional (fase 0.7): el crate `rdd-mcp` implementa JSON-RPC 2.0 a mano y lo expone por **stdio** (§10.6, §10.7). Los tools son otro adaptador de entrada del módulo: llaman a los casos de uso, igual que el controller REST. El transporte HTTP Streamable queda fuera de esta fase (§2.2).
+- Servidor **MCP** opcional: el crate `rdd-mcp` implementa JSON-RPC 2.0 a mano y lo expone por **stdio** (fase 0.7, §10.6, §10.7) y por **Streamable HTTP** en una ruta `/mcp` (fase 0.9, §10.8) montada por `rdd-axum` con la feature `mcp-http`. Los tools son otro adaptador de entrada del módulo: llaman a los casos de uso, igual que el controller REST. Los dos transportes comparten protocolo, tools y sesión por petición (ADR-22, ADR-25).
+- **GraphQL** opcional (fase 0.10, §10.9): el crate `rdd-graphql` implementa un subconjunto tipado del lenguaje —queries, mutations, subscriptions, variables, fragmentos e introspección— con un motor propio (ADR-26) y un explorer embebido (ADR-29). El esquema se declara con macros sobre Rust, sin SDL (ADR-27); las subscriptions viajan por **SSE** (ADR-28) y el punto de entrada `/graphql` lo monta `rdd-axum` con la feature `graphql`. Los resolvers son adaptadores de presentación: llaman a los mismos casos de uso y leen la identidad por contexto (§10.9).
 
 ### 2.2 Fuera del alcance (explícito)
 
@@ -61,11 +62,18 @@
 | Microservicios, bus de eventos, NATS/Kafka, clientes remotos | Eliminado a petición; el diseño no lo impide en el futuro. |
 | Event Sourcing, CQRS formal, sagas | Reservado, no implementar en 0.x. |
 | **Cliente Prisma para Rust** | El proyecto `prisma-client-rust` está sin mantenimiento; se usa Prisma **solo** para esquema y migraciones (§13). |
-| GraphQL, gRPC | No. |
+| gRPC | No. GraphQL ya no vive en esta tabla: entró como entrada opcional en 0.10 (§10.9). |
+| SDL como entrada del esquema, directivas personalizadas, interfaces, uniones, enums y `@defer`/`@stream` | El esquema se declara con macros sobre Rust (ADR-27) y 0.10 cubre queries, mutations, subscriptions, variables, fragmentos e introspección. El resto queda como extensión futura; no se simula. |
+| Subscriptions GraphQL por WebSocket (`graphql-transport-ws`) | 0.10 entrega subscriptions por SSE (ADR-28). El puerto de §10.4 permite añadir el subprotocolo WS después sin tocar el esquema ni los resolvers. |
+| Batching, persisted queries y APQ | Un POST lleva una operación; con varias operaciones en el documento hay que nombrar `operationName` (RF-234). |
+| GraphQL en el scaffold por defecto | `rdd new` no genera esquema GraphQL; §26.9 muestra cómo montarlo en el demo. |
 | **Tiempo real distribuido** (varios procesos, broker externo, pub/sub entre instancias) | El hub de §10.5 es local al proceso y no se coordina con otros; la primera fila de esta tabla sigue excluyendo NATS/Kafka/Redis pub-sub. |
-| Transporte MCP sobre HTTP (Streamable HTTP), sesiones MCP, SSE y reanudación | La fase 0.7 entrega **solo stdio** (§10.7). El núcleo del protocolo es independiente del transporte (§10.6, ADR-22), así que el transporte HTTP puede añadirse después sin tocar tools ni protocolo. |
-| `resources/*` y `prompts/*` de MCP | La fase 0.7 implementa `initialize`, `ping`, `tools/list` y `tools/call`. Recursos y prompts quedan como métodos opcionales futuros (RF-206). |
-| Streaming de cuerpos de petición/respuesta | Cuerpos en memoria con límite en 0.x (ADR-12). El canal WebSocket de §10.4 es un recurso aparte, no un cuerpo HTTP. |
+| Transporte MCP sobre HTTP en plataformas distintas de `rdd-axum` | La fase 0.9 monta `/mcp` solo en `rdd-axum` (feature `mcp-http`). La semántica vive en `McpHttp`, neutral (ADR-23), así que `rdd-hyper` puede añadir el montaje después sin tocar el protocolo ni las tools (RP-029). |
+| Reanudación de SSE (`Last-Event-ID`), `GET /mcp` y mensajes iniciados por el servidor | El servidor nunca inicia peticiones (RF-213), así que no hay flujo de servidor a cliente: `GET /mcp` responde 405. La reanudación de un flujo cortado queda fuera; el cliente reintenta la llamada (ADR-24). |
+| Batching JSON-RPC y versiones `2025-03-26`/`2024-11-05` por HTTP | Un POST lleva **un** mensaje (RF-224). Esas dos versiones siguen disponibles por stdio (§10.7), pero por HTTP no se sirven: `2025-03-26` permitía batching y `2024-11-05` usa el transporte SSE heredado de dos extremos (RF-225). |
+| Sesiones MCP distribuidas o persistentes | Las sesiones viven en memoria del proceso y caducan por inactividad (ADR-24); varios procesos no se coordinan, igual que el hub de §10.5 (§2.2). |
+| `resources/*` y `prompts/*` de MCP | El framework implementa `initialize`, `ping`, `tools/list` y `tools/call`. Recursos y prompts quedan como métodos opcionales futuros (RF-206). |
+| Streaming de cuerpos de petición/respuesta | Cuerpos en memoria con límite en 0.x (ADR-12). El canal WebSocket de §10.4 y las respuestas SSE de `/mcp` (§10.8) y `/graphql` (§10.9) son recursos aparte, no cuerpos HTTP. |
 | Capas Tower por ruta, o dentro de `App` | Solo como opción de `AxumPlatform` (RF-089). |
 | Runtimes distintos de Tokio | El núcleo y las plataformas asumen Tokio (ADR-11). |
 | OpenAPI automático | Candidato post-0.4. |
@@ -105,7 +113,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd/                      # FACHADA: re-exporta rdd-core + rdd-macros + plataformas por feature
 │   ├── rdd-core/                 # núcleo: App, DI, middlewares, errores, Repo<T>, puerto DbAdapter, HttpApp, trait Platform
 │   ├── rdd-macros/               # proc-macros
-│   ├── rdd-axum/                 # plataforma por defecto
+│   ├── rdd-axum/                 # plataforma por defecto (feature `mcp-http` en la fase 0.9)
 │   ├── rdd-hyper/                # plataforma propia (fase 0.5)
 │   ├── rdd-platform-tests/       # suite de conformidad de plataformas (§4.5)
 │   ├── rdd-db-tests/             # suite de conformidad de adaptadores (§12.4)
@@ -118,7 +126,8 @@ rdd/                              # repositorio del framework
 │   ├── rdd-cors/                 # middleware CORS
 │   ├── rdd-logger/               # middleware de logging / request-id
 │   ├── rdd-socket/               # hub de salas y presencia (fase 0.8)
-│   ├── rdd-mcp/                  # servidor MCP: JSON-RPC 2.0 + stdio (fase 0.7)
+│   ├── rdd-mcp/                  # servidor MCP: JSON-RPC 2.0, stdio y `McpHttp` neutral (fases 0.7 y 0.9)
+│   ├── rdd-graphql/              # motor GraphQL propio: esquema, parser, ejecutor, SSE y explorer (fase 0.10)
 │   ├── rdd-prisma/               # parser de schema.prisma + generador
 │   └── rdd-cli/                  # binario `rdd`
 └── todo-app-ddd/                 # app de ejemplo (§25): la genera `rdd new`, miembro del workspace
@@ -131,7 +140,11 @@ rdd/                              # repositorio del framework
 rdd      = "..."                          # axum + sqlite por defecto (§12.6)
 rdd-cors = "..."
 rdd-socket = "..."                        # opcional: hub y salas de tiempo real (§10.5)
-rdd-mcp  = "..."                          # opcional: servidor MCP por stdio (§10.6)
+rdd-mcp  = "..."                          # opcional: servidor MCP por stdio (§10.6, §10.7)
+# o, con la fachada y el transporte HTTP de la fase 0.9:
+# rdd = { version = "...", features = ["socket", "mcp-http"] }
+# o, con GraphQL de la fase 0.10:
+# rdd = { version = "...", features = ["graphql"] }
 uuid     = { version = "1", features = ["v4", "serde"] }   # el id del agregado (§7.2)
 # o, sin Axum:
 # rdd = { version = "...", default-features = false, features = ["hyper", "sqlite"] }
@@ -144,9 +157,12 @@ rdd-macros ──┐
 rdd-core ◄───┼── rdd (fachada) ──► [feature axum]   rdd-axum
      ▲       │                 ├─► [feature hyper]  rdd-hyper
      │       │                 ├─► [feature socket] rdd-socket
-     │       │                 └─► [feature mcp]    rdd-mcp
+     │       │                 ├─► [feature mcp]    rdd-mcp
+     │       │                 └─► [feature graphql] rdd-graphql
      ├── rdd-axum, rdd-hyper
-     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp
+     ├── rdd-axum ──► rdd-mcp (solo feature `mcp-http`, RA-020)
+     ├── rdd-axum ──► rdd-graphql (solo feature `graphql`, RA-021)
+     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql
      ├── rdd-sqlite, rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
      ├── rdd-platform-tests ──► (dev) cada plataforma
      └── rdd-db-tests ────────► (dev) cada adaptador
@@ -157,13 +173,14 @@ rdd-prisma ──► rdd-cli
 |---|---|---|
 | `rdd-core` | `http`, `bytes`, `futures`, `tokio`, `serde`, `serde_json`, `tracing`, `uuid`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower-http`, cualquier plataforma, **cualquier driver de BD** (`sqlx`, `mongodb`, `redis`, `tiberius`), Prisma, Node |
 | `rdd-macros` | `syn`, `quote`, `proc-macro2`, crate de diagnósticos | `rdd-core` |
-| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores y `rdd-socket` (opcionales por feature) | — |
+| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp` y `rdd-graphql` (opcionales por feature) | — |
 | `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
-| `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http` | `rdd-hyper` |
+| `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http`; `rdd-mcp` solo con la feature `mcp-http`; `rdd-graphql` solo con la feature `graphql` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
 | `rdd-cors`, `rdd-logger` | `rdd-core`, `http`, `bytes`, `serde`, `thiserror`, `toml`, `tracing` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
 | `rdd-socket` | `rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tracing`, `thiserror` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD |
 | `rdd-mcp` | `rdd-core`, `serde`, `serde_json`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
+| `rdd-graphql` | `rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
 | `rdd-redis` | `rdd-core`, cliente Redis, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
@@ -192,7 +209,15 @@ WebSocket (tramas, 101, ping/pong) vive en la plataforma, así que su lista proh
 incluye `tokio-tungstenite` igual que `axum` (RA-017). `rdd-mcp` cae del mismo
 lado: implementa JSON-RPC y el framing de líneas, y los clientes MCP son procesos
 locales que hablan por tuberías, así que no necesita red, plataforma ni driver
-(RA-018).
+(RA-018). La fase 0.9 no cambia eso: `McpHttp` vive en `rdd-mcp` y usa los tipos
+neutros de `rdd_core::http`; el transporte real (cuerpo de Axum, `Body::from_stream`
+para SSE) lo pone `rdd-axum` con la feature `mcp-http`. La dependencia va en una
+sola dirección —`rdd-axum` → `rdd-mcp`— y nunca al revés (RA-020). `rdd-graphql`
+sigue la misma regla por la misma razón (RA-021): el motor, el parser, la
+introspección, el formato SSE y el explorer viven en el crate neutral, y el
+montaje HTTP —cuerpo de Axum, `Body::from_stream` para el stream SSE— lo hace
+`rdd-axum` con la feature `graphql`. Tampoco implementa un servidor WebSocket ni
+depende de él: las suscripciones viajan por el mismo SSE (§10.9, ADR-28).
 
 | ID | Requisito |
 |---|---|
@@ -203,7 +228,9 @@ locales que hablan por tuberías, así que no necesita red, plataforma ni driver
 | RA-015 | Los adaptadores NO DEBEN depender entre sí, ni de plataforma alguna. Cada uno depende de `rdd-core` y de su driver. |
 | RA-016 | Todo adaptador publicado DEBE pasar `rdd-db-tests` (§12.4) contra un servidor real de su motor. Un adaptador sin servidor donde verificarse NO se publica: queda como verificación pendiente en §22. |
 | RA-017 | `rdd-socket` NO DEBE depender de ninguna plataforma, de Tower, de `tokio-tungstenite` ni de un driver de BD: solo de `rdd-core` y crates neutrales. El puerto de actualización vive en `rdd-core` (§10.4) y NO DEBE introducir `axum`, `hyper` ni `tokio-tungstenite` en su árbol (RA-011). CI DEBE verificarlo con `cargo tree -p rdd-core` y `cargo tree -p rdd-socket`. |
-| RA-018 | `rdd-mcp` NO DEBE depender de ninguna plataforma, de Tower, de un cliente o servidor WebSocket ni de un driver de BD: solo de `rdd-core` y crates neutrales. El protocolo y el transporte no abren puertos ni usan red (§10.6, §10.7). CI DEBE verificarlo con `cargo tree -p rdd-mcp`. |
+| RA-018 | `rdd-mcp` NO DEBE depender de ninguna plataforma, de Tower, de un cliente o servidor WebSocket ni de un driver de BD: solo de `rdd-core` y crates neutrales. El protocolo y los transportes no usan el router de ningún servidor: stdio no abre puertos (§10.7) y `McpHttp` (§10.8) solo consume y produce los tipos de `rdd_core::http`. CI DEBE verificarlo con `cargo tree -p rdd-mcp`. |
+| RA-021 | La dependencia entre `rdd-axum` y `rdd-graphql` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-graphql` con la feature `graphql`, y `rdd-graphql` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower, de `tokio-tungstenite` ni de un driver de BD: solo de `rdd-core` y crates neutrales. El documento GraphQL, el ejecutor y el explorer no tocan el router de ningún servidor; `GraphqlHttp` (§10.9) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-graphql` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-graphql`). |
+| RA-020 | La dependencia entre `rdd-axum` y `rdd-mcp` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-mcp` con la feature `mcp-http`, y `rdd-mcp` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma. La fachada declara `mcp-http = ["mcp", "axum/mcp-http"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-mcp` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-mcp`). |
 
 ### 4.3 Stack tecnológico
 
@@ -223,9 +250,15 @@ locales que hablan por tuberías, así que no necesita red, plataforma ni driver
 | Transporte WebSocket | `axum` con feature `ws` (⚠️ V16) | `rdd-axum`, feature `ws` que activa `rdd/socket` | La plataforma traduce el upgrade; el núcleo no conoce tramas (§10.4, ADR-19). |
 | Hub de tiempo real | propio: salas y canales `tokio::sync` | `rdd-socket` | Salas y presencia locales al proceso; sin broker externo (§2.2, ADR-19). |
 | Protocolo MCP | JSON-RPC 2.0 implementado a mano sobre `serde_json` | `rdd-mcp` | Sin SDK oficial ni `schemars` (⚠️ V18): son pocos mensajes y los códigos de error quedan bajo control (§10.6, ADR-20). |
-| Transporte MCP | stdio: un mensaje JSON por línea | `rdd-mcp` | Es lo que hablan los clientes locales (Claude Desktop, MCP Inspector) sin abrir un puerto; HTTP Streamable queda fuera (§2.2, ADR-21). |
+| Transporte MCP | stdio: un mensaje JSON por línea | `rdd-mcp` | Es lo que hablan los clientes locales (Claude Desktop, MCP Inspector) sin abrir un puerto (§10.7, ADR-21). |
+| Transporte MCP HTTP | `McpHttp` neutral en `rdd-mcp` + montaje y SSE en `rdd-axum` (feature `mcp-http`) | `rdd-mcp`, `rdd-axum` | El protocolo sigue sin conocer el servidor (ADR-23); la plataforma solo traduce cuerpo y vuelca la cola SSE con `Body::from_stream` (⚠️ V20). |
+| Sesiones MCP HTTP | mapa en memoria con TTL y tope | `rdd-mcp` | `Mcp-Session-Id`, cancelación entre POSTs y autorización por petición sin almacén externo (ADR-24). |
 | Cancelación y progreso MCP | `tokio-util` (`CancellationToken`) + `mpsc` | `rdd-mcp` | `notifications/cancelled` y `notifications/progress` sin traer el SDK (RF-211, RF-212). |
 | Esquema de entrada de las tools | `serde_json::Value` escrito a mano | `rdd-mcp` | El `inputSchema` es parte del contrato MCP y se publica tal cual (§10.6, ⚠️ V18). |
+| Motor GraphQL | propio: lexer, parser del documento, validación, ejecución e introspección sobre `serde_json` | `rdd-graphql` | Ningún motor entra en la caché offline (⚠️ V22) y el subconjunto es acotado; escribirlo deja los errores y la introspección bajo el contrato (§10.9, ADR-26). |
+| Esquema GraphQL | macros `#[derive(GraphqlObject)]`, `#[derive(GraphqlInput)]` y `#[graphql_object(...)]` | `rdd-macros` / `rdd-graphql` | El tipo Rust es el esquema: sin SDL aparte ni codegen en build, y un nombre duplicado es un diagnóstico de compilación (§10.9, ADR-27). |
+| Suscripciones GraphQL | SSE (`event: next` / `event: complete`) sobre una cola `tokio::sync::mpsc` | `rdd-graphql` + `rdd-axum` | El hub de §10.5 ya es un `mpsc`; el subprotocolo `graphql-transport-ws` exigiría un transporte WS nuevo y no aporta nada al cliente SSE (§10.9, ADR-28). |
+| Explorer GraphQL | HTML y JavaScript propios embebidos con `include_str!` | `rdd-graphql` | Sin CDN ni peticiones externas: funciona offline y la CSP no necesita excepciones (§10.9, ADR-29). |
 | Errores | `thiserror` + `anyhow` (interno) | núcleo | Errores tipados en el borde, contexto interno. |
 | Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
 | IDs | `uuid` | núcleo | Estándar. |
@@ -263,10 +296,20 @@ pub struct HttpApp {
     pub fallback: BoxHandler,         // decide 404 o 405 (RP-007); también envuelto por middlewares globales
     pub limits:   Limits,
 }
+
+/// Resultado de la cadena global para una petición fuera de la tabla de rutas (RP-028).
+pub enum Prepared {
+    Continue(Request),   // la cadena terminó; `req` lleva contenedor y extensiones
+    Reject(Response),    // CORS, un middleware o un `Error` ya produjeron la respuesta
+}
+
 impl HttpApp {
     /// Enrutado y ejecución sin servidor: usado por TestApp y por plataformas sin router propio (RP-014).
     pub async fn dispatch(&self, req: Request) -> Response;
-    /// Handshake de un canal de actualización: cadena global + `authorize`, antes del 101 (RP-024).
+    /// Cadena global + contenedor para un punto de entrada fuera de la tabla:
+    /// `negotiate` (§10.4) y el montaje de `/mcp` (§10.8).
+    pub async fn prepare(&self, req: Request) -> Prepared;
+    /// Handshake de un canal de actualización: `prepare`, `authorize` y `101` (RP-024).
     pub async fn negotiate(&self, req: Request) -> Negotiation;
 }
 
@@ -297,6 +340,8 @@ App::new().module(tasks::module()).run_on(HyperPlatform::new(), "0.0.0.0:3000").
 | Captura de `panic` por handler | Drenar peticiones en curso al apagar |
 | Handshake WebSocket: cadena global, `authorize` y 401/403 en Problem Details (§10.4) | Completar el 101 y traducir tramas a `SocketMessage` (RP-025) |
 | Límite de mensaje y cola de salida del canal (RF-196) | Cerrar 1009/1013 y 1001 al apagar (RP-026) |
+| Puntos de entrada fuera de la tabla: cadena global y petición preparada (RP-028) | Montar `/mcp`, leer el cuerpo y volcar SSE (RP-029) |
+| Documento, validación, ejecución, introspección, stream SSE y HTML del explorer de GraphQL (§10.9) | Montar `/graphql`: leer el cuerpo, devolver el HTML ya generado y volcar el stream SSE (RP-030, RP-031) |
 | Abrir el `TcpListener` y capturar señales (`SIGTERM`, `Ctrl+C`) | Servir sobre el `TcpListener` recibido |
 
 **Requisitos de plataforma**
@@ -322,8 +367,12 @@ App::new().module(tasks::module()).run_on(HyperPlatform::new(), "0.0.0.0:3000").
 | RP-025 | La plataforma NO DEBE interpretar los mensajes: entrega `SocketMessage` al handler y envía lo que este produzca (RP-004 aplicado al canal). Ping, pong y cierre los traduce el transporte; la decisión de negocio nunca vive en la plataforma. |
 | RP-026 | Al completarse `ShutdownSignal`, la plataforma DEBE dejar de aceptar conexiones nuevas (RP-009) y cerrar los canales abiertos con código **1001** (going away) dentro de `shutdown_grace`; pasado el plazo, DEBE forzar el cierre. Un canal que falla NO DEBE detener el servidor (RP-010). |
 | RP-027 | Una plataforma con `supports_upgrades() == false` DEBE responder **501** en Problem Details a una petición de upgrade y queda exenta de C-13 a C-16; RP-020 se aplica a los casos que la plataforma declara. El tiempo real es opcional por plataforma: `rdd-axum` lo declara en la fase 0.8 y `rdd-hyper` puede seguir en `false` sin dejar de cumplir §4.5. |
+| RP-028 | `HttpApp::prepare` DEBE ejecutar la cadena de middlewares globales con el contenedor inyectado sobre una petición que **no** pertenece a la tabla de rutas y devolver `Continue` con la petición preparada o `Reject` con la respuesta del cortocircuito. NO DEBE reordenar la cadena (RF-080) y DEBE ser el mismo camino que usa `negotiate` (§10.4), para que un punto de entrada nuevo no reimplemente CORS, JWT o RateLimit. |
+| RP-029 | Un montaje fuera de la tabla (`/mcp`, §10.8) DEBE ejecutar `prepare` antes de su propio guardián, respetar RP-006 (límite de cuerpo y 413 antes del handler) y renderizar el `Reject` de `prepare` y el `Err` de `authorize` con el mismo mapeo a Problem Details que los handlers (§10.3). La plataforma solo traduce el cuerpo y la cola SSE; NO DEBE interpretar ni reescribir mensajes JSON-RPC (RP-004). `rdd-axum` expone el montaje con la feature `mcp-http`; otra plataforma que lo exponga DEBE pasar M-10 a M-15 (§20). |
+| RP-030 | Un montaje fuera de la tabla (`/graphql`, §10.9) DEBE ejecutar `prepare` antes de su propio guardián y renderizar el `Reject` de `prepare` y el `Err` de `authorize` con el mismo mapeo a Problem Details que los handlers (§10.3). La plataforma solo traduce el cuerpo, sirve el HTML del explorer y vuelca el stream SSE; NO DEBE interpretar ni reescribir el documento GraphQL ni los eventos (RP-004). `rdd-axum` expone el montaje con la feature `graphql`; otra plataforma que lo exponga DEBE pasar G-01 a G-09 (§20). |
+| RP-031 | Las suscripciones GraphQL DEBEN viajar por el mismo cuerpo SSE que el montaje ya vuelca: el motor entrega un `SseStream` neutral (bytes ya formateados con `event:`/`data:` y comentarios de latido) y la plataforma lo convierte en `Body::from_stream` sin tocar los eventos. Al desconectarse el cliente, el montaje DEBE cancelar la suscripción cerrando la cola; el motor NO DEBE reconectar ni reintentar por su cuenta, y NO DEBE abrir un canal WebSocket (ADR-28). |
 
-**Nota sobre `rdd-axum`:** registra las rutas de forma **nativa** en el router de Axum (no usa `dispatch`), para aprovechar su enrutado y el soporte de capas Tower. Como hay dos implementaciones de enrutado (Axum y `dispatch`), el riesgo de divergencia se controla con la suite de conformidad (§4.5), que se ejecuta contra ambas. Los canales de §10.4 siguen el mismo patrón: Axum aporta el transporte WebSocket (feature `ws`) y el handshake lo decide `HttpApp::negotiate` (RP-024).
+**Nota sobre `rdd-axum`:** registra las rutas de forma **nativa** en el router de Axum (no usa `dispatch`), para aprovechar su enrutado y el soporte de capas Tower. Como hay dos implementaciones de enrutado (Axum y `dispatch`), el riesgo de divergencia se controla con la suite de conformidad (§4.5), que se ejecuta contra ambas. Los canales de §10.4 siguen el mismo patrón: Axum aporta el transporte WebSocket (feature `ws`) y el handshake lo decide `HttpApp::negotiate` (RP-024). El montaje `/mcp` sigue el patrón otra vez: Axum lee el cuerpo, ejecuta `prepare` y vuelca la cola SSE; `McpHttp` decide todo lo demás (§10.8, RP-029). `/graphql` repite el mismo reparto: Axum sirve el HTML del explorer, ejecuta `prepare` y vuelca el `SseStream`; `GraphqlHttp` decide documento, validación, ejecución y eventos (§10.9, RP-030, RP-031).
 
 ### 4.5 Suite de conformidad (`rdd-platform-tests`)
 
@@ -337,7 +386,7 @@ async fn conformance() {
 }
 ```
 
-La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023).
+La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023). El montaje `/mcp` no añade casos C: su suite es la M de §20 y se ejecuta contra `rdd-axum` con la feature `mcp-http` (RP-029); `dispatch` no lo sirve porque el montaje vive en la plataforma, así que una petición a `/mcp` por `dispatch` recibe el 404 del `fallback`. `/graphql` sigue la misma regla: su suite es la G de §20, se ejecuta contra `rdd-axum` con la feature `graphql` (RP-030) y no añade casos C.
 
 | Caso | Verifica | Requisitos |
 |---|---|---|
@@ -375,7 +424,8 @@ La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el 
 | El hub es local al proceso | Sin coordinación entre instancias; un broker externo sigue fuera de 0.x (§2.2, ADR-19) |
 | Una conexión viva no es `Request`/`Response` | Puerto de actualización mínimo (§10.4); la plataforma conserva el transporte y el núcleo, la semántica |
 | Más código a mantener (`rdd-cors` propio, extractores propios, suite) | Alcance acotado por fases (§21) |
-| Protocolo MCP a mano y solo stdio en 0.7 | Subconjunto de seis métodos y cinco códigos de error (§10.6); el transporte HTTP es fase futura (ADR-21) |
+| Protocolo MCP a mano; stdio en 0.7 y HTTP en 0.9 | Subconjunto de seis métodos y cinco códigos de error (§10.6); el transporte remoto reutiliza protocolo y tools (ADR-21, ADR-23) |
+| SSE no cabe en un `Response` con cuerpo en memoria | La cola de eventos es neutral y la plataforma la vuelca en su cuerpo (`Body::from_stream`); `GET` y reanudación quedan fuera (§2.2, ADR-24) |
 
 ---
 
@@ -833,6 +883,8 @@ Tres detalles frente a los borradores de esta sección (registro de cambios 0.2.
 | RDD0304 | Dos handlers con mismo verbo y ruta | "ruta duplicada: `GET /tasks`" |
 | RDD0305 | Tipo de retorno no es `Result<T>` | "los handlers deben devolver `rdd::Result<T>`" |
 | RDD0401 | `#[middleware]` con expresión que no implementa `Middleware` | "`X` no implementa `rdd::Middleware`" |
+| RDD0501 | Tipo o firma no soportada en un campo GraphQL (tipo fuera de §10.9, `i64`/`u64`, lifetime, método sin `&GraphqlContext` o retorno sin `rdd::Result<T>`) | "el campo `x` no puede publicarse en GraphQL: …" |
+| RDD0502 | Nombre duplicado o reservado en el esquema GraphQL (dos campos, tipo o raíz con el mismo nombre, o un nombre que empieza por `__`) | "nombre duplicado en el esquema GraphQL: `Task.title`" |
 
 Cada diagnóstico DEBE señalar el span exacto y, cuando aplique, sugerir la corrección (`help:`).
 
@@ -1081,9 +1133,10 @@ caso de uso y devuelve contenido; no decide reglas de negocio (§5.1, RA-019,
 ADR-22).
 
 El protocolo no conoce el transporte (ADR-22): `McpServer` convierte mensajes en
-respuestas y notificaciones; §10.7 los escribe por stdio. Esta fase implementa
-`initialize`, `ping`, `tools/list` y `tools/call`; `resources/*`, `prompts/*` y las
-capacidades de sampling quedan fuera (§2.2).
+respuestas y notificaciones; §10.7 los escribe por stdio y §10.8 los sirve por
+HTTP en `/mcp`. Esta fase implementa `initialize`, `ping`, `tools/list` y
+`tools/call`; `resources/*`, `prompts/*` y las capacidades de sampling quedan
+fuera (§2.2).
 
 ```rust
 // rdd-mcp — API pública
@@ -1114,6 +1167,12 @@ impl ToolContext {
     pub fn is_cancelled(&self) -> bool;
     /// Completa al cancelarse; se usa con `tokio::select!`.
     pub fn cancelled(&self) -> impl Future<Output = ()> + Send + '_;
+    /// Valor que dejó el transporte en las extensiones de la petición (RF-228).
+    /// Por stdio son las de `serve_stdio_with`; por HTTP, las de los globales.
+    pub fn ext<T: Clone + Send + Sync + 'static>(&self) -> Option<T>;
+    /// Servicio del contenedor que dejó la petición (RF-084, RF-228), igual que
+    /// `Request::resolve`. Es lo que evita guardar servicios en la tool.
+    pub fn resolve<T: rdd_core::http::FromContainer>(&self) -> Result<T>;
 }
 
 pub struct CallToolResult { pub content: Vec<Content>, pub is_error: bool }
@@ -1156,22 +1215,41 @@ lista, o con la más reciente soportada si no. El servidor declara solo
 | RF-210 | Un `panic` dentro de una tool NO DEBE tumbar el proceso: se aísla en su tarea y la petición recibe `-32603`; el servidor sigue atendiendo. Un `Error::Internal` se presenta como `isError: true` con un mensaje genérico y el detalle va a `stderr` (RN-030, RF-103). |
 | RF-211 | Si `params._meta.progressToken` existe (cadena o número), `ToolContext::progress` DEBE emitir `notifications/progress` con ese token, `progress` y, si se indicó, `total`; sin token es un no-op exitoso. Las notificaciones se emiten antes del resultado de la tool que las origina. |
 | RF-212 | `notifications/cancelled` con `{requestId, reason?}` DEBE cancelar la `tools/call` en vuelo con ese id: `ToolContext::is_cancelled` pasa a `true`, la petición cancelada **no** recibe respuesta y un id desconocido se ignora. El servidor sigue atendiendo el resto. |
-| RF-213 | El servidor NO DEBE iniciar peticiones al cliente. Las únicas notificaciones que emite son `notifications/progress` (RF-211); no declara `logging` ni `tools/listChanged`, así que los logs van a `stderr` (§10.7, RF-219). |
+| RF-213 | El servidor NO DEBE iniciar peticiones al cliente. Las únicas notificaciones que emite son `notifications/progress` (RF-211); no declara `logging` ni `tools/listChanged`, así que los logs van a `stderr`/`tracing` (§10.7, RF-219). |
 
 ### 10.7 Transporte stdio (`rdd-mcp`)
 
 El cliente MCP lanza el proceso y habla con él por tuberías: `stdin` recibe
 peticiones y `stdout` solo devuelve protocolo. Es el transporte que usan los
-clientes locales sin abrir un puerto ni gestionar sesiones (ADR-21); HTTP
-Streamable, SSE y `Mcp-Session-Id` quedan fuera de esta fase (§2.2).
+clientes locales sin abrir un puerto ni gestionar sesiones (ADR-21); el transporte
+HTTP de §10.8 comparte el mismo `McpServer` y añade sesiones, pero no cambia los
+métodos ni el formato de los mensajes.
 
 ```rust
 // rdd-mcp
-/// Proceso real: lee `stdin`, escribe `stdout`.
+/// Proceso real: lee `stdin`, escribe `stdout`. Cada tool ve extensiones vacías.
 pub async fn serve_stdio(server: McpServer) -> Result<()>;
+
+/// Igual, sembrando las extensiones de cada `ToolContext` (RF-228). Es lo que
+/// usa el demo para inyectar la identidad del proceso sin tocar las tools.
+pub async fn serve_stdio_with(
+    server: McpServer,
+    ext: http::Extensions,
+) -> Result<()>;
 
 /// Mismo bucle sobre cualquier par lector/escritor; es lo que usan los tests.
 pub async fn serve_io<R, W>(server: McpServer, reader: R, writer: W) -> Result<()>
+where
+    R: tokio::io::AsyncRead + Unpin,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static;
+
+/// `serve_io` con extensiones (RF-228).
+pub async fn serve_io_with<R, W>(
+    server: McpServer,
+    reader: R,
+    writer: W,
+    ext: http::Extensions,
+) -> Result<()>
 where
     R: tokio::io::AsyncRead + Unpin,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static;
@@ -1190,6 +1268,393 @@ todo-app --mcp
 | RF-217 | Cada `tools/call` corre en su propia tarea: una tool lenta NO DEBE bloquear `ping`, `tools/list`, `notifications/cancelled` ni otra tool. Como máximo hay 64 en vuelo; por encima se responde `-32603` sin ejecutar. |
 | RF-218 | `serve_stdio` DEBE ser la única puerta del proceso y `serve_io` la de las pruebas; `McpServer` NO conoce `App` ni el contenedor: la app resuelve sus services y construye las tools, igual que un controller (ADR-22). |
 | RF-219 | `stdout` es exclusivamente protocolo. Trazas, avisos y errores van a `stderr` con `tracing` (RN-040); una línea de log en `stdout` rompería el cliente. |
+
+### 10.8 Transporte MCP sobre HTTP (`/mcp`)
+
+La fase 0.7 dejó el protocolo separado del transporte (ADR-22) y solo stdio. Esta
+sección añade el **Streamable HTTP** de MCP en una única ruta `/mcp`: un IDE en
+otra máquina o un agente alojado usan las mismas tools que ya expone `rdd-mcp`.
+Los métodos y códigos de §10.6 no cambian; lo que cambia es cómo viajan los
+mensajes, cómo se identifica una sesión y cómo se entrega el progreso.
+
+El transporte se parte en dos piezas para no romper RA-018 (ADR-23):
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `McpHttp` | `rdd-mcp` | Semántica del transporte sin servidor: sesiones, cabeceras, versiones, JSON vs SSE, cancelación entre POSTs y guardián de entrada. Habla `rdd_core::http::{Request, Response}` y una cola de `Bytes`. |
+| Montaje `/mcp` | `rdd-axum`, feature `mcp-http` | Lee el cuerpo con límite, ejecuta `HttpApp::prepare` (RP-028), llama a `McpHttp::handle` y vuelca la cola SSE en el cuerpo con `Body::from_stream` (RP-029). |
+
+```rust
+// rdd-mcp — transporte HTTP neutral
+pub struct McpHttpConfig { /* ruta, orígenes, sesiones, guardián */ }
+
+impl McpHttpConfig {
+    /// `/mcp`, ningún `Origin` permitido, 1024 sesiones, 30 min y 64 en vuelo.
+    pub fn new() -> Self;
+    /// Ruta del montaje; por defecto `/mcp` (RF-222).
+    pub fn path(self, path: impl Into<String>) -> Self;
+    /// Orígenes de navegador aceptados; vacío = solo peticiones sin `Origin`.
+    pub fn allowed_origins<I, S>(self, origins: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>;
+    pub fn max_sessions(self, max: usize) -> Self;
+    pub fn session_ttl(self, ttl: std::time::Duration) -> Self;
+    pub fn max_in_flight(self, max: usize) -> Self;
+    /// Se ejecuta después de los globales; `Err` se responde como Problem Details.
+    pub fn authorize<F>(self, f: F) -> Self
+    where
+        F: Fn(&rdd_core::http::Request) -> rdd_core::Result<()> + Send + Sync + 'static;
+}
+
+impl McpHttp {
+    pub fn new(server: McpServer) -> Self;
+    pub fn config(self, config: McpHttpConfig) -> Self;
+    /// `req` ya pasó por `HttpApp::prepare` (RP-028).
+    pub async fn handle(&self, req: rdd_core::http::Request) -> McpHttpResponse;
+    /// Cancela lo que esté en vuelo y olvida las sesiones (RF-229).
+    pub async fn shutdown(&self);
+}
+
+pub enum McpHttpResponse {
+    Json(rdd_core::http::Response), // 200 con JSON-RPC, o 4xx del protocolo
+    Accepted,                       // 202: era una notificación
+    NoContent,                      // 204: DELETE o tools/call cancelada
+    Sse(SseStream),                 // 200 text/event-stream
+}
+
+/// Eventos ya enmarcados en SSE; la plataforma solo los bombea al cuerpo.
+pub struct SseStream { /* receptor de `Bytes` */ }
+impl SseStream {
+    pub fn into_receiver(self) -> tokio::sync::mpsc::Receiver<bytes::Bytes>;
+}
+```
+
+```rust
+// rdd-axum, feature `mcp-http`
+impl AxumPlatform {
+    /// Monta el `McpHttp` en su ruta (RP-029). Un choque con una ruta HTTP o un
+    /// canal impide arrancar (RF-222).
+    pub fn mcp(self, mcp: rdd_mcp::McpHttp) -> Self;
+}
+```
+
+```rust
+// main.rs del usuario — el mismo `McpServer` de stdio, ahora sobre el router
+let mcp = McpHttp::new(server).config(
+    McpHttpConfig::new()
+        .allowed_origins(["https://app.example.com"])
+        .authorize(require_session),
+);
+App::new()
+    .module(tasks::module())
+    .run_on(AxumPlatform::new().mcp(mcp), "0.0.0.0:3000")
+    .await
+```
+
+**Versiones.** Por HTTP se sirven `2025-11-25` y `2025-06-18`. Las otras dos que
+acepta stdio no se sirven aquí: `2025-03-26` permitía *batching* y `2024-11-05`
+usa el transporte SSE heredado de dos extremos (ADR-24). Un `initialize` que pide
+una versión no servida responde con la más reciente soportada, como manda §10.6.
+
+| Situación | HTTP | Cuerpo |
+|---|---|---|
+| `initialize` correcto | 200 | JSON-RPC + `Mcp-Session-Id` |
+| Request correcto sin progreso | 200 | JSON-RPC |
+| Request con `progressToken` y SSE aceptado | 200 | `text/event-stream` |
+| Notificación válida | 202 | vacío |
+| `DELETE` con sesión | 204 | vacío |
+| POST original de una tool cancelada | 204 / flujo SSE cerrado | vacío |
+| Sin `Mcp-Session-Id` fuera de `initialize` | 400 | Problem Details |
+| Sesión desconocida o expirada | 404 | Problem Details |
+| Versión no servida o distinta de la sesión | 400 | Problem Details |
+| `Origin` de navegador no permitido | 403 | Problem Details |
+| `authorize` o un global rechazan | 401/403 | Problem Details |
+| `Content-Type` distinto de `application/json` | 415 | Problem Details |
+| Cuerpo mayor a `limits.body_limit_bytes` | 413 | Problem Details (RP-006) |
+| `Accept` sin JSON ni SSE | 406 | Problem Details |
+| Límite global de `RateLimit` | 429 | Problem Details (RF-107) |
+| Arreglo (batching) en el cuerpo | 400 | JSON-RPC `-32600` con `id: null` |
+| JSON ilegible | 400 | JSON-RPC `-32700` con `id: null` |
+| Método HTTP distinto de POST/DELETE | 405 | Problem Details + `Allow` |
+| Alta de sesión sobre `max_sessions` | 503 | Problem Details |
+
+| ID | Requisito |
+|---|---|
+| RF-222 | Con la feature `mcp-http`, `AxumPlatform::mcp(mcp)` DEBE montar el `McpHttp` en su ruta (por defecto `/mcp`) sobre **todos** los métodos, para que la cadena global (CORS, JWT, RateLimit) se ejecute antes de decidir (RP-028). La ruta participa de RP-008 (`/mcp` y `/mcp/`). Un `path` inválido, duplicado o que colisiona con una ruta HTTP o un canal de §10.4 DEBE impedir el arranque con un `PlatformError` que nombre la ruta. Sin la feature o sin `.mcp(...)` el router no cambia; `HttpApp::dispatch` no sirve `/mcp` y una petición ahí recibe el 404 del `fallback` (§4.5). |
+| RF-223 | `initialize` sin `Mcp-Session-Id` DEBE crear una sesión con id UUID v4, devolverla en la cabecera `Mcp-Session-Id` de esa respuesta y fijar la versión negociada. Las demás peticiones DEBEN traer una sesión viva: sin cabecera → 400; id desconocido o expirado → 404, para que el cliente reinicialice; un segundo `initialize` dentro de una sesión viva recibe `-32600` (RF-205). Las sesiones viven en memoria del proceso, caducan tras `session_ttl` sin uso y el alta que supera `max_sessions` recibe 503. `DELETE /mcp` con sesión responde 204 y la elimina; sin sesión → 400; desconocida → 404. |
+| RF-224 | `POST /mcp` DEBE llevar `Content-Type: application/json` (415 si no) y **un solo** mensaje JSON-RPC: un arreglo se rechaza con 400 y `-32600` (ADR-24). El cuerpo se limita con `limits.body_limit_bytes` y, por encima, se responde 413 en Problem Details sin ejecutar la tool (RP-006). `Accept` DEBE incluir `application/json` o `text/event-stream`; si no, 406. Una notificación válida responde **202 sin cuerpo**; un request, **200** con el mensaje de §10.6, salvo el caso SSE de RF-226. Un JSON ilegible es 400 con `-32700`; los demás errores del protocolo viajan con HTTP 200 y su código de §10.6. `initialize` responde siempre JSON, aunque el cliente acepte SSE. |
+| RF-225 | Por HTTP se sirven `2025-11-25` y `2025-06-18`. `initialize` negocia solo entre esas dos: repite la pedida si está soportada y, si no, devuelve la más reciente (RF-205). Las peticiones posteriores usan la versión de la sesión: sin `MCP-Protocol-Version` se asume la de la sesión; una cabecera que no coincida, o una versión no servida por HTTP (`2025-03-26`, `2024-11-05`), responde 400 nombrando las soportadas. La respuesta repite `MCP-Protocol-Version` con la versión de la sesión. Esas dos versiones siguen disponibles por stdio (§10.7). |
+| RF-226 | Un request con `params._meta.progressToken` y `Accept: text/event-stream` DEBE responderse como `text/event-stream` con `Cache-Control: no-store`: un evento por mensaje (`event: message` + `data:` con el JSON compacto en una línea + línea en blanco), las `notifications/progress` de RF-211 antes del mensaje final, y el flujo **termina** al escribir la respuesta. No hay `id:` ni reanudación: `Last-Event-ID` se ignora (ADR-24). Un `progressToken` sin SSE aceptado → 406. Si el cliente cierra la conexión, el envío falla, se cancela la tool en vuelo (RF-227) y no queda trabajo huérfano. |
+| RF-227 | Las peticiones en vuelo se registran **por sesión**, no por conexión, así que `notifications/cancelled` puede llegar en otro POST. La notificación responde 202 y cancela el `tools/call` con ese id: `ToolContext::is_cancelled` pasa a `true`, la tool deja de esperar y su POST original no entrega mensaje (204 en JSON, flujo cerrado sin evento en SSE). Un id desconocido se ignora y la sesión sigue atendiendo. |
+| RF-228 | `McpHttpConfig::allowed_origins` DEBE validar `Origin` antes de atender: vacío (por defecto) acepta solo peticiones sin `Origin` (clientes no navegador) y una petición de navegador con origen no listado recibe 403 en Problem Details sin ejecutar tools. Tras los globales, `authorize(&Request)` decide la autorización del punto de entrada, como `SocketHandler::authorize` (RP-024): `Ok` continúa y `Err` se responde con el mapeo del núcleo. `McpHttp` DEBE poner las extensiones de la petición preparada —incluido el `Arc<Container>` de RF-084— en cada `ToolContext`, para que una tool lea la identidad con `ctx.ext::<Session>()` y el service con `ctx.resolve()` (ADR-25); `serve_stdio_with`/`serve_io_with` hacen lo mismo con las suyas y `serve_stdio`/`serve_io` usan unas vacías. |
+| RF-229 | Cada sesión admite `max_in_flight` (64) `tools/call` simultáneas, como stdio (RF-217); por encima se responde `-32603` sin ejecutar. Las tools de una misma sesión y de sesiones distintas no se bloquean entre sí. Al completarse `ShutdownSignal`, el montaje DEBE llamar a `McpHttp::shutdown()` para cancelar lo que esté en vuelo, cerrar los flujos SSE y olvidar las sesiones dentro de `shutdown_grace` (RP-009); un cliente que reconecta recibe 404 y reinicializa. |
+| RF-230 | Todas las respuestas de `/mcp` DEBEN llevar `Cache-Control: no-store`. El id de sesión es una credencial y NO DEBE aparecer en los logs (RN-032); se registran método, tool y resultado con `tracing` (RN-040), nunca en `stdout` (RF-219). |
+| RF-231 | `example/todo-app --mcp-http` DEBE montar `/mcp` sobre el mismo servidor REST y el mismo contenedor, protegerlo con la receta JWT de §26.3 y dejar que las tools lean `Session` del contexto. Sin `Bearer` → 401; con token, `create_task`, `list_tasks` y `complete_task` operan sobre las tareas del dueño del token, y el filtro del caso de uso (§26.5) sigue devolviendo 404 para recursos ajenos. |
+| RF-232 | Los casos M-10 a M-15 DEBEN cubrir §10.8 contra un `AxumPlatform` real en un puerto efímero, y M-16 el demo con dos usuarios (§20, §26.8). |
+
+### 10.9 GraphQL (`/graphql`)
+
+La fase 0.10 añade GraphQL como **entrada opcional** sobre el mismo `HttpApp` y el
+mismo contenedor: consultas, mutaciones y suscripciones, más un explorer embebido.
+No sustituye a REST (§2.1): es otra forma de entrar a los casos de uso, con las
+mismas reglas de identidad y los mismos globales.
+
+El motor es propio y se parte en dos piezas, por la misma razón que MCP (ADR-23):
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `Schema`, parser, ejecutor, introspección, `GraphqlHttp` y explorer | `rdd-graphql` | Semántica sin servidor: documento, variables, validación, ejecución, formato SSE y HTML. Habla `rdd_core::http::{Request, Response}` y una cola de `Bytes`. |
+| Montaje `/graphql` | `rdd-axum`, feature `graphql` | Lee el cuerpo con límite, ejecuta `HttpApp::prepare` (RP-028), llama a `GraphqlHttp::handle` y vuelca el `SseStream` o el HTML con `Body::from_stream` (RP-030, RP-031). |
+
+```rust
+// rdd-graphql — motor y entrada neutral
+pub struct Schema { /* raíces y tipos, inmutable */ }
+
+impl Schema {
+    pub fn builder() -> SchemaBuilder;
+    /// Ejecuta una operación de consulta o mutación y devuelve `{"data", "errors"}`.
+    pub async fn execute(&self, ctx: &GraphqlContext, req: GraphqlRequest) -> serde_json::Value;
+    /// ¿La operación seleccionada (por `operation_name`) es una suscripción?
+    pub fn is_subscription(&self, req: &GraphqlRequest) -> bool;
+    /// Arranca la suscripción: cada elemento es un payload `{"data"|"errors"}`.
+    pub async fn subscribe(
+        &self,
+        ctx: &GraphqlContext,
+        req: GraphqlRequest,
+    ) -> rdd_core::Result<GraphqlStream<serde_json::Value>>;
+}
+
+#[derive(Default)]
+pub struct SchemaBuilder { /* … */ }
+
+impl SchemaBuilder {
+    pub fn query<R: GraphqlRoot>(self) -> Self;
+    pub fn mutation<R: GraphqlRoot>(self) -> Self;
+    pub fn subscription<R: GraphqlRoot>(self) -> Self;
+    /// Valida nombres y tipos; un esquema inválido es error de arranque (RF-244).
+    pub fn build(self) -> rdd_core::Result<Schema>;
+}
+
+#[derive(Clone)]
+pub struct GraphqlContext { /* Arc<Container> + extensiones de la petición */ }
+
+impl GraphqlContext {
+    /// Identidad puesta por los globales, p. ej. `ctx.ext::<Session>()` (RF-239).
+    pub fn ext<T: Clone + Send + Sync + 'static>(&self) -> Option<T>;
+    /// Recurso registrado en el contenedor, sin `FromContainer`.
+    pub fn get<T: Clone + Send + Sync + 'static>(&self) -> Option<T>;
+    /// Provider construido por el contenedor (`#[service]`, §6.3).
+    pub fn resolve<T: FromContainer>(&self) -> rdd_core::Result<T>;
+}
+
+pub struct GraphqlRequest {
+    pub query: String,
+    pub operation_name: Option<String>,
+    pub variables: Option<serde_json::Value>, // objeto, o `None`
+}
+
+/// Lo que devuelve un campo de suscripción (RF-240).
+pub struct GraphqlStream<T> { /* mpsc::Receiver<T> */ }
+
+impl<T> GraphqlStream<T> {
+    pub fn new(receiver: tokio::sync::mpsc::Receiver<T>) -> Self;
+}
+
+pub struct GraphqlHttpConfig { /* ruta, explorer, profundidad, guardián */ }
+
+impl GraphqlHttpConfig {
+    /// `/graphql`, explorer activo, profundidad máxima 16.
+    pub fn new() -> Self;
+    pub fn path(self, path: impl Into<String>) -> Self;
+    /// GET sin `query` sirve el explorer; `false` responde 404 (RF-241).
+    pub fn explorer(self, enabled: bool) -> Self;
+    /// Anidamiento máximo de conjuntos de selección (RF-235, RF-242).
+    pub fn max_depth(self, max: usize) -> Self;
+    /// Se ejecuta después de los globales; `Err` se responde como Problem Details.
+    pub fn authorize<F>(self, f: F) -> Self
+    where
+        F: Fn(&rdd_core::http::Request) -> rdd_core::Result<()> + Send + Sync + 'static;
+}
+
+impl GraphqlHttp {
+    pub fn new(schema: Schema) -> Self;
+    pub fn config(self, config: GraphqlHttpConfig) -> Self;
+    /// `req` ya pasó por `HttpApp::prepare` (RP-028).
+    pub async fn handle(&self, req: rdd_core::http::Request) -> GraphqlHttpResponse;
+    /// Cancela las suscripciones en vuelo al apagar (RF-238).
+    pub async fn shutdown(&self);
+}
+
+pub enum GraphqlHttpResponse {
+    Json(rdd_core::http::Response), // 200 con `{data, errors}`, o 4xx de transporte
+    Html(rdd_core::http::Response), // 200 text/html: explorer
+    Sse(SseStream),                 // 200 text/event-stream: suscripción
+}
+
+/// Eventos ya enmarcados en SSE; la plataforma solo los bombea al cuerpo (RP-031).
+pub struct SseStream { /* receptor de `Bytes` */ }
+
+impl SseStream {
+    pub fn into_receiver(self) -> tokio::sync::mpsc::Receiver<bytes::Bytes>;
+}
+```
+
+```rust
+// rdd-axum, feature `graphql`
+impl AxumPlatform {
+    /// Monta el `GraphqlHttp` en su ruta (RP-030). Un choque con una ruta HTTP,
+    /// un canal, `/mcp` u otro `/graphql` impide arrancar (RF-233).
+    pub fn graphql(self, graphql: rdd_graphql::GraphqlHttp) -> Self;
+}
+```
+
+```rust
+// main.rs del usuario — esquema, guardián JWT y montaje
+let schema = Schema::builder()
+    .query(Query)
+    .mutation(Mutation)
+    .subscription(Subscription)
+    .build()?;
+let graphql = GraphqlHttp::new(schema).config(
+    GraphqlHttpConfig::new().authorize(require_session),
+);
+App::new()
+    .module(tasks::module())
+    .run_on(AxumPlatform::new().graphql(graphql), "0.0.0.0:3000")
+    .await
+```
+
+**El esquema es el tipo Rust (ADR-27).** No hay SDL aparte ni codegen en build:
+
+```rust
+// tasks/presentation/task_graphql.rs
+#[derive(GraphqlObject)]
+pub struct Task {
+    pub id: Uuid,          // se expone como `ID`
+    pub title: String,
+    pub done: bool,
+    #[graphql(skip)]
+    pub owner_id: Uuid,    // no viaja al cliente
+}
+
+#[derive(GraphqlInput)]
+pub struct CreateTaskInput {
+    pub title: String,
+}
+
+#[graphql_object(query)]
+impl Query {
+    /// Tareas del usuario del token.
+    async fn tasks(&self, ctx: &GraphqlContext) -> Result<Vec<Task>> { /* … */ }
+
+    async fn task(&self, ctx: &GraphqlContext, id: Uuid) -> Result<Option<Task>> { /* … */ }
+}
+
+#[graphql_object(mutation)]
+impl Mutation {
+    async fn create_task(&self, ctx: &GraphqlContext, input: CreateTaskInput) -> Result<Task> { /* … */ }
+}
+
+#[graphql_object(subscription)]
+impl Subscription {
+    /// Cambios de tareas del usuario del token.
+    async fn task_changed(&self, ctx: &GraphqlContext) -> Result<GraphqlStream<Task>> { /* … */ }
+}
+```
+
+Los campos de salida admiten `String`, `bool`, `i32`, `f64`, `Uuid` (como `ID`),
+structs con `#[derive(GraphqlObject)]`, `Option<T>` y `Vec<T>`. Los de entrada
+admiten además `#[derive(GraphqlInput)]` y las mismas composiciones. Cualquier
+otro tipo —incluidos `i64`, `u64` y campos con lifetime— es un diagnóstico de
+compilación (RDD0501). Los nombres de campo pasan de `snake_case` a `camelCase`,
+salvo que `#[graphql(name = "…")]` —en el tipo o en el campo— publique otro
+nombre; `#[graphql(skip)]` excluye el campo,
+y el doc comment es la `description` que publica la introspección.
+
+**Documento aceptado.** El subconjunto es acotado y suficiente para un cliente
+normal (Apollo, graphiql, urql):
+
+- Operaciones `query`, `mutation` y `subscription`, con nombre opcional; sin
+  nombre y con varias operaciones en el documento, `operationName` es obligatorio.
+- Variables `$id: ID!` con tipos nullable, lista y no-null, y valor por defecto
+  opcional; los valores de argumento pueden ser literales o variables.
+- Aliases (`alias: field`), fragmentos con nombre y fragmentos inline `... on T`;
+  como no hay interfaces ni uniones, la condición debe ser el tipo actual.
+- Directivas `@skip(if: …)` y `@include(if: …)`. Cualquier otra directiva, un
+  valor de enum o una definición de tipo en el documento son errores de validación.
+- `__typename` en cualquier selección, y la introspección de RF-237.
+- Anidamiento de conjuntos de selección hasta `max_depth` (16 por defecto); al
+  superarlo se responde error de validación sin ejecutar resolutor alguno.
+
+**Formato de errores.** Los errores de documento, validación y ejecución viajan
+con **HTTP 200** en `errors`, como manda la especificación de GraphQL:
+
+```json
+{
+  "data": null,
+  "errors": [
+    { "message": "campo desconocido `titel` en `Task`", "locations": [{ "line": 1, "column": 9 }], "path": ["task", "titel"] }
+  ]
+}
+```
+
+`message` nunca incluye el detalle interno de un `Error`: se registra con
+`tracing` (RN-040) y el cliente recibe un texto genérico (RF-244). Un error en un
+campo nullable deja `null` en ese campo y conserva el resto de `data`; en un
+campo no-null el `null` burbujea hasta el primer ancestro nullable.
+
+**Suscripciones por SSE.** Igual que `/mcp` (RF-226), la respuesta es
+`text/event-stream` con `Cache-Control: no-store`, pero con el formato
+`graphql-sse`, que es lo que hablan los clientes de GraphQL sobre HTTP:
+
+```
+event: next
+data: {"data":{"taskChanged":{"id":"…","title":"…","done":false}}}
+
+: ping
+
+event: complete
+data: {}
+```
+
+Un error de ejecución en una suscripción se entrega como `event: next` con
+`{"errors":[…]}`; el flujo termina después con `event: complete`. No hay
+reanudación (`Last-Event-ID` se ignora) y no se abre ningún WebSocket (ADR-28).
+La suscripción exige un único campo raíz.
+
+| Situación | HTTP | Cuerpo |
+|---|---|---|
+| POST con consulta o mutación válida | 200 | JSON `{data, errors?}` |
+| Error de documento, validación o ejecución | 200 | JSON `{data?, errors}` |
+| POST de una suscripción con `Accept: text/event-stream` | 200 | `text/event-stream` |
+| POST de una suscripción sin SSE aceptado | 406 | Problem Details |
+| GET sin `query` (explorer activo) | 200 | `text/html` |
+| GET sin `query` (explorer desactivado) | 404 | Problem Details |
+| GET con consulta | 200 | JSON `{data, errors?}` |
+| GET con mutación o suscripción | 405 | Problem Details + `Allow: POST` |
+| Método distinto de GET y POST | 405 | Problem Details + `Allow: GET, POST` |
+| `Content-Type` distinto de `application/json` en POST | 415 | Problem Details |
+| Cuerpo mayor a `limits.body_limit_bytes` | 413 | Problem Details (RP-006) |
+| JSON ilegible, `variables` no es objeto o falta `query` | 400 | Problem Details |
+| `Origin` de navegador no permitido por CORS | 403 | Problem Details (RF-090) |
+| `authorize` o un global rechazan | 401/403 | Problem Details |
+| Límite global de `RateLimit` | 429 | Problem Details (RF-107) |
+
+| ID | Requisito |
+|---|---|
+| RF-233 | Con la feature `graphql`, `AxumPlatform::graphql(graphql)` DEBE montar el `GraphqlHttp` en su ruta (por defecto `/graphql`) sobre **todos** los métodos, para que la cadena global (CORS, JWT, RateLimit) se ejecute antes de decidir (RP-028); el método final lo juzga `GraphqlHttp` (GET y POST; el resto, 405 con `Allow`). La ruta participa de RP-008 (`/graphql` y `/graphql/`). Un `path` inválido, duplicado o que colisiona con una ruta HTTP, un canal de §10.4, un montaje `/mcp` u otro `/graphql` DEBE impedir el arranque con un `PlatformError` que nombre la ruta. Sin la feature o sin `.graphql(...)` el router no cambia; `HttpApp::dispatch` no sirve `/graphql` y una petición ahí recibe el 404 del `fallback` (§4.5). |
+| RF-234 | `POST /graphql` DEBE aceptar `Content-Type: application/json` (415 si no) con un objeto `{query, operationName?, variables?}`; `query` es obligatoria y `variables`, si viene, DEBE ser objeto (400 en Problem Details). El cuerpo se limita con `limits.body_limit_bytes` (413 sin ejecutar nada, RP-006). `GET /graphql?query=…&operationName=…&variables=…` DEBE aceptar solo consultas e introspección: una mutación o una suscripción recibe 405 con `Allow: POST`, y `variables` viaja como JSON codificado en la URL. Si el documento tiene varias operaciones y no se indica `operationName` (o el nombre no existe), se responde **200** con `errors`. Cualquier método distinto de GET y POST recibe 405 con `Allow: GET, POST`. Todas las respuestas de `/graphql` DEBEN llevar `Cache-Control: no-store`, y el documento y las variables NO DEBEN aparecer en los logs; se registran operación, campos raíz y resultado con `tracing` (RN-040), nunca en `stdout`. |
+| RF-235 | El documento DEBE aceptar operaciones `query`, `mutation` y `subscription`, variables con tipo nullable, lista y no-null y valor por defecto opcional, aliases, fragmentos con nombre, fragmentos inline sobre el tipo actual, `__typename`, valores literales (String, Int, Float, Boolean, null, lista y objeto) y las directivas `@skip` y `@include`. NO DEBE aceptar definiciones de tipo, valores de enum, interfaces, uniones, `@defer`, `@stream` ni otras directivas: se responden como error de validación. El anidamiento de conjuntos de selección se limita a `max_depth` y, al superarse, se responde error de validación sin ejecutar resolutores. |
+| RF-236 | La ejecución DEBE validar el documento antes de resolver: campo o argumento desconocido, argumento obligatorio ausente, variable no declarada o de tipo incompatible, coerción de entrada fallida, selección vacía, fragmento desconocido o cíclico, y suscripción con más de un campo raíz producen entradas de `errors` con `message`, `locations` y, cuando exista, `path`. Los errores de documento, validación y ejecución viajan con HTTP 200; solo los errores de transporte son 4xx (RF-234). Un campo nullable que falla se entrega como `null` y el resto de `data` se conserva; un `null` en un campo no-null burbujea hasta el primer ancestro nullable y, si llega a la raíz, `data` es `null`. Los resolutores DEBEN ejecutarse sin bloquear el runtime y un `panic` en uno se captura y se convierte en error del campo. |
+| RF-237 | La introspección DEBE cubrir el subconjunto que usan graphiql y los clientes de código: `__typename`, `__schema` con `queryType`, `mutationType`, `subscriptionType` y `types`, y `__type(name:)`, con `kind`, `name`, `description`, `fields(includeDeprecated:)` (con `name`, `description`, `args` y `type`), `inputFields` (con `name`, `description`, `type`, `defaultValue`) y la cadena `ofType` completa. Los escalares publicados son `Int`, `Float`, `String`, `Boolean` e `ID`; no se publican directivas, enums, interfaces ni uniones. Un `__type` con nombre desconocido devuelve `null`. |
+| RF-238 | Una operación de suscripción DEBE responderse como `text/event-stream` con `Cache-Control: no-store` solo si `Accept` incluye `text/event-stream`; si no, 406 en Problem Details. El flujo emite un `event: next` con `data:` (payload `{"data"|"errors"}` en una línea), comentarios `: ping` como latido y un `event: complete` al cerrarse; no usa `id:` ni reanudación y `Last-Event-ID` se ignora. Si el cliente desconecta, la suscripción se cancela al cerrarse la cola y no queda tarea huérfana. Al completarse `ShutdownSignal`, el montaje DEBE llamar a `GraphqlHttp::shutdown()` para cerrar los flujos dentro de `shutdown_grace` (RP-009). No se ofrece transporte WebSocket para suscripciones (ADR-28). |
+| RF-239 | `GraphqlHttpConfig::authorize(&Request)` DEBE ejecutarse después de los globales y antes de parsear o ejecutar: `Ok` continúa y `Err` se responde con el mapeo del núcleo a Problem Details, igual que `SocketHandler::authorize` (RP-024). El guardián DEBE cubrir también el explorer y las suscripciones. `GraphqlHttp` DEBE construir el `GraphqlContext` de cada operación con las extensiones de la petición preparada —incluido el `Arc<Container>` de RF-084— para que un resolutor lea la identidad con `ctx.ext::<Session>()`, un recurso con `ctx.get::<T>()` y un provider con `ctx.resolve()`. |
+| RF-240 | Las macros DEBEN generar el esquema a partir del código: `#[derive(GraphqlObject)]` y `#[derive(GraphqlInput)]` publican los campos (con `snake_case` → `camelCase`, doc comment como `description`, `#[graphql(name = "…")]` en el tipo o en el campo, y `#[graphql(skip)]`), y `#[graphql_object(query \| mutation \| subscription)]` sobre un `impl` publica sus métodos como campos raíz. En un `impl` de raíz, cada método DEBE ser `async`, recibir `&GraphqlContext` y devolver `rdd::Result<T>`; en `subscription` el retorno es `rdd::Result<GraphqlStream<T>>`. Un tipo o firma no soportada es el diagnóstico RDD0501 y un nombre duplicado o reservado (`__`) es RDD0502, ambos con span exacto y `help:`. Las rutas absolutas de RN-012 se conservan. |
+| RF-241 | El explorer DEBE servirse en `GET /graphql` sin `query` como `text/html; charset=utf-8`, autocontenido y embebido en el binario con `include_str!`: sin CDN, sin peticiones a terceros y sin recursos externos. DEBE permitir escribir una consulta o mutación, editar variables y cabeceras (incluido `Authorization`), ejecutarla y ver el JSON de respuesta, y seguir una suscripción leyendo el cuerpo SSE de un POST con `fetch` (no `EventSource`, que no admite POST). DEBE enviar `Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'` y `X-Content-Type-Options: nosniff`. Con `.explorer(false)` la ruta responde 404 en Problem Details. |
+| RF-242 | `GraphqlHttpConfig` DEBE exponer `path` (por defecto `/graphql`), `explorer` (por defecto `true`) y `max_depth` (por defecto 16); un `max_depth` de 0 o un `path` vacío o sin `/` inicial DEBE fallar el arranque con un mensaje que nombre el campo. Los límites de cuerpo y de tiempo de apagado vienen de `Limits` y no se duplican (RF-017, RP-009). |
+| RF-243 | La fachada DEBE declarar `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y reexportar `rdd_graphql` como `rdd::graphql` con `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y las macros; `rdd-axum` DEBE declarar `graphql = ["dep:rdd-graphql"]`. Activar `graphql` sin `axum` es un error de compilación claro (RP-012) y `rdd-graphql` no aparece en el árbol de `rdd-core` ni de `rdd-hyper` (RA-021). |
+| RF-244 | `SchemaBuilder::build` DEBE validar el esquema y fallar al arrancar si dos raíces publican un campo con el mismo nombre, si un tipo aparece dos veces con definiciones distintas, si un nombre empieza por `__`, o si una raíz declarada no expone ningún campo: el mensaje DEBE nombrar el tipo y el campo. Un `panic` o un `Error` interno de un resolutor NO DEBE tumbar la petición ni el servidor: se registra con `tracing` (RN-040) y el cliente recibe `errors[{message: "error interno"}]` con `path`, sin detalle interno. |
 
 ---
 
@@ -1561,14 +2026,20 @@ crate y una línea en la fachada.
 
 Las features de la fachada son `axum` y `sqlite` por defecto, más una por motor
 opcional (`postgres`, y las que se añadan con cada crate), `socket` para
-`rdd-socket` (§10.5) y `mcp` para `rdd-mcp` (§10.6). Activar la feature de un motor
-trae el crate como dependencia `optional`, re-exporta su adaptador y hace que
-`rdd::run_main` llame a su `register()`; `socket` activa `rdd-socket` y la feature
-`ws` de `rdd-axum`, y re-exporta el hub, porque el hub no necesita registro; `mcp`
-trae `rdd-mcp` y re-exporta `McpServer`, `Tool` y `serve_stdio` por el mismo
-motivo: no hay nada que registrar ni conectar. Es `run_main` —el código que expande
-`#[rdd::main]`— y no un inicializador global, porque la fachada solo puede ejecutar
-código en el camino que ella misma genera, igual que RP-012 con la plataforma.
+`rdd-socket` (§10.5), `mcp` para `rdd-mcp` (§10.6), `mcp-http` para el montaje
+`/mcp` (§10.8) y `graphql` para `rdd-graphql` y el montaje `/graphql` (§10.9).
+Activar la feature de un motor trae el crate como dependencia
+`optional`, re-exporta su adaptador y hace que `rdd::run_main` llame a su
+`register()`; `socket` activa `rdd-socket` y la feature `ws` de `rdd-axum`, y
+re-exporta el hub, porque el hub no necesita registro; `mcp` trae `rdd-mcp` y
+re-exporta `McpServer`, `Tool`, `serve_stdio` y `serve_stdio_with` (más
+`Extensions` y `ToolContext`) por el mismo motivo: no hay nada que registrar ni
+conectar; `mcp-http` activa `mcp` y `rdd-axum/mcp-http` y re-exporta `McpHttp`,
+`McpHttpConfig` y `McpHttpResponse` (RA-020); `graphql` activa `rdd-graphql` y
+`rdd-axum/graphql` y re-exporta `rdd_graphql` como `rdd::graphql` con su motor y
+sus macros (RF-243), sin nada que registrar. Es `run_main` —el código que expande `#[rdd::main]`— y no un
+inicializador global, porque la fachada solo puede ejecutar código en el camino
+que ella misma genera, igual que RP-012 con la plataforma.
 `register()` es idempotente y hace ambas cosas: `declare` para sus esquemas e
 `install` de su factoría.
 
@@ -2029,7 +2500,7 @@ archivo** dentro del módulo (§5), usando `syn` para leer sentencias `use`.
 
 **RA-007.** `modules/<m>/infrastructure/` es la única capa que toca un adaptador o su driver. `application/` depende del puerto de `domain/`, nunca del crate del motor: cambiar de PostgreSQL a MongoDB no debe tocar un caso de uso (RF-185). La excepción es RF-115 (consultas especiales con el handle nativo), que DEBE suprimirse con `// rdd:allow(RA-007)` y motivo.
 
-**RA-019.** Una tool MCP es un adaptador de entrada más y vive en `modules/<m>/presentation/` (por ejemplo, `presentation/task_tools.rs`). Solo puede llamar a la API pública del módulo —el alias del service— y RA-003 se le aplica igual: no importa `generated`, ni un driver, ni `Repo`, ni `infrastructure`. Compartir la carpeta con los controllers es deliberado: las dos puertas llaman al mismo caso de uso.
+**RA-019.** Una tool MCP es un adaptador de entrada más y vive en `modules/<m>/presentation/` (por ejemplo, `presentation/task_tools.rs`). Solo puede llamar a la API pública del módulo —el alias del service, resuelto con `ctx.resolve()`— y RA-003 se le aplica igual: no importa `generated`, ni un driver, ni `Repo`, ni `infrastructure`. Compartir la carpeta con los controllers es deliberado: las dos puertas llaman al mismo caso de uso.
 
 **La raíz de composición no es una capa.** Las reglas RA-001 a RA-003 y RA-007 se
 aplican por carpeta, así que `modules/<m>/mod.rs` queda fuera: es el archivo que
@@ -2117,6 +2588,42 @@ contra el binario real; el cliente escribe una línea JSON y lee una línea JSON
 | M-07 | Proceso real por stdio: `initialize` y `tools/call` sobre tuberías; cada línea de `stdout` es un JSON completo | RF-214, RF-215, RF-216, RF-219 |
 | M-08 | `notifications/cancelled` corta una tool lenta sin respuesta y el `ping` posterior responde; con `progressToken` llega `notifications/progress` antes del resultado | RF-211, RF-212, RF-217 |
 | M-09 | `example/todo-app --mcp` crea, lista y completa una tarea por stdio sin abrir puerto | RF-218, §26.7 |
+
+### Suite MCP sobre HTTP (`/mcp`)
+
+Los casos M-10 a M-15 cubren §10.8 contra un `AxumPlatform` real con la feature
+`mcp-http` en `127.0.0.1:0`; M-16 lanza el demo con dos usuarios. No se ejecutan
+contra `dispatch` porque el montaje vive en la plataforma (§4.5) y necesitan SSE
+y desconexión real de un cliente.
+
+| Caso | Verifica | Requisitos |
+|---|---|---|
+| M-10 | `initialize` sin sesión responde 200 JSON, crea `Mcp-Session-Id` y negocia versión y capacidades; la respuesta repite `MCP-Protocol-Version`; un segundo `initialize` en la sesión viva da `-32600` | RF-223, RF-225 |
+| M-11 | Ciclo de sesión: POST sin cabecera → 400; id inventado → 404; `DELETE` → 204 y el POST siguiente → 404; una sesión sin uso caduca y da 404 | RF-223, RF-229 |
+| M-12 | POST y errores de transporte: `Content-Type` no JSON → 415; cuerpo sobre el límite → 413; `Accept` sin JSON ni SSE → 406; arreglo → 400/`-32600`; JSON ilegible → 400/`-32700`; notificación → 202 vacío; método desconocido → 200/`-32601`; `GET` y `PUT` → 405 con `Allow` | RF-222, RF-224 |
+| M-13 | SSE con `progressToken`: eventos `message`, progreso antes del resultado, `Cache-Control: no-store` y cierre del flujo; un `progressToken` sin `text/event-stream` → 406 | RF-224, RF-226 |
+| M-14 | Cancelación entre POSTs: una tool lenta en una conexión se cancela desde otra y su POST original no entrega mensaje (204 o flujo cerrado); el `ping` de la sesión sigue respondiendo | RF-227, RF-229 |
+| M-15 | Entrada: sin token `authorize` → 401 con Problem Details; una petición de más recibe el 429 de `RateLimit`; `Origin` no permitido → 403 y permitido → 200; la tool ve `Session` y el service por `ctx` | RF-228, RF-229, RF-230 |
+| M-16 | `example/todo-app --mcp-http`: dos usuarios con JWT inicializan `/mcp` y crean tareas; cada uno solo ve las suyas; sin token → 401; al cerrar la sesión, 404 | RF-231, §26.8 |
+
+### Suite GraphQL (`/graphql`)
+
+Los casos G-01 a G-09 cubren §10.9 contra un `AxumPlatform` real con la feature
+`graphql` en `127.0.0.1:0`, salvo G-01 a G-03, que corren además en proceso
+contra `SchemaBuilder` y `Schema::execute`. No se ejecutan contra `dispatch` porque el montaje vive
+en la plataforma (§4.5). El demo con dos usuarios cierra la suite en G-09.
+
+| Caso | Verifica | Requisitos |
+|---|---|---|
+| G-01 | `Schema::builder()` construye un esquema con raíces de consulta, mutación y suscripción; un nombre duplicado o `__` falla el `build` nombrando el campo | RF-240, RF-244 |
+| G-02 | Consulta con variables, alias, fragmentos y `@skip`/`@include`: `data` trae solo los campos seleccionados y los tipos escalares correctos (`ID`, `Int`, `Float`, `String`, `Boolean`) | RF-235, RF-236 |
+| G-03 | Errores: campo desconocido, argumento obligatorio ausente, variable incompatible y profundidad sobre `max_depth` devuelven 200 con `errors[{message, locations, path}]`; un campo no-null que falla anula su ancestro nullable y conserva el resto | RF-235, RF-236, RF-242 |
+| G-04 | Introspección: `__schema` publica las tres raíces y los tipos con sus campos; `__type(name:)` resuelve un tipo, `__typename` funciona y un tipo desconocido es `null` | RF-237 |
+| G-05 | Transporte: POST sin `Content-Type: application/json` → 415; cuerpo sobre el límite → 413; JSON ilegible → 400; `PUT` → 405 con `Allow: GET, POST`; toda respuesta lleva `Cache-Control: no-store` | RF-234, RF-242 |
+| G-06 | GET con `query` ejecuta una consulta y `variables` codificadas; GET con mutación o suscripción → 405 con `Allow: POST`; GET sin `query` con explorer activo sirve HTML autocontenido y sin peticiones externas, y con `.explorer(false)` → 404 | RF-234, RF-241 |
+| G-07 | Suscripción por SSE: `event: next` con los payloads, comentarios de latido, `event: complete` al cerrar y `Cache-Control: no-store`; sin `Accept: text/event-stream` → 406; al desconectar el cliente la cola se cierra y no queda tarea viva | RF-238 |
+| G-08 | Entrada: sin token `authorize` → 401 también en el explorer y en la suscripción; con token, `ctx.ext::<Session>()` y `ctx.resolve()` ven la identidad y el provider; un `panic` de resolutor responde `errors` con "error interno", deja el servidor vivo y registra el detalle con `tracing` | RF-239, RF-244 |
+| G-09 | `example/todo-app --graphql`: dos usuarios con JWT consultan y crean tareas por `/graphql`, cada uno solo ve las suyas, completan una tarea y reciben el cambio por suscripción; el explorer responde en `GET /graphql` | RF-233, §26.9 |
 
 ---
 
@@ -2266,6 +2773,73 @@ contiene líneas JSON-RPC y ningún log; `cargo tree -p rdd-mcp` cumple RA-018.
 
 **Aceptación:** dos clientes conectados a `/ws/tasks` reciben el mismo evento cuando cualquiera crea una tarea por REST; un handshake sin token recibe 401 en Problem Details y **no** 101; al apagar la app los clientes reciben 1001; C-13 a C-16 pasan en `rdd-axum`; `cargo tree -p rdd-core` sigue sin `axum`, `hyper` ni `tokio-tungstenite` y `cargo tree -p rdd-socket` no arrastra plataformas (RA-017).
 
+### Fase 0.9 — MCP sobre Streamable HTTP (`/mcp`)
+
+**Entrega:** `McpHttp` neutral en `rdd-mcp`, `HttpApp::prepare` en el núcleo,
+montaje `/mcp` en `rdd-axum` con la feature `mcp-http`, tools con identidad por
+petición y casos M-10 a M-16.
+
+- [x] `Prepared` y `HttpApp::prepare`; `negotiate` pasa a apoyarse en ellos sin
+      cambiar el handshake de §10.4 (RP-028)
+- [x] `McpHttp`, `McpHttpConfig`, `McpHttpResponse` y `SseStream` en `rdd-mcp`:
+      sesiones, versiones, JSON/SSE, cancelación entre POSTs y `authorize`
+      (RF-223 a RF-229)
+- [x] `ToolContext::ext` y `serve_stdio_with`/`serve_io_with`; el demo deja de
+      fijar el dueño en la tool (RF-228, ADR-25)
+- [x] `AxumPlatform::mcp` y la feature `mcp-http`: cuerpo con límite, `prepare`,
+      choque de rutas al arrancar y SSE con `Body::from_stream` (RF-222, RP-029,
+      ⚠️ V20)
+- [x] Feature `mcp-http` de la fachada (`mcp` + `axum/mcp-http`, RA-020)
+- [x] Demo `--mcp-http` con JWT, `authorize` y tools por sesión (RF-231, §26.8)
+- [x] Casos M-10 a M-15 en `crates/rdd-axum/tests/mcp_http.rs` y M-16 en
+      `example/todo-app/tests/mcp_http.rs` (RF-232)
+- [x] RA-018/RA-020 verificadas: `cargo tree -p rdd-mcp` sin plataformas y
+      `cargo tree -p rdd-hyper` sin `rdd-mcp`
+
+**Aceptación:** dos usuarios obtienen su JWT por REST, cada uno inicializa
+`/mcp`, crea y lista tareas sin ver las del otro; sin token la entrada responde
+401 y un `Origin` no permitido 403; una tool con `progressToken` entrega el
+progreso por SSE antes del resultado; cancelar una tool desde otra conexión no
+deja respuesta y la sesión sigue contestando `ping`; `DELETE` invalida la sesión
+(404 después); una petición de navegador al método `GET` recibe 405; `cargo tree
+-p rdd-mcp` sigue cumpliendo RA-018 y `rdd-hyper` no arrastra `rdd-mcp` (RA-020).
+
+### Fase 0.10 — GraphQL (`/graphql`)
+
+**Entrega:** crate `rdd-graphql` (motor, macros y explorer), montaje `/graphql`
+en `rdd-axum` con la feature `graphql`, demo `--graphql` y casos G-01 a G-09.
+
+- [ ] `rdd-graphql`: lexer, parser del documento, validación, ejecución e
+      introspección sobre `serde_json` (RF-235 a RF-237, ADR-26)
+- [ ] `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`,
+      `GraphqlStream` y formato de `errors` con `locations`/`path`; validación
+      del esquema al construir (RF-236, RF-239, RF-244)
+- [ ] Macros `GraphqlObject`, `GraphqlInput` y `graphql_object` con
+      `name`/`skip`, doc comment como descripción y RDD0501/RDD0502 (RF-240)
+- [ ] `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse` y `SseStream`;
+      SSE `graphql-sse` con `next`/`complete`, latido y cancelación (RF-234,
+      RF-238, RF-242)
+- [ ] Explorer embebido con `include_str!`, CSP sin excepciones externas y
+      `.explorer(bool)` (RF-241, ADR-29)
+- [ ] `AxumPlatform::graphql`, feature `graphql`: cuerpo con límite, `prepare`,
+      choque de rutas y `Body::from_stream` (RF-233, RP-030, RP-031, ⚠️ V22)
+- [ ] Feature `graphql` de la fachada (`rdd-graphql` + `axum/graphql`, RF-243)
+- [ ] Demo `--graphql`: esquema sobre los casos de uso, guardián JWT, suscripción
+      sobre `TaskFeed` filtrada por dueño y explorer (§26.9)
+- [ ] Casos G-01 a G-03 en `rdd-graphql`, G-04 a G-08 en
+      `crates/rdd-axum/tests/graphql.rs` y G-09 en
+      `example/todo-app/tests/graphql.rs` (RF-233 a RF-244)
+- [ ] RA-021 verificada: `cargo tree -p rdd-graphql` sin plataformas y
+      `cargo tree -p rdd-hyper` sin `rdd-graphql`
+
+**Aceptación:** dos usuarios obtienen su JWT por REST y consultan, crean y
+completan tareas por `/graphql` sin ver las del otro; sin token la entrada, el
+explorer y la suscripción responden 401; `GET /graphql` sirve un explorer que
+funciona sin red; una suscripción entrega el cambio por SSE y se corta al
+desconectar el cliente; un campo desconocido devuelve 200 con `errors` y
+`locations`/`path`; `cargo tree -p rdd-graphql` cumple RA-021 y `rdd-hyper` no
+arrastra `rdd-graphql`.
+
 ### Criterios transversales (todas las fases)
 
 - [ ] `cargo clippy -- -D warnings`, `cargo fmt --check` y `cargo test` en CI
@@ -2274,6 +2848,8 @@ contiene líneas JSON-RPC y ningún log; `cargo tree -p rdd-mcp` cumple RA-018.
 - [ ] RA-011 y RA-014 verificadas en CI (el núcleo no arrastra `axum`, `hyper` ni ningún driver de BD)
 - [ ] RA-017 verificada en CI (`rdd-socket` no arrastra plataformas, Tower ni `tokio-tungstenite`)
 - [ ] RA-018 verificada en CI (`rdd-mcp` no arrastra plataformas, Tower, WebSocket ni drivers)
+- [ ] RA-020 verificada en CI (`rdd-mcp` no depende de plataformas y `rdd-hyper` no arrastra `rdd-mcp`)
+- [ ] RA-021 verificada en CI (`rdd-graphql` no arrastra plataformas, Tower, WebSocket ni drivers y `rdd-hyper` no arrastra `rdd-graphql`)
 - [ ] Cobertura de pruebas de integración para cada requisito `RF-` marcado como DEBE
 - [ ] Cada diagnóstico de macro tiene un test `trybuild` con su mensaje esperado
 - [ ] Documentación con ejemplo ejecutable (`cargo test --doc`) por cada API pública
@@ -2305,6 +2881,10 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | V17 | Cliente WebSocket para la suite (`tokio-tungstenite` como `dev-dependency`) y rendimiento del hub: medir 1000 conexiones y 100 msg/s para fijar `socket_outbound_queue` y el tamaño del anillo; ajustar si el broadcast no sostiene la tasa (⚠️ V16). | 0.8 | §4.5, RF-196, RF-200 |
 | V18 | `schemars` no está en la caché local de Cargo (`CARGO_NET_OFFLINE=true`), así que `inputSchema` se escribe a mano como `serde_json::Value`. Verificar que el esquema mínimo (`type: object`, `properties`, `required`) basta a los clientes MCP y que un esquema mal formado no rompe `tools/list`. | 0.7 | §10.6, RF-208 |
 | V19 | Comportamiento de los clientes MCP reales sobre stdio: separador de línea, versión negociada, forma de `content`/`isError` y orden de `notifications/progress` respecto al resultado. Verificar con el MCP Inspector antes de publicar el crate. | 0.7 | §10.7, RF-205, RF-209, RF-211 |
+| V20 | SSE desde una cola neutral: `axum::body::Body::from_stream` y de dónde sale el `Stream` client-side (`tokio-stream` puede no estar en la caché offline; si no, `futures::stream::unfold`, que el núcleo ya usa). Verificar además qué ocurre al cerrar el cliente a mitad del flujo: cuándo se suelta el receptor y si el fallo de envío cancela la tool (RF-226). | 0.9 | `rdd-axum`, RF-222, RF-226 |
+| V21 | Clientes MCP reales sobre Streamable HTTP (Inspector con transporte HTTP y un SDK de otro lenguaje): si mandan `Accept: application/json, text/event-stream`, si incluyen `MCP-Protocol-Version` y qué hacen ante un 404 de sesión. Ajustar RF-224/RF-225 antes de publicar `mcp-http`. | 0.9 | §10.8, RF-223, RF-224, RF-225 |
+| V22 | Clientes GraphQL reales sobre el subconjunto: forma exacta de `__schema` que espera graphiql, codificación de `variables` en GET que emiten Apollo/urql y lectura de `graphql-sse` con `fetch`. Verificar además que `Body::from_stream` con `bytes::Bytes` no bufferiza el stream y que `Cache-Control: no-store` no rompe el explorer. | 0.10 | §10.9, RF-234, RF-237, RF-238 |
+| V23 | Expansión de las macros en un `impl` de raíz grande (varios `async fn` con `&GraphqlContext` y tipos anidados): tiempo de compilación y que `trybuild` capture RDD0501/RDD0502 con span en el campo. Medir el coste de `max_depth` con documentos generados de 16 y 17 niveles. | 0.10 | RF-235, RF-240, RF-242, RF-244 |
 
 ---
 
@@ -2334,6 +2914,13 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | ADR-20 | **JSON-RPC 2.0 implementado a mano en `rdd-mcp`**, sin SDK oficial, sin `jsonrpsee` y sin `schemars`. | (a) SDK oficial de MCP para Rust; (b) `jsonrpsee`; (c) `inputSchema` derivado con `schemars`. | (a) y (b) arrastran runtime, transporte o versiones que el workspace no controla, y el subconjunto que necesitamos son seis métodos y cinco códigos de error. (c) no está en la caché offline y el esquema es corto y estable (⚠️ V18). A mano, el protocolo se prueba con `serve_io` sin red y los mensajes de error son los de §10.6. |
 | ADR-21 | **El transporte de la fase 0.7 es solo stdio**; HTTP Streamable, sesiones, SSE y reanudación quedan fuera. | (a) Streamable HTTP desde el inicio; (b) los dos transportes a la vez; (c) stdio con un framing propio (Content-Length). | (a) exige abrir un servidor, gestionar sesiones, `Origin` y autenticación de red, que es una superficie que no pide el caso local (un cliente lanza el proceso). (b) duplica la fase y retrasa la entrega. (c) no lo hablan los clientes: MCP sobre stdio es una línea JSON por mensaje. El protocolo no conoce el transporte (ADR-22), así que añadir HTTP después no toca tools. |
 | ADR-22 | **Protocolo separado del transporte y tools como adaptadores de entrada.** `McpServer` no conoce `App` ni el contenedor; la app resuelve sus services y construye las tools en `presentation/`, igual que un controller. | (a) Tools en `application/` o `domain/`; (b) `rdd-mcp` acoplado a `App`/`Axum`; (c) generar las tools desde los controllers con una macro. | (a) rompe RA-001/RA-002: una tool es entrada, no regla de negocio; el caso de uso se comparte con el REST. (b) repetiría el error que ADR-11/ADR-19 evitan y haría el crate dependiente de una plataforma. (c) acopla el protocolo a las rutas HTTP y no cubre operaciones que no son un CRUD (MCP puede exponer una tool que no tiene endpoint). La separación es lo que deja probar M-01 a M-08 sobre `tokio::io::duplex` (RF-220). |
+| ADR-23 | **El transporte HTTP se parte en dos: semántica neutral en `rdd-mcp` y montaje en `rdd-axum`.** `McpHttp` ejecuta el protocolo sobre `rdd_core::http::{Request, Response}` y devuelve una cola de `Bytes` para SSE; `AxumPlatform::mcp` (feature `mcp-http`) lee el cuerpo, llama a `HttpApp::prepare` y bombea la cola con `Body::from_stream`. | (a) Axum dentro de `rdd-mcp`; (b) un crate nuevo `rdd-mcp-http`; (c) SSE a través de `rdd_core::http::Response`, que lleva `Bytes` en memoria; (d) montar `/mcp` como un controller con `#[post]`. | (a) rompe RA-018 y ADR-11. (b) duplica la superficie de un crate que ya depende de `rdd-core` sin aislar nada: sus dependencias serían exactamente las de `rdd-axum`. (c) contradice ADR-12 y obligaría a inventar un cuerpo que no es `Bytes` para todas las plataformas. (d) fuerza a expresar JSON-RPC y sesiones como rutas y extractores, y ata el protocolo a la tabla de rutas; el montaje fuera de tabla es el mismo patrón que ya usa el upgrade WebSocket (§10.4). |
+| ADR-24 | **Sesiones en memoria, sin `GET` de servidor ni reanudación, y versiones HTTP acotadas.** `/mcp` solo acepta POST y DELETE; `initialize` crea un `Mcp-Session-Id` con TTL y tope; no se sirve batching ni las versiones que lo exigen. | (a) Modo sin sesión (stateless); (b) sesiones en Redis/BD; (c) soportar `Last-Event-ID` y `GET /mcp`; (d) soportar `2025-03-26` y `2024-11-05` sobre HTTP. | (a) impide cancelar entre POSTs y cerrar un flujo desde otra conexión: el id de la petición solo es único dentro de una sesión. (b) es infraestructura que §2.2 mantiene fuera y repite el problema del hub distribuido. (c) no aporta nada mientras el servidor no inicie peticiones (RF-213): no hay flujo que reanudar; el cliente reintenta la llamada. (d) `2024-11-05` usa otro transporte y `2025-03-26` exige batching, que la revisión siguiente eliminó; stdio sigue aceptando ambas. |
+| ADR-25 | **La identidad viaja en `ToolContext`.** El transporte pone las extensiones de la petición en cada `ToolContext` y la tool las lee con `ctx.ext::<T>()`; stdio siembra las suyas con `serve_stdio_with`. | (a) Un `owner: Uuid` fijo en cada tool; (b) resolver la sesión desde el contenedor; (c) pasar `http::Request` a la tool; (d) construir un `McpServer` por usuario. | (a) es correcto para stdio y falso para HTTP: el servidor se construye una vez y atiende a muchos usuarios. (b) el contenedor es singleton y la identidad es por petición. (c) mete HTTP en todas las tools, incluidas las de stdio. (d) no se puede: el registro se valida al construir y las sesiones se crean después del arranque. `ctx.ext` usa el mismo mecanismo que un handler (`Ext<T>`, RF-083) y deja la autorización en la app, no en el protocolo. |
+| ADR-26 | **Motor GraphQL propio en `rdd-graphql`.** Lexer, parser del documento, validación, ejecución e introspección escritos a mano sobre `serde_json`. | (a) `async-graphql`; (b) `juniper`; (c) `graphql-parser` + ejecutor propio; (d) `apollo-rs`. | Ninguno de esos crates está en la caché local con `CARGO_NET_OFFLINE=true` (⚠️ V22), y los tres primeros arrastran su propio modelo de esquema, runtime o macros que competirían con las de `rdd`. El subconjunto que pide §10.9 son unas pocas reglas y cinco escalares, así que el motor cabe en un crate neutral, se prueba sin red y deja los códigos y la introspección bajo el contrato. |
+| ADR-27 | **El esquema se declara con macros, no con SDL.** `#[derive(GraphqlObject)]`, `#[derive(GraphqlInput)]` y `#[graphql_object(...)]` generan los tipos y las raíces; no hay archivo `.graphql` ni `build.rs`. | (a) SDL embebida con `include_str!` y parser en arranque; (b) codegen desde SDL en build; (c) resolver el esquema por reflexión en runtime. | (a) y (b) crean una segunda fuente de verdad que puede divergir del tipo Rust y pierden el tipado de los resolutores. (c) no existe en Rust sin macros. Con macros, un campo mal tipado es un error de compilación con span (RDD0501/RDD0502) y `cargo expand` (RN-013) muestra el esquema generado. |
+| ADR-28 | **Suscripciones solo por SSE (`graphql-sse`), sin WebSocket.** El stream viaja por el mismo cuerpo que `/mcp` ya sabe volcar. | (a) `graphql-transport-ws` sobre el canal de §10.4; (b) `graphql-ws` heredado; (c) polling desde el cliente. | (a) y (b) exigirían subprotocolo negociado en el handshake, un estado de conexión propio y clientes que hoy no hablan el puerto `SocketConnection`; además duplican el trabajo de §10.4. (c) gasta CPU y no es tiempo real. SSE reutiliza la infraestructura de `/mcp`, funciona con `fetch` en el navegador y `EventSource` en clientes que no necesitan POST. |
+| ADR-29 | **Explorer propio embebido en el binario.** HTML/JS con `include_str!`, sin CDN ni recursos externos. | (a) Servir GraphiQL desde CDN; (b) empaquetar GraphiQL/Apollo Sandbox como asset; (c) no incluir explorer. | (a) rompe el funcionamiento offline y obliga a abrir la CSP a terceros. (b) mete cientos de kilobytes y una cadena de build de JS en un workspace Rust. (c) era una petición explícita del usuario. El explorer propio cubre consulta, mutación, variables, cabeceras y suscripción por SSE, y se audita de una lectura. |
 
 ---
 
@@ -2363,7 +2950,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.4.7-draft | 2026-11-10 | **Reconciliación del documento con el árbol de cuatro capas y con el código ya escrito.** Tres cambios estaban en el árbol de trabajo sin entrada de registro, lo que violaba §24.2; se documentan aquí junto con las correcciones que dejaban referencias cruzadas obsoletas. (1) **§5/§5.1/§5.2**: el árbol de nueve carpetas por módulo y las capas transversales (`common/`, `shared/`, `integrations/`, `infrastructure/` raíz, `docs/`, `tests/e2e/`) se sustituyen por las **cuatro capas DDD** (`domain/`, `application/`, `infrastructure/`, `presentation/`) y solo carpetas funcionales; **RF-001 se redefine** y RF-002 a RF-006 se ajustan (`.gitkeep` en `migrations/`, cabecera documental por capa, prohibición de placeholders). Sustituye a la decisión 0.3.0-draft. (2) **§11.7 nuevo, RF-105 a RF-109**: middleware `RateLimit` de ventana fija por clave, cabeceras `RateLimit-*`, 429 con Problem Details y `Retry-After`, almacenamiento local acotado con 503 al saturarse y función de clave proporcionada por la app. (3) **§6.3**: las impls de `FromContainer` y `FromRequest` son **por tipo, nunca blanket** —un `impl<T: FromContainer> FromRequest for T` solapa con `Json/Path/Query/Header/Ext` y Rust lo rechaza con E0119 porque no razona en negativo—; mientras `#[service]` no exista (RF-006) el scaffold las escribe a mano, y viven en **`modules/<m>/mod.rs`**, la raíz de composición, no en `application/`. (4) **§14.2**: el estado de 0.2 pasa a ser el **estado actual**, no una transición futura: `Task` con `Uuid` + `Aggregate`/`Persist` a mano, puerto `TaskRepository` async, `TasksRepository` envolviendo `Repo<Task>` sin `static`/`shared()`/`new()`, `TaskResponse` como DTO de salida, `TasksUseCases<R>` **sin tipo por defecto** y el alias `pub type TasksService = TasksUseCases<TasksRepository>;` en `mod.rs`. Se retiran los nombres `TaskStore` y `TaskMapper`. La aceptación del scaffold corre en memoria; el CRUD contra PostgreSQL real es §25.6. (5) **§14.3**: el esqueleto de `main.rs` pasa a ser el que genera el CLI de verdad —sin `mod common/infrastructure/integrations/shared`, con `.database(config::database_config::url())` antes de `RDD_MEMORY` y el respaldo en `FALLBACK_URL` dentro de `config/database_config.rs`— y se documenta que `.database()` no conecta (RF-119). El respaldo sale de `main.rs` para que el archivo sea idéntico con cualquier motor y no dependa de la longitud de la URL para pasar `cargo fmt --check` (RF-007). (6) **§17**: se aclara que RA-001 a RA-003 y RA-007 aplican **por carpeta**, así que `mod.rs` queda fuera y es el único archivo que puede nombrar las cuatro capas; el alias del service evita relajar RA-002 y RA-003. (7) **§25.2/§25.3**: `TaskStore`→`TaskRepository`, fuera `TaskMapper`, `COLUMNS = ["id", "title", "done"]` (sin `created_at`, por V15/RF-187) y el snippet del repositorio pasa a `infrastructure/`, donde RA-007 lo exige. (8) **§4.1**: el `Cargo.toml` del usuario refleja el default real de la fachada, `axum + sqlite`, y declara `uuid` con `v4`+`serde` porque el id del agregado lo es (§7.2). (9) **§14.2/§25.3**: el puerto async declara `fn … -> impl Future<Output = …> + Send` y el adaptador lo implementa con `async fn` —la forma real de `FromRequest`—, porque un `async fn` en el trait no garantiza un futuro `Send` y la plataforma lo exige. (10) **§14.2**: los tests del caso de uso viven en `modules/<m>/mod.rs`, el único archivo que puede nombrar a la vez el adaptador y `MemoryBackend` sin violar RA-002; cada test crea su propio backend (RF-160). (11) **§14.1, RF-189 nuevo**: `rdd new --database <motor>` elige el motor predeterminado del proyecto y deja coherentes la feature de la fachada, `[database].provider`, el `provider` de Prisma y las URLs de respaldo; sin él, `sqlite`. Es lo que permite que §25.1 (`rdd new todo-app-ddd`) cumpla §25.4 (PostgreSQL real) sin editar `Cargo.toml` a mano. (12) **§12.6, RF-191 nuevo**: se documentan las features de la fachada (`axum`+`sqlite` por defecto, una opcional por motor) y se exige que `run_main` pueble el registro con `declare` para los seis esquemas e `install` para los compilados; hasta ahora solo la prosa lo pedía y ningún RF lo verificaba. (13) **§15.1, RF-190 nuevo**: el esquema de `rdd.toml` gana `migrations_dir`, que §14.1 y `rdd migrate` ya usaban pero no estaba documentado, y `provider` pasa a nombrar la feature de la fachada (`postgres`) en vez del token de Prisma (`postgresql`), que queda limitado a §15.2. RF-190 exige que el `rdd.toml` generado sea TOML válido: la plantilla escapaba las comillas dentro de un raw string y emitía `migrations_dir = \"migrations\"`, que ningún parser acepta. (14) **§15.2**: el `provider` del `datasource` sigue a `--database` y se exige emitir el modelo `Task` **sin** `createdAt`, que la plantilla todavía llevaba pese a la decisión 0.4.4-draft y a RF-187. (15) **§16**: la tabla de nombres pasa a plural para el service, el controller y el adaptador (`TasksService`, `TasksController`, `TasksRepository`) y a singular para el agregado, el puerto y los DTOs (`Task`, `TaskRepository`, `TaskResponse`), que es lo que generan §14.2 y el CLI; se añaden las filas que faltaban (casos de uso, puerto, adaptador, DTOs). (16) **§14.3/§25.4**: se corrige «sin `.env` arranca en memoria», que era falso desde que `main.rs` tiene URL de respaldo; solo `RDD_MEMORY=1` fuerza memoria (RF-015). (17) **§13.6**: se marca como pendiente de reconciliar en 0.4 — el ejemplo usa `sqlx::FromRow`/`::rdd::Table` en vez de `Persist` (RA-014) y lleva `created_at` (RF-187). (18) **§5.2/RF-007**: se fija el mecanismo que faltaba — el generador DEBE formatear con `rustfmt` los `.rs` que escribe, porque el ancho de las firmas depende del nombre del módulo y ninguna plantilla fija pasa `cargo fmt --check` con `tasks` y con `task-items` a la vez. Lo detectó el test de aceptación: seis diffs de formato que 142 tests del workspace no veían, más un `E0716` en `tests/acceptance.rs` y dos `unused_imports` en los re-exports de `domain/mod.rs` que nadie consumía (de ahí la regla de importación de §14.2). |
 | 0.5.0-draft | 2026-11-10 | **Demo autenticado en `example/`, `rdd-cors` especificado de verdad y ningún archivo generado en blanco.** Petición del usuario: una TODO app con JWT y autorización a modo de demo, usando CORS y `RateLimit`, con un snippet por archivo para que nada quede vacío. (1) **§26 nuevo**: anexo del demo `example/todo-app`, generado por el CLI con `--database sqlite`, con los módulos `users` y `tasks`, JWT y roles **a nivel de aplicación** sobre el mecanismo de middlewares ya existente (`JwtMiddleware` global que **identifica sin rechazar**, `RequireAuth` de controller que devuelve 401, `Ext<Session>` en el handler y `RequireRole` de ruta montado con `#[middleware(...)]` que devuelve 403). El desdoble identificar/exigir lo fuerza **RF-080**: el orden es global → módulo → controller → ruta, así que un JWT global que rechazara dejaría fuera el login y `/health`, y uno de controller correría después del `RateLimit` global, que se quedaría sin identidad para su clave (RF-109). `src/middleware/` y `src/config/jwt_config.rs` añadidos por el demo y no por el CLI, secretos solo por entorno (RF-063, RN-030), `argon2` para contraseñas y `jsonwebtoken` para tokens —dependencias del demo, no del núcleo—, orden `CORS → JWT → RateLimit → módulo → RequireAuth → RequireRole → handler` con el preflight respondido por CORS antes de nada, `owner_id` en `tasks` y filtrado por dueño en el caso de uso (acceso cruzado responde **404, no 403**, para no filtrar existencia), y ocho comprobaciones de aceptación en §26.6. Se explica por qué compartir `Session`/`Role` entre el middleware transversal y `modules/users/` es legal: **RA-004** permite la API pública que `users/mod.rs` re-exporta, y `src/middleware/` está fuera de `modules/`, así que RA-001 a RA-003 y RA-007 no aplican. (2) **§2.2**: la fila «Autenticación completa» sigue excluyendo un crate `rdd-auth`, pero ahora remite a §26 como el camino soportado hoy; el framework no gana código de autenticación. (3) **§25.1/§25.2/§25.8**: se aclara que `todo-app-ddd` (raíz, PostgreSQL) es el banco de pruebas de la fase 0.2 y `example/todo-app` es el demo de aprendizaje, que su única diferencia con un proyecto recién generado es `.env`, que la migración inicial la genera el CLI (RF-192), y que el CORS se monta con `Cors::from_config()?`. (4) **RF-193 nuevo**: los ejemplos de `example/` DEBEN ser miembros del workspace y pasar `cargo test --workspace`, clippy `-D warnings` y fmt `--check`; fuera del workspace se pudren sin que nada lo detecte. (5) **§11.5 reescrito**: el snippet anterior encadenaba setters sobre `Cors::new()` mientras RF-092 exigía rechazo «en la construcción», dos cosas incompatibles. Ahora hay **dos tipos**: `Cors::new()` devuelve un builder acumulativo y `.build()` devuelve `Result<Cors, CorsConfigError>`; solo el `Cors` validado acepta `App::middleware`. `allow_origin` es repetible, `permissive()` devuelve `Cors` directamente y avisa en release (RF-091), y `from_config()` lee la sección `[cors]` del `rdd.toml` del directorio actual: **sin esa sección equivale a `Cors::new().build()`, o sea denegar todo**, nunca abrir por defecto. RF-090/RF-092/RF-093 se ajustan a esa forma y §15.1 gana `expose_headers`. (6) **§4.2**: `serde`, `toml` y `tracing` entran en las dependencias permitidas de `rdd-cors` y `rdd-logger`, porque RF-151 les manda leer su propia sección de `rdd.toml` y el núcleo no lleva parser de TOML (RA-014); **RF-095** se reescribe para decir «solo `rdd-core` entre los crates del framework», que es lo que RA-011 y ADR-13 protegen de verdad — ninguna plataforma ni Tower. (7) **RF-003/RF-004 reescritos**: ningún `.rs` generado puede quedar vacío ni ser solo cabecera; o tiene código funcional —declarar submódulos cuenta— o lleva un snippet de ejemplo. `src/generated/mod.rs`, cuyo código llega en 0.4, lleva un snippet **documental** en un bloque `ignore` de lo que emitirá el generador y no código que dependa de APIs sin implementar (RF-006); la otra excepción nombrada es `src/modules/mod.rs` con `--no-example`, cuyo contenido es el marcador `// rdd:mods` donde inserta `rdd g module`. `migrations/` lleva la migración inicial con módulo de ejemplo y `.gitkeep` solo con `--no-example`, única excepción porque git no trackea directorios vacíos. (8) **RF-192 nuevo**: con módulo de ejemplo, `rdd new` DEBE generar `migrations/0001_tasks.sql`, de modo que `rdd migrate` funciona sin editar SQL a mano; ninguna columna temporal hasta que se resuelva V15 (RF-187). El DDL resulta ser el mismo para SQLite y PostgreSQL (`id UUID`, `done BOOLEAN`): `rdd-sqlite` decodifica por nombre de tipo declarado, así que declarar `TEXT`/`INTEGER` —lo que la afinidad de SQLite permitiría— haría llegar `Value::Text`/`Value::I64` a un `from_row` que espera `Uuid`/`Bool`. Lo delató el `example/todo-app` que ya funcionaba y la suite de conformidad de `rdd-sqlite`. (9) **§21**: se añaden las dos casillas pendientes de 0.1 que salen de (7) y (8), y la de 0.3 con el demo y RF-193; la aceptación de 0.3 incorpora las ocho comprobaciones de §26.6. (10) **§26.2/§26.3/§26.5, decisiones que faltaban para poder escribir el código**: `RegisterDto` no lleva `role` —elegirlo en el cliente sería una escalada de privilegios—, así que el registro nace `user` salvo que el correo coincida con `ADMIN_EMAIL`, la tercera variable que lee `jwt_config.rs` y la única vía de bootstrap del admin; sin ella nadie es admin y la comprobación 4 de §26.6 solo verifica su mitad 403. El codec de tokens es el puerto `TokenCodec` (`issue` + `verify`) con un solo `Claims`, publicado por `users/mod.rs` para que `src/middleware/jwt.rs` lo importe por la vía de RA-004: dos copias del `Claims` derivarían en silencio. `0002_users.sql` añade `owner_id` con `ALTER TABLE`, seguro porque `rdd migrate` lleva la cuenta en `_sqlx_migrations`, y `email` es `UNIQUE` para que la carrera entre dos registros la resuelva la base y el adaptador la traduzca a 409 (RF-042). Y se separan las dos autorizaciones: `RequireRole` decide si la identidad puede ejecutar la operación, el caso de uso si el recurso es suyo — un admin tampoco borra tareas ajenas, recibe 404. (11) **§26.3, los snippets pasan a ser el código real**: `CorsConfigError` y `RateLimitConfigError` no tienen `From` hacia `rdd::Error`, así que el `?` lleva `map_err(|err| Error::Internal(err.into()))` —son fallos del operador, no del cliente (RF-041)—; el codec se construye una vez en `main.rs` con `modules::users::tokens()` y se pasa a `users::module(tokens)`, que lo registra como singleton, porque `std::env::set_var` es `unsafe` en edition 2024 y el workspace lo prohíbe, de modo que un test no puede inyectar `JWT_SECRET` por el entorno; y los handlers reenvían `session.id` al caso de uso (`list_of`, `remove_of`) en vez de dejar que el dueño venga en el DTO. Dos hallazgos de la aceptación quedan fijados: **`POST /auth/login` necesita `status = 200` explícito**, porque el 201 por omisión del verbo contradice la comprobación 2 de §26.6 (entrar no crea un recurso), y **`Vary` sale en minúsculas** —`HeaderName::as_str()` siempre lo está—, así que comprobarlo exige comparar sin distinguir mayúsculas. Por último, `argon2` habilita `password-hash/rand_core` pero **no** `rand_core/getrandom`: sin declarar `password-hash` con esa feature en el workspace, `OsRng` no existe y no se puede generar la sal. (12) **RF-063 y §5**: el `.gitignore` generado excluye también `*.db`, `*.db-shm` y `*.db-wal` cuando el motor es SQLite. Lo delató la aceptación en vivo de §26.6: `rdd migrate` crea `<paquete>.db` en la raíz del proyecto (RF-192) y el `.gitignore` anterior solo cubría `.env`, `target/` y `*.log`, así que la base con las cuentas y las tareas del demo quedaba versionable. Con PostgreSQL no se añaden esas líneas porque no hay archivo local. |
 | 0.6.0-draft | 2026-11-11 | **Tiempo real opcional: puerto de actualización en el núcleo y crate `rdd-socket`.** Petición del usuario: soporte real de WebSocket, como lib o dentro del core. Se resolvió **lib + puerto**: el núcleo decide el handshake y la plataforma transporta. (1) **§2.1/§2.2**: WebSocket sale de la lista de exclusiones y entra como fase 0.8 opcional; siguen fuera el tiempo real distribuido (broker, varios procesos) y el streaming de cuerpos (ADR-12). (2) **ADR-19 nuevo**: `SocketMessage`/`SocketConnection`/`SocketContext`/`SocketHandler`/`UpgradeDef`/`Negotiation` como puerto neutral; `rdd-axum` traduce tramas con la feature `ws`; salas y presencia en `rdd-socket`. Descartados: WebSocket dentro del núcleo con Axum (rompe RA-011 y ADR-12), hub acoplado a Axum (rompe la portabilidad de ADR-11), broker externo desde 0.8 (§2.2) y tratar el canal como `Request`/`Response`. (3) **§4.1/§4.2/§4.3**: entra `rdd-socket` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tracing`, `thiserror`); `rdd-axum` suma la feature `ws`; `rdd-platform-tests` suma un cliente WS como `dev-dependency`; nueva **RA-017** (ni `rdd-socket` ni `rdd-core` arrastran plataformas, Tower ni `tokio-tungstenite`). (4) **§4.4**: `Limits` gana `socket_message_limit_bytes` (1 MiB) y `socket_outbound_queue` (64); `HttpApp` gana `upgrades` y `negotiate`; `Platform` gana `supports_upgrades()` con `false` por defecto; nuevas **RP-023 a RP-027** (montaje o fallo al arrancar y 501 en `dispatch`; handshake por la cadena global sin cambio de protocolo si se rechaza; transporte sin semántica; 1001 al apagar con `shutdown_grace`; 501 y exención de C-13..C-16 en plataformas sin transporte). El soporte por plataforma evita romper `rdd-hyper`, que puede seguir declarando `false`. (5) **§4.5**: nuevos casos **C-13 a C-16** (handshake 101 con parámetros de ruta y `authorize`; rechazo 401 sin 101; eco de texto, binario, ping/pong y cierre 1000; 1009 por tamaño y 1013 por cliente lento). RP-021/RP-027 acotan su aplicación. (6) **§10.4 nuevo**: contrato del canal, orden del handshake y **RF-194 a RF-199** —registro y ruta fuera del 404/405; contexto con parámetros, contenedor y extensiones; límites y cierres; mensajes sin invención; autorización antes del 101; códigos 1000/1001/1011 y `panic` aislado—. Los canales se declaran en `App`, no en módulos, y esta fase no aplica prefijo. (7) **§10.5 nuevo**: hub con salas, `Subscription` con `Lagged`, `Payload` y presencia, y **RF-200 a RF-204**; se documenta que el hub es local al proceso, sin historial ni persistencia, y que la presencia es el conjunto de suscripciones vivas. (8) **§12.6**: la fachada gana la feature opcional `socket`, que activa `rdd-socket` y la feature `ws` de `rdd-axum` y re-exporta el hub; el hub no tiene `register`. (9) **§21**: nueva **fase 0.8** con el demo `/ws/tasks` sobre `example/todo-app` y aceptación de dos clientes, 401 sin 101 y 1001 al apagar; la fase 0.5 aclara que C-13..C-16 no aplican a `rdd-hyper`. (10) **§22**: **V16** (feature `ws` de Axum: MSRV, API y disponibilidad offline de `tokio-tungstenite`, que el registro local no tiene) y **V17** (cliente WS de la suite y medición del hub con 1000 conexiones). (11) **§4.6**: costos asumidos del hub local y del puerto de actualización. |
-| 0.7.0-draft | 2026-11-11 | **Servidor MCP opcional por stdio (`rdd-mcp`).** Petición del usuario: que el framework tenga este feature. Se entrega el protocolo completo en el subconjunto de tools, con stdio como único transporte. (1) **§2.1/§2.2**: MCP entra como fase 0.7 opcional; quedan fuera Streamable HTTP, sesiones, SSE, reanudación, `resources/*` y `prompts/*`. (2) **§4.1/§4.2/§4.3**: entra `rdd-mcp` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow`) y la fachada gana la feature `mcp`; nueva **RA-018** (ni plataformas, ni Tower, ni WebSocket, ni drivers). (3) **§10.6 nuevo**: `McpServer`/`Tool`/`ToolContext`/`CallToolResult`, tabla de métodos y **RF-205 a RF-213** (negociación de versión y capacidades; métodos soportados y `-32601`; validación JSON-RPC con `id` exacto; `tools/list` con nombre único e `inputSchema` objeto; `tools/call` con errores de tool como `isError`; `panic` aislado; progreso por `_meta.progressToken`; cancelación; el servidor nunca inicia peticiones). (4) **§10.7 nuevo**: transporte stdio con **RF-214 a RF-219** (una línea JSON por mensaje y límite de 8 MiB; EOF y salida ordenada; escritor único; 64 tools en vuelo; `serve_stdio`/`serve_io`; `stdout` solo protocolo y logs en `stderr`). (5) **§12.6**: la feature `mcp` trae `rdd-mcp` y re-exporta `McpServer`, `Tool` y `serve_stdio`; no hay registro que poblar. (6) **§17**: **RA-019** (una tool vive en `presentation/` y solo llama al service del módulo) y RA-001/RA-002 amplían su lista prohibida con `rdd::mcp`. (7) **§20**: suite MCP con **M-01 a M-09** y **RF-220/RF-221** (pruebas en proceso con `serve_io`; al menos un binario real). (8) **§21**: nueva **fase 0.7** con aceptación por stdio y RA-018 verificada. (9) **§22**: **V18** (`schemars` no está offline: `inputSchema` a mano) y **V19** (comportamiento de los clientes MCP reales). (10) **§23**: **ADR-20** (JSON-RPC a mano), **ADR-21** (solo stdio en 0.7) y **ADR-22** (protocolo separado del transporte y tools como adaptadores de entrada). (11) **§26.7 nuevo**: el demo expone `create_task`, `list_tasks` y `complete_task` con `--mcp`, sin puerto ni JWT, y M-09 lo lanza por stdio. |
+| 0.8.0-draft | 2026-11-11 | **MCP sobre Streamable HTTP (`/mcp`).** El protocolo de 0.7 no cambia; se añade el transporte remoto que ADR-21 dejó como fase futura. (1) **§2.1/§2.2**: MCP por HTTP entra como fase 0.9; siguen fuera el montaje en plataformas distintas de `rdd-axum`, `GET /mcp`, la reanudación con `Last-Event-ID`, las sesiones distribuidas, el batching y las versiones `2025-03-26`/`2024-11-05` por HTTP. (2) **§4.1/§4.2/§4.3**: `rdd-axum` gana la feature `mcp-http` y es el único que puede depender de `rdd-mcp`; nueva **RA-020** (la dependencia va en una sola dirección y `rdd-hyper` no arrastra `rdd-mcp`). (3) **§4.4**: `Prepared` y `HttpApp::prepare` como punto de entrada fuera de la tabla de rutas; nuevas **RP-028** (globals + contenedor sin reordenar la cadena) y **RP-029** (el montaje respeta RP-006, no interpreta JSON-RPC y se prueba con M-10 a M-15). `dispatch` no sirve `/mcp`. (4) **§10.6/§10.7**: `ToolContext::ext` y `serve_stdio_with`/`serve_io_with`, para que la identidad llegue por contexto; el comportamiento por stdio no cambia salvo que ahora puede sembrar extensiones. (5) **§10.8 nuevo**: `McpHttp`, `McpHttpConfig`, `McpHttpResponse`, `SseStream`, `AxumPlatform::mcp`, tabla de estados y **RF-222 a RF-232** (montaje y choque de rutas; sesión con `Mcp-Session-Id`, TTL y tope; POST único con `Content-Type`/`Accept`; versiones `2025-11-25`/`2025-06-18`; SSE con progreso y sin reanudación; cancelación entre POSTs; `Origin` + `authorize` + identidad por contexto; tope de 64 en vuelo y apagado; `Cache-Control: no-store` y sesión fuera de los logs; demo `--mcp-http`; casos M-10 a M-16). (6) **§12.6**: feature `mcp-http = ["mcp", "axum/mcp-http"]` y re-export de `McpHttp`. (7) **§20**: suite M-10 a M-16 contra un servidor real y el demo. (8) **§21**: fase 0.9 con aceptación de dos usuarios, 401/403, SSE, cancelación, DELETE y RA-018/RA-020. (9) **§22**: **V20** (origen del `Stream` para SSE y desconexión del cliente) y **V21** (clientes MCP reales sobre HTTP). (10) **§23**: **ADR-23** (semántica neutral + montaje en la plataforma), **ADR-24** (sesiones en memoria, sin GET ni reanudación, versiones acotadas) y **ADR-25** (identidad en `ToolContext`). (11) **§26.7/§26.8**: las tools leen `Session` de `ctx`, el modo `--mcp` la siembra desde `MCP_OWNER_ID` y el modo `--mcp-http` monta `/mcp` con la receta JWT y `authorize`. |
+| 0.9.0-draft | 2026-11-11 | **GraphQL opcional (`/graphql`): consultas, mutaciones, suscripciones y explorer.** Petición del usuario. Se resuelve con un motor propio, macros y SSE, por las mismas razones de portabilidad que MCP. (1) **§2.1/§2.2**: GraphQL sale de la lista de exclusiones y entra como fase 0.10 opcional, sobre el mismo `HttpApp` y el mismo contenedor; siguen fuera SDL, directivas propias, interfaces, uniones, enums, `@defer`/`@stream`, batching, consultas persistidas y el subprotocolo `graphql-transport-ws`. (2) **§4.1/§4.2/§4.3**: entra `rdd-graphql` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow`); `rdd-axum` gana la feature `graphql`; nueva **RA-021** (la dependencia va en una sola dirección, el motor no arrastra plataformas ni WebSocket y `rdd-hyper` no arrastra `rdd-graphql`). (3) **§4.4**: nuevas **RP-030** (el montaje `/graphql` ejecuta `prepare`, no interpreta el documento y se prueba con G-01 a G-09) y **RP-031** (el stream SSE sale del motor y la plataforma solo lo vuelca; desconectar cancela; sin reintento ni WebSocket). **§4.5**: la suite G no añade casos C. (4) **§8.7**: diagnósticos **RDD0501** (tipo o firma no soportada) y **RDD0502** (nombre duplicado o reservado). (5) **§10.9 nuevo**: `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y `AxumPlatform::graphql`, con el subconjunto del documento, la forma de `errors`, la introspección, el formato `graphql-sse` y **RF-233 a RF-244** (montaje y choque de rutas; POST/GET con su tabla de estados; subconjunto del documento con `max_depth`; validación, ejecución y burbujeo de `null`; introspección; SSE con `next`/`complete` y cancelación; `authorize` e identidad por `ext`/`get`/`resolve`; macros con RDD0501/RDD0502; explorer embebido con CSP; configuración; feature de la fachada; validación del esquema y errores internos). (6) **§12.6**: feature `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y re-export como `rdd::graphql`. (7) **§20**: suite G-01 a G-09 contra el motor y un servidor real. (8) **§21**: fase 0.10 con aceptación de dos usuarios, 401 en explorer y suscripción, explorer sin red, SSE y errores con `locations`/`path`. (9) **§22**: **V22** (clientes GraphQL reales e introspección/GET/SSE) y **V23** (expansión de macros y coste de `max_depth`). (10) **§23**: **ADR-26** (motor propio), **ADR-27** (macros en vez de SDL), **ADR-28** (suscripciones solo por SSE) y **ADR-29** (explorer propio embebido). (11) **§26.9**: el demo monta `/graphql` con JWT, un esquema sobre los casos de uso, una suscripción sobre `TaskFeed` filtrada por dueño y el explorer. |
 
 ---
 
@@ -2569,11 +3157,13 @@ example/todo-app/
 │   └── 0002_users.sql          # lo añade el demo
 ├── src/
 │   ├── config/
-│   │   └── jwt_config.rs       # secreto, expiración y ADMIN_EMAIL, solo del entorno
+│   │   ├── jwt_config.rs       # secreto, expiración y ADMIN_EMAIL, solo del entorno
+│   │   └── mcp_config.rs       # MCP_ALLOWED_ORIGINS para el montaje /mcp (§26.8)
 │   ├── middleware/             # transversal de la app, no es un módulo
 │   │   ├── mod.rs
 │   │   ├── jwt.rs              # JwtMiddleware: identifica, no rechaza
 │   │   ├── require_auth.rs     # RequireAuth: 401 si no hay sesión
+│   │   ├── require_mcp.rs      # authorize(&Request) para /mcp (§26.8)
 │   │   └── require_role.rs     # RequireRole: 403 si el rol no alcanza
 │   └── modules/
 │       ├── users/              # las cuatro capas de §5
@@ -2582,7 +3172,8 @@ example/todo-app/
 │               └── task_tools.rs   # tools MCP de §26.7
 └── tests/
     ├── acceptance.rs           # 401, 403, 429 y preflight
-    └── mcp_stdio.rs            # M-09: el binario con --mcp
+    ├── mcp_stdio.rs            # M-09: el binario con --mcp
+    └── mcp_http.rs             # M-16: el binario con --mcp-http
 ```
 
 `src/middleware/` y `config/jwt_config.rs` los añade el demo, no el CLI: no todos
@@ -2760,22 +3351,25 @@ Aceptación del demo, sobre SQLite y sin servidor:
 ### 26.7 Servidor MCP del demo
 
 `example/todo-app --mcp` arranca el mismo contenedor **sin abrir puerto** y expone
-tres tools sobre stdio (§10.6, §10.7). El proceso es la identidad: no hay JWT ni
-cabecera que mirar; el dueño de las tareas sale de `MCP_OWNER_ID` (UUID) y, si no
-está puesta, es `Uuid::nil()`. El filtro por dueño sigue en el caso de uso
-(§26.5), así que las tools no pueden ver tareas de otro aunque el cliente pida un
-id ajeno: reciben el mismo 404 del REST.
+tres tools sobre stdio (§10.6, §10.7). En este modo el proceso es la identidad: no
+hay JWT ni cabecera que mirar; el dueño de las tareas sale de `MCP_OWNER_ID`
+(UUID) y, si no está puesta, es `Uuid::nil()`. La identidad viaja en las
+extensiones del `ToolContext` (RF-228, ADR-25), así que las tools no guardan un
+`owner`: leen `Session` del contexto, igual que un handler (`Ext<Session>`). En
+`--mcp-http` (§26.8) la siembra el `JwtMiddleware` global, sin cambiar la tool. El
+filtro por dueño sigue en el caso de uso (§26.5), así que las tools no pueden ver
+tareas de otro aunque el cliente pida un id ajeno: reciben el mismo 404 del REST.
 
 Las tools viven en `presentation/`, como el controller (RA-019), y llaman al alias
 `TasksService`; no tocan `Repo` ni `infrastructure` (RA-003):
 
 ```rust
 // modules/tasks/presentation/task_tools.rs
-pub struct CreateTask { svc: Arc<TasksService>, owner: Uuid }
+pub struct CreateTask;
 
 impl Tool for CreateTask {
     fn name(&self) -> &str { "create_task" }
-    fn description(&self) -> &str { "Crea una tarea del dueño del proceso." }
+    fn description(&self) -> &str { "Crea una tarea del usuario autenticado." }
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -2788,16 +3382,16 @@ impl Tool for CreateTask {
     fn call(
         &self,
         args: serde_json::Value,
-        _ctx: ToolContext,
+        ctx: ToolContext,
     ) -> rdd::http::BoxFuture<'static, rdd::Result<CallToolResult>> {
-        let svc = Arc::clone(&self.svc);
-        let owner = self.owner;
+        let session = ctx.ext::<Session>().ok_or(Error::Unauthorized)?;
+        let svc = ctx.resolve::<TasksService>()?;
         Box::pin(async move {
             let title = args
                 .get("title")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| Error::invalid("falta `title`"))?;
-            let task = svc.create(owner, title.to_owned(), None).await?;
+            let task = svc.create(session.id, title.to_owned(), None).await?;
             let body = serde_json::to_value(TaskResponse::from(task))
                 .map_err(|err| Error::internal(err.into()))?;
             Ok(CallToolResult::json(body))
@@ -2806,30 +3400,36 @@ impl Tool for CreateTask {
 }
 ```
 
-`ListTasks` recibe `{done?: bool}` y devuelve el arreglo de `TaskResponse`;
-`CompleteTask` recibe `{id: uuid}` y llama a `update_of(owner, id, None,
-Some(true))`. Los tres se registran una vez en `main.rs`:
+Ni la tool ni el registro guardan servicios o dueños: el `ToolContext` trae el
+contenedor y las extensiones de la petición (RF-228), así que un mismo
+`McpServer` sirve a todos los usuarios y a los dos transportes. `ListTasks`
+recibe `{done?: bool}` y devuelve el arreglo de `TaskResponse`; `CompleteTask`
+recibe `{id: uuid}` y llama a `update_of(session.id, id, None, Some(true))`.
 
 ```rust
-// main.rs — después de elegir `RDD_MEMORY`, antes de `app.run(&addr)`
+// main.rs — después de elegir `RDD_MEMORY`
+let server = McpServer::new("todo-app", env!("CARGO_PKG_VERSION"))
+    .tool(CreateTask)?
+    .tool(ListTasks)?
+    .tool(CompleteTask)?;
+
 if std::env::args().skip(1).any(|arg| arg == "--mcp") {
     let built = app.connect().await?.build()?;
-    let svc = Arc::new(modules::tasks::TasksService::from_container(&built.container)?);
     let owner = std::env::var("MCP_OWNER_ID")
         .ok()
         .and_then(|value| value.parse::<Uuid>().ok())
         .unwrap_or(Uuid::nil());
-    let server = McpServer::new("todo-app", env!("CARGO_PKG_VERSION"))
-        .tool(CreateTask::new(Arc::clone(&svc), owner))?
-        .tool(ListTasks::new(Arc::clone(&svc), owner))?
-        .tool(CompleteTask::new(svc, owner))?;
-    return rdd::mcp::serve_stdio(server).await;
+    let mut ext = rdd::mcp::Extensions::new();
+    ext.insert(Arc::clone(&built.container));
+    ext.insert(Session { id: owner, email: "mcp@local".into(), role: Role::User });
+    return rdd::mcp::serve_stdio_with(server, ext).await;
 }
 ```
 
 `.connect().await?` es lo que falta en el camino REST: `.run()` lo hace por dentro
-(RF-119), pero el modo MCP no abre socket y tiene que conectar el backend a mano.
-Con `RDD_MEMORY=1` no hay URL que resolver y el contenedor usa `MemoryBackend`.
+(RF-119), pero el modo stdio no abre socket y tiene que conectar el backend a
+mano. Con `RDD_MEMORY=1` no hay URL que resolver y el contenedor usa
+`MemoryBackend`.
 
 **Verificación (M-09).** `tests/mcp_stdio.rs` lanza el binario real con
 `env!("CARGO_BIN_EXE_todo-app")`, `--mcp` y `RDD_MEMORY=1`, escribe por `stdin`
@@ -2838,3 +3438,229 @@ Con `RDD_MEMORY=1` no hay URL que resolver y el contenedor usa `MemoryBackend`.
 que la tarea creada aparece en la lista, que cada línea de `stdout` es JSON y que
 al cerrar `stdin` el proceso termina con código 0. Los logs de arranque van a
 `stderr` (RF-219).
+
+### 26.8 MCP por HTTP del demo
+
+`example/todo-app --mcp-http` arranca el servidor REST normal y monta `/mcp` en el
+mismo router y el mismo contenedor (§10.8). A diferencia de stdio, la identidad ya
+no es el proceso: `JwtMiddleware` sigue siendo global e identifica, `RateLimit`
+cuenta por usuario con la misma clave de §26.3 y `require_session` es el
+`authorize` que exige sesión en `/mcp` (RF-231). Las tools no cambian: leen
+`Session` y resuelven `TasksService` del `ToolContext` (§26.7).
+
+```rust
+// main.rs — el mismo `server` de §26.7
+let mcp = McpHttp::new(server).config(
+    McpHttpConfig::new()
+        .allowed_origins(config::mcp_config::allowed_origins())
+        .authorize(require_session),
+);
+return app.run_on(AxumPlatform::new().mcp(mcp), &addr).await;
+```
+
+`require_session` vive en `src/middleware/require_mcp.rs` y es la única pieza
+nueva. No es un `Middleware`: corre después de la cadena global y antes de tocar
+el protocolo (RP-029), así que ve la `Session` que dejó `JwtMiddleware` y no
+necesita repetir CORS ni el rate limit:
+
+```rust
+pub fn require_session(req: &rdd::http::Request) -> rdd::Result<()> {
+    req.ext::<Session>().map(|_| ()).ok_or(Error::Unauthorized)
+}
+```
+
+`config/mcp_config.rs` lee `MCP_ALLOWED_ORIGINS` (lista separada por comas) y, sin
+ella, no permite ningún origen de navegador (RF-228). Una lista fija en el código
+sería una lista que se desincroniza del despliegue; y reutilizar la de `[cors]`
+obligaría a `rdd-mcp` a parsear `rdd.toml`, que no es su trabajo.
+
+El preflight de CORS lo responde la cadena global aunque `/mcp` no esté en la
+tabla de rutas: `prepare` la ejecuta para todos los métodos (RP-028), y solo si
+ningún middleware cortocircuita llega al `McpHttp`. Los orígenes de CORS y los de
+MCP se configuran por separado a propósito: el primero decide qué lee un
+navegador, el segundo qué puede invocar `/mcp`, y un origen permitido para el REST
+no tiene por qué serlo para las tools.
+
+**Verificación (M-16).** `tests/mcp_http.rs` levanta el binario real en un puerto
+efímero, registra dos usuarios por REST, obtiene sus JWT, inicializa una sesión
+`/mcp` por usuario y crea una tarea con cada uno. Comprueba que cada `list_tasks`
+solo devuelve la suya, que sin `Bearer` la respuesta es 401 antes de tocar el
+protocolo, que un `Origin` no permitido es 403 y que `DELETE /mcp` deja la sesión
+en 404. El proceso se apaga con la señal de siempre; el modo HTTP no depende de
+`MCP_OWNER_ID`.
+
+### 26.9 GraphQL del demo
+
+`example/todo-app --graphql` monta `/graphql` sobre el mismo servidor REST y el
+mismo contenedor (§10.9). La identidad la sigue poniendo `JwtMiddleware`, el
+`authorize` es el mismo `require_session` de §26.8 y los resolutores entran por
+los casos de uso, no por los DTOs HTTP. La feature se activa en el
+`Cargo.toml` del demo:
+
+```toml
+rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql"] }
+```
+
+El tipo GraphQL de salida vive en `modules/tasks/presentation/task_graphql.rs`,
+al lado de `TaskResponse` y sin duplicar la regla de negocio:
+
+```rust
+// modules/tasks/presentation/task_graphql.rs
+use rdd::graphql::GraphqlObject;
+use uuid::Uuid;
+
+use super::dto::TaskResponse;
+
+/// Tarea tal como la ve un cliente GraphQL; `owner_id` no se publica.
+#[derive(GraphqlObject)]
+pub struct Task {
+    pub id: Uuid,
+    pub title: String,
+    pub done: bool,
+}
+
+impl From<TaskResponse> for Task {
+    fn from(item: TaskResponse) -> Self {
+        Self {
+            id: item.id,
+            title: item.title,
+            done: item.done,
+        }
+    }
+}
+```
+
+`modules/tasks/mod.rs` lo re-exporta como `GraphqlTask` para no chocar con el
+agregado `Task`, y re-exporta también `TaskResponse` para que la suscripción
+deserialice el evento del hub; `TaskFeed` gana un `pub fn subscribe(&self)` que
+delega en `self.hub.subscribe(TOPIC)` (§10.5). El esquema se compone en `src/app_graphql.rs`,
+la raíz de composición, que es el único sitio que puede nombrar usuarios y tareas
+a la vez (RA-004):
+
+```rust
+// src/app_graphql.rs — raíces del esquema (§10.9)
+use rdd::Payload;
+use rdd::graphql::{
+    GraphqlContext, GraphqlInput, GraphqlStream, graphql_object,
+};
+use rdd::prelude::*;
+use uuid::Uuid;
+
+use crate::modules::tasks::{GraphqlTask, TaskFeed, TaskResponse, TasksService};
+use crate::modules::users::Session;
+
+#[derive(Default)]
+pub struct Query;
+
+#[graphql_object(query)]
+impl Query {
+    /// Tareas del dueño del token.
+    async fn tasks(&self, ctx: &GraphqlContext) -> Result<Vec<GraphqlTask>> {
+        let session = ctx.ext::<Session>().ok_or(Error::Unauthorized)?;
+        let svc = ctx.resolve::<TasksService>()?;
+        let tasks = svc.list_of(session.id, None, None).await?;
+        Ok(tasks
+            .into_iter()
+            .map(|task| GraphqlTask::from(TaskResponse::from(task)))
+            .collect())
+    }
+}
+
+#[derive(Default)]
+pub struct Mutation;
+
+#[derive(GraphqlInput)]
+pub struct CreateTaskInput {
+    pub title: String,
+}
+
+#[graphql_object(mutation)]
+impl Mutation {
+    async fn create_task(
+        &self,
+        ctx: &GraphqlContext,
+        input: CreateTaskInput,
+    ) -> Result<GraphqlTask> {
+        let session = ctx.ext::<Session>().ok_or(Error::Unauthorized)?;
+        let svc = ctx.resolve::<TasksService>()?;
+        let task = svc.create(session.id, input.title, None).await?;
+        Ok(TaskResponse::from(task).into())
+    }
+
+    async fn complete_task(&self, ctx: &GraphqlContext, id: Uuid) -> Result<GraphqlTask> {
+        let session = ctx.ext::<Session>().ok_or(Error::Unauthorized)?;
+        let svc = ctx.resolve::<TasksService>()?;
+        let task = svc.update_of(session.id, id, None, Some(true)).await?;
+        Ok(TaskResponse::from(task).into())
+    }
+}
+
+#[derive(Default)]
+pub struct Subscription;
+
+#[graphql_object(subscription)]
+impl Subscription {
+    /// Cambios de las tareas del dueño del token, uno por evento del hub.
+    async fn task_changed(
+        &self,
+        ctx: &GraphqlContext,
+    ) -> Result<GraphqlStream<GraphqlTask>> {
+        let session = ctx.ext::<Session>().ok_or(Error::Unauthorized)?;
+        let feed = ctx
+            .get::<TaskFeed>()
+            .ok_or_else(|| Error::internal(anyhow::anyhow!("falta TaskFeed")))?;
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        let mut events = feed.subscribe();
+        tokio::spawn(async move {
+            while let Ok(Payload::Json(event)) = events.recv().await {
+                let Some(task) = event.get("task") else { continue };
+                let Ok(task) = serde_json::from_value::<TaskResponse>(task.clone()) else {
+                    continue;
+                };
+                // El hub es de todos: el filtro por dueño va aquí (§26.5).
+                if task.owner_id != session.id {
+                    continue;
+                }
+                if tx.send(GraphqlTask::from(task)).await.is_err() {
+                    break; // el cliente desconectó (RF-238)
+                }
+            }
+        });
+        Ok(GraphqlStream::new(rx))
+    }
+}
+```
+
+El montaje reutiliza el guardián de §26.8 y no duplica CORS, JWT ni rate limit:
+la cadena global ya corrió en `prepare` (RP-030). `GET /graphql` sirve además el
+explorer, que pide el `Bearer` en su caja de cabeceras (RF-241).
+
+```rust
+// main.rs — modo `--graphql`
+if std::env::args().skip(1).any(|arg| arg == "--graphql") {
+    let schema = Schema::builder()
+        .query(app_graphql::Query)
+        .mutation(app_graphql::Mutation)
+        .subscription(app_graphql::Subscription)
+        .build()?;
+    let graphql = GraphqlHttp::new(schema)
+        .config(GraphqlHttpConfig::new().authorize(require_session));
+    return app
+        .run_on(AxumPlatform::new().graphql(graphql), &addr)
+        .await;
+}
+```
+
+El filtro por dueño del caso de uso (§26.5) sigue decidiendo: `complete_task`
+sobre una tarea ajena devuelve `errors` con el mensaje del 404, y la suscripción
+no entrega eventos ajenos aunque el hub los difunda a todos.
+
+**Verificación (G-09).** `tests/graphql.rs` levanta el binario real con
+`--graphql` y `RDD_MEMORY=1` en un puerto efímero, registra a ana y beto por REST,
+y con cada JWT ejecuta `mutation { createTask(input: {title: "…"}) { id } }` y
+`query { tasks { id title done } }` por POST. Comprueba que cada uno ve solo las
+suyas, que completar una tarea ajena devuelve `errors` y no cambia nada, que
+`GET /graphql` sin `query` sirve el HTML del explorer, que sin `Bearer` el POST,
+el explorer y la suscripción responden 401, y que una suscripción `taskChanged`
+recibe el evento del propio usuario y no el del otro cuando ambos crean tareas
+mientras está abierta.

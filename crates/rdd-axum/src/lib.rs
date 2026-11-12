@@ -17,6 +17,10 @@
 //! # }
 //! ```
 
+#[cfg(feature = "graphql")]
+mod graphql_http;
+#[cfg(feature = "mcp-http")]
+mod mcp_http;
 mod platform;
 mod shim;
 #[cfg(feature = "ws")]

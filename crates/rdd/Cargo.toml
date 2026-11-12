@@ -35,6 +35,11 @@ rdd-postgres = { workspace = true, optional = true }
 rdd-socket = { workspace = true, optional = true }
 # Servidor MCP por stdio (§10.6). Tampoco necesita registro.
 rdd-mcp = { workspace = true, optional = true }
+# Motor GraphQL (§10.9). El montaje lo aporta `AxumPlatform::graphql`.
+rdd-graphql = { workspace = true, optional = true }
+# Lo que genera la macro GraphQL habla JSON; se re-exporta para que el proyecto
+# del usuario no tenga que declararlo (RN-012).
+serde_json.workspace = true
 
 [features]
 default = ["axum", "sqlite"]
@@ -49,10 +54,21 @@ postgres = ["dep:rdd-postgres"]
 socket   = ["dep:rdd-socket", "rdd-axum/ws"]
 # §12.6: MCP es opcional; trae el crate y no registra nada en `run_main`.
 mcp      = ["dep:rdd-mcp"]
+# §10.8, RA-020: el montaje `/mcp` vive en `rdd-axum` y la dependencia va en una
+# sola dirección. Activar `mcp-http` sin `axum` deja el montaje en el crate de la
+# plataforma, que es donde se usa.
+mcp-http = ["mcp", "rdd-axum/mcp-http"]
+# §10.9, RF-243: el motor y las macros. El montaje `/graphql` requiere `axum`;
+# sin esa feature el crate emite un `compile_error!` claro (RP-012).
+graphql  = ["dep:rdd-graphql", "rdd-axum/graphql"]
 
 [dev-dependencies]
 bytes.workspace = true
 http.workspace = true
+# La suite G habla HTTP/1.1 de verdad contra `AxumPlatform` (§20).
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

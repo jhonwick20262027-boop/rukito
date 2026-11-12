@@ -1,0 +1,6 @@
+error: RDD0502: el campo `__typename` usa el prefijo reservado `__` (§10.9)
+         help: reserva `__` para la introspección y publica otro nombre
+ --> tests/macros/fail/rdd0502_reservado.rs:9:22
+  |
+9 |     #[graphql(name = "__typename")]
+  |                      ^^^^^^^^^^^^

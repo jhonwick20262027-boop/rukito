@@ -7,7 +7,7 @@
     verifica su SHA256 y lo instala sin privilegios de administrador.
 
 .EXAMPLE
-    powershell -NoProfile -Command "iex (irm 'https://jhonwick20262027-boop.github.io/rukito/install.ps1')"
+    powershell -NoProfile -Command "iex (irm 'https://raw.githubusercontent.com/jhonwick20262027-boop/rukito/main/docs/install.ps1')"
 
 .EXAMPLE
     $env:RDD_VERSION = 'v0.1.0'; .\install.ps1

@@ -9,7 +9,7 @@ Datos canónicos del proyecto:
 - Núcleo HTTP neutral basado en `http` y `bytes`; Axum es la plataforma por defecto.
 - Scaffold por módulo: `domain/`, `application/`, `infrastructure/` y `presentation/`, sin carpetas vacías.
 - Comandos: `rdd new <nombre>`, `rdd g module <nombre>`, `rdd migrate`, `rdd run`.
-- Instalación del CLI sin Rust: `curl -fsSL https://jhonwick20262027-boop.github.io/rukito/install.sh | sh` en Linux/macOS y `powershell -NoProfile -Command "iex (irm 'https://jhonwick20262027-boop.github.io/rukito/install.ps1')"` en Windows; el binario se descarga de las releases de GitHub y se verifica con SHA256.
+- Instalación del CLI sin Rust: `curl -fsSL https://jhonwick20262027-boop.github.io/rukito/install.sh | sh` en Linux/macOS y `powershell -NoProfile -Command "iex (irm 'https://raw.githubusercontent.com/jhonwick20262027-boop/rukito/main/docs/install.ps1')"` en Windows; el binario se descarga de las releases de GitHub y se verifica con SHA256.
 - Migraciones SQL versionadas con `rdd migrate` y seguimiento en `_sqlx_migrations`; el servidor no migra al arrancar.
 - Errores y respuestas de error en formato Problem Details (`application/problem+json`).
 - Middlewares oficiales: CORS propio (`rdd-cors`), logging y rate limiting.

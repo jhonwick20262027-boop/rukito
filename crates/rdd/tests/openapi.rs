@@ -224,6 +224,13 @@ async fn o04_authorize_protege_la_ui_salvo_public_docs() {
         "application/problem+json"
     );
 
+    let mut authed = request("GET", "/api-docs");
+    authed
+        .headers_mut()
+        .insert(header::AUTHORIZATION, "Bearer demo".parse().unwrap());
+    let reply = send(running.addr, authed).await;
+    assert_eq!(reply.status, StatusCode::OK);
+
     running.stop().await;
 
     let public = OpenApiHttpConfig::new()
@@ -231,6 +238,8 @@ async fn o04_authorize_protege_la_ui_salvo_public_docs() {
         .authorize(|_req| Err(Error::Unauthorized));
     let running = start(public, http_app_with_route("/tasks")).await;
     let reply = send(running.addr, request("GET", "/api-docs")).await;
+    assert_eq!(reply.status, StatusCode::OK);
+    let reply = send(running.addr, request("GET", "/api-docs/openapi.json")).await;
     assert_eq!(reply.status, StatusCode::OK);
 
     running.stop().await;

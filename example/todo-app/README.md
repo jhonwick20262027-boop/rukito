@@ -31,14 +31,22 @@ firmado con una clave pública (RF-063, RN-030).
 | `GRAPHQL_EXPLORER` | `true` sirve la UI; `false` desactiva el explorer (404 tras autorizar). |
 | `GRAPHQL_PUBLIC_EXPLORER` | `true` sirve la UI sin sesión; las operaciones siguen exigiendo el Bearer. |
 | `GRAPHQL_MAX_DEPTH` | Anidamiento máximo de conjuntos de selección. Por defecto 16. |
+| `OPENAPI_PATH` | Ruta de la UI con `--openapi`. Por defecto `/api-docs`. |
+| `OPENAPI_DOCS` | `true` sirve la UI y el JSON; `false` responde 404 (tras autorizar). |
+| `OPENAPI_PUBLIC_DOCS` | `true` sirve UI y JSON sin JWT (demo); en producción usar `false`. |
+| `OPENAPI_ALIASES` | Alias de la UI separados por comas. Por defecto `/docs,/swagger`. |
+| `OPENAPI_STRICT` | `true` aborta el arranque si una ruta montada no está documentada. |
 
 ## Modos de arranque
 
-El REST arranca siempre; los modos son excluyentes entre sí (`--mcp` gana a
-`--mcp-http`, que gana a `--graphql`) y `--explorer-token` se puede combinar con
-cualquiera: imprime el Bearer y sigue arrancando.
+El REST arranca siempre; `--mcp` es excluyente porque no abre puerto, y
+`--mcp-http`, `--graphql` y `--openapi` se **acumulan** sobre el mismo
+`AxumPlatform`; `--explorer-token` se puede combinar con cualquiera: imprime el
+Bearer y sigue arrancando.
 
 ```bash
+cargo run -- --openapi                    # REST + /api-docs, /docs y /swagger
+cargo run -- --graphql --openapi          # REST + explorer + documentación
 cargo run -- --graphql --explorer-token   # REST + /graphql + token de preview
 cargo run -- --mcp-http                   # REST + /mcp
 cargo run -- --mcp                        # MCP por stdio, sin puerto
@@ -46,6 +54,7 @@ cargo run -- --mcp                        # MCP por stdio, sin puerto
 
 | Argumento | Efecto |
 |---|---|
+| `--openapi` | Monta la UI OpenAPI en `OPENAPI_PATH` (por defecto `/api-docs`) con alias `/docs` y `/swagger`, y el JSON en `/api-docs/openapi.json`. |
 | `--graphql` | Monta `GRAPHQL_PATH` (por defecto `/graphql`) con el esquema de los casos de uso y SSE para suscripciones. |
 | `--explorer-token` | Imprime `EXPLORER_TOKEN=<jwt>` para la identidad de `config/explorer_config.rs` y continúa. |
 | `--mcp-http` | Monta `/mcp` sobre el mismo servidor; exige el JWT de la cadena global. |
@@ -93,6 +102,43 @@ curl -i localhost:3000/tasks
 curl -i -X OPTIONS localhost:3000/tasks -H 'Origin: http://localhost:5173' \
   -H 'Access-Control-Request-Method: DELETE'
 ```
+
+## Probar OpenAPI
+
+`--openapi` sirve la documentación en `/api-docs` (alias `/docs` y `/swagger`) y
+el documento en `/api-docs/openapi.json`. En el demo `OPENAPI_PUBLIC_DOCS=true`,
+así que UI y JSON se leen sin JWT; las operaciones que lance *Try it* sí exigen
+el Bearer.
+
+```bash
+# 1. Arranca (SQLite ya migrado, JWT_SECRET en .env)
+cargo run -- --openapi
+
+# 2. UI y JSON
+curl -i localhost:3000/api-docs | head -n 15
+curl -s localhost:3000/api-docs/openapi.json | jq '.info.title, (.paths | keys)'
+
+# 3. Solo GET: el resto responde 405 con Allow: GET
+curl -i -X POST localhost:3000/api-docs
+
+# 4. Un Bearer para Try it
+curl -s -X POST localhost:3000/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"email":"ana@correo.com","password":"una-clave-larga"}'
+
+TOKEN=$(curl -s -X POST localhost:3000/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"ana@correo.com","password":"una-clave-larga"}' \
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+
+curl -s localhost:3000/tasks -H "authorization: Bearer $TOKEN"
+```
+
+En el navegador, abre `http://localhost:3000/api-docs`, elige una operación y en
+*Try it* pega `Bearer <TOKEN>` en la cabecera `Authorization`. El JSON que
+consume la UI es el mismo que publica `/api-docs/openapi.json`, y el arranque
+falla si una ruta montada no está documentada (`OPENAPI_STRICT=false` solo
+avisa).
 
 ## Por qué el middleware está partido en tres
 

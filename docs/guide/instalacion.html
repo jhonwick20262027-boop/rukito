@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instalar rdd: instaladores, binarios y cargo</title>
+  <meta name="description" content="Instala la CLI de rdd en Linux, macOS y Windows: instalador de una línea con verificación SHA256, binarios de la release o cargo install rdd-cli.">
+  <meta name="keywords" content="instalar rdd, rdd-cli, instalador Windows, instalador Linux, cargo install rdd-cli, SHA256SUMS, binarios release">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/guide/instalacion.html">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-192.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Instalar rdd: instaladores, binarios y cargo">
+  <meta property="og:description" content="Instala la CLI de rdd en Linux, macOS y Windows: instalador de una línea con verificación SHA256, binarios de la release o cargo install rdd-cli.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/guide/instalacion.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Instalar rdd: instaladores, binarios y cargo">
+  <meta name="twitter:description" content="Instalador de una línea, binarios de la release y cargo install rdd-cli para Linux, macOS y Windows.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/guide/instalacion.html#article",
+        "headline": "Instalar rdd: instaladores, binarios y cargo",
+        "description": "Instala la CLI de rdd en Linux, macOS y Windows: instalador de una línea con verificación SHA256, binarios de la release o cargo install rdd-cli.",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/guide/instalacion.html",
+        "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/guide/instalacion.html",
+        "inLanguage": "es",
+        "proficiencyLevel": "Beginner",
+        "dependencies": "curl y tar en Linux/macOS; PowerShell en Windows; opcionalmente Rust 1.94 o superior",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "name": "rdd"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "dateModified": "2026-11-12",
+        "about": [
+          { "@type": "Thing", "name": "Instalación" },
+          { "@type": "Thing", "name": "Rust" },
+          { "@type": "Thing", "name": "Binarios" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Inicio", "item": "https://jhonwick20262027-boop.github.io/rukito/" },
+          { "@type": "ListItem", "position": 2, "name": "Instalación", "item": "https://jhonwick20262027-boop.github.io/rukito/guide/instalacion.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body data-root=".." data-nav="guide">
+  <div id="site-header-root"></div>
+
+  <script src="../assets/js/highlight.js"></script>
+  <script src="../assets/js/site.js"></script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="inicio-rapido.html">Guía rápida</a>
+        <a href="instalacion.html" class="active">Instalación</a>
+        <a href="arquitectura.html">Arquitectura</a>
+        <a href="cli.html">CLI</a>
+        <a href="graphql.html">GraphQL</a>
+        <a href="tiempo-real.html">Tiempo real</a>
+        <a href="jwt-explorer.html">JWT en el explorer</a>
+        <a href="static.html">Archivos estáticos</a>
+        <a href="../especificacion.html">Especificación</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Inicio</a><span class="sep">/</span><span class="here">Instalación</span>
+      </nav>
+
+      <h1>Instalar rdd</h1>
+      <p>La CLI <code>rdd</code> crea proyectos, genera módulos y aplica migraciones.
+      Se instala de tres maneras: con el instalador de una línea —sin Rust—, con un
+      binario de la release, o compilándola con <code>cargo</code>. Las tres dejan el
+      mismo ejecutable y no piden privilegios de administrador.</p>
+
+      <section class="section">
+        <h2>Elige un método</h2>
+        <table>
+          <tr><th>Método</th><th>Requiere</th><th>Cuándo usarlo</th></tr>
+          <tr><td>Instalador de una línea</td><td><code>curl</code> y <code>tar</code> (Unix) o PowerShell (Windows)</td><td>La vía recomendada: descarga, verifica el SHA256 y deja <code>rdd</code> en un directorio de usuario; avisa si falta en el PATH.</td></tr>
+          <tr><td>Binario de la release</td><td>Nada adicional</td><td>Instalaciones controladas, sin conexión a la API de GitHub o con verificación manual.</td></tr>
+          <tr><td><code>cargo install rdd-cli</code></td><td>Rust 1.94 o superior</td><td>Ya tienes toolchain, o tu plataforma no tiene binario precompilado.</td></tr>
+        </table>
+        <p>Los binarios se publican para estas plataformas:</p>
+        <table>
+          <tr><th>Objetivo</th><th>Sistema</th><th>Archivo</th></tr>
+          <tr><td><code>x86_64-unknown-linux-gnu</code></td><td>Linux x86_64 (glibc 2.35+)</td><td><code>tar.gz</code></td></tr>
+          <tr><td><code>aarch64-unknown-linux-gnu</code></td><td>Linux ARM64</td><td><code>tar.gz</code></td></tr>
+          <tr><td><code>x86_64-apple-darwin</code></td><td>macOS Intel (11+)</td><td><code>tar.gz</code></td></tr>
+          <tr><td><code>aarch64-apple-darwin</code></td><td>macOS Apple Silicon (11+)</td><td><code>tar.gz</code></td></tr>
+          <tr><td><code>x86_64-pc-windows-msvc</code></td><td>Windows x64</td><td><code>zip</code></td></tr>
+        </table>
+        <p>Cada archivo se llama <code>rdd-&lt;versión&gt;-&lt;objetivo&gt;</code> y contiene el
+        ejecutable y la licencia. La release incluye además <code>SHA256SUMS.txt</code>
+        con el hash de cada archivo.</p>
+      </section>
+
+      <section class="section">
+        <h2>Instalador de una línea</h2>
+        <p>En Linux o macOS:</p>
+        <pre data-lang="bash"><code>curl -fsSL https://jhonwick20262027-boop.github.io/rukito/install.sh | sh</code></pre>
+        <p>En Windows, desde PowerShell:</p>
+        <pre data-lang="bash"><code>powershell -NoProfile -Command "iex (irm 'https://raw.githubusercontent.com/jhonwick20262027-boop/rukito/main/docs/install.ps1')"</code></pre>
+        <p>El instalador detecta el sistema y la arquitectura, resuelve la última
+        release (o la que indiques), descarga el archivo y su checksum, compara el
+        SHA256 antes de extraer, copia el ejecutable a un directorio de usuario y
+        ejecuta <code>rdd --version</code> para confirmar que funciona.</p>
+        <p>Si prefieres revisarlo antes de ejecutarlo, descarga el script, léelo y
+        ejecútalo desde el archivo:</p>
+        <pre data-lang="bash"><code>curl -fsSL -o install.sh https://jhonwick20262027-boop.github.io/rukito/install.sh
+less install.sh
+sh install.sh</code></pre>
+        <p>En Windows el script es el mismo que sirve el repositorio, entregado como
+        texto plano para que <code>iex</code> lo evalúe:</p>
+        <pre data-lang="bash"><code>irm https://raw.githubusercontent.com/jhonwick20262027-boop/rukito/main/docs/install.ps1 -OutFile install.ps1
+Get-Content install.ps1
+.\install.ps1</code></pre>
+
+        <h3>Opciones del instalador</h3>
+        <table>
+          <tr><th>Variable (Unix)</th><th>Parámetro (Windows)</th><th>Por defecto</th><th>Efecto</th></tr>
+          <tr><td><code>RDD_VERSION</code></td><td><code>-Version</code></td><td>última release</td><td>Versión a instalar, con o sin <code>v</code> (p. ej. <code>v0.1.0</code>).</td></tr>
+          <tr><td><code>RDD_INSTALL_DIR</code></td><td><code>-InstallDir</code></td><td><code>~/.local/bin</code> / <code>%LOCALAPPDATA%\rdd\bin</code></td><td>Directorio donde queda el ejecutable.</td></tr>
+        </table>
+        <pre data-lang="bash"><code># Linux o macOS: fijar versión y destino
+RDD_VERSION=v0.1.0 RDD_INSTALL_DIR="$HOME/bin" \
+  sh -c "$(curl -fsSL https://jhonwick20262027-boop.github.io/rukito/install.sh)"</code></pre>
+        <pre data-lang="bash"><code># Windows: equivalente desde PowerShell
+$env:RDD_VERSION = 'v0.1.0'
+$env:RDD_INSTALL_DIR = "$HOME\bin"
+iex (irm 'https://raw.githubusercontent.com/jhonwick20262027-boop/rukito/main/docs/install.ps1')</code></pre>
+        <p>En Windows el instalador añade el directorio al PATH del usuario; hay que
+        abrir una terminal nueva para que el cambio se vea. En Unix, si el directorio
+        no estaba en el PATH, el script imprime la línea <code>export</code> que debes
+        añadir a tu perfil.</p>
+      </section>
+
+      <section class="section">
+        <h2>Binarios de la release</h2>
+        <p>Descarga el archivo de la plataforma desde la
+        <a href="https://github.com/jhonwick20262027-boop/rukito/releases">página de releases</a>,
+        junto con <code>SHA256SUMS.txt</code>. En Linux o macOS:</p>
+        <pre data-lang="bash"><code>version=0.1.0
+target=x86_64-unknown-linux-gnu      # o aarch64-unknown-linux-gnu, x86_64-apple-darwin…
+base="https://github.com/jhonwick20262027-boop/rukito/releases/download/v$version"
+asset="rdd-$version-$target.tar.gz"
+
+curl -fsSLO "$base/$asset"
+curl -fsSLO "$base/SHA256SUMS.txt"
+grep -E "(^| )\*?$asset$" SHA256SUMS.txt | sha256sum -c -
+tar -xzf "$asset"
+mkdir -p "$HOME/.local/bin"
+install -m 0755 "rdd-$version-$target/rdd" "$HOME/.local/bin/rdd"
+rdd --version</code></pre>
+        <p>En Windows, con PowerShell:</p>
+        <pre data-lang="bash"><code>$version = '0.1.0'
+$target = 'x86_64-pc-windows-msvc'
+$base = "https://github.com/jhonwick20262027-boop/rukito/releases/download/v$version"
+$asset = "rdd-$version-$target.zip"
+
+Invoke-WebRequest -UseBasicParsing "$base/$asset" -OutFile $asset
+$expected = ((Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS.txt").Content -split "`n" |
+  Where-Object { $_ -match "\s\*?" + [regex]::Escape($asset) + "$" } |
+  Select-Object -First 1) -split '\s+' | Select-Object -First 1
+if ((Get-FileHash -Algorithm SHA256 $asset).Hash -ne $expected) { throw 'checksum incorrecto' }
+Expand-Archive $asset -DestinationPath .
+Copy-Item "rdd-$version-$target/rdd.exe" "$env:LOCALAPPDATA\rdd\bin\rdd.exe"
+rdd --version</code></pre>
+        <p>Los checksums se calculan sobre el archivo comprimido, no sobre el
+        ejecutable extraído. En macOS, <code>sha256sum</code> no viene de fábrica:
+        usa <code>shasum -a 256 -c -</code> en su lugar. Si un hash no coincide, no
+        lo ejecutes: vuelve a descargarlo desde la release oficial.</p>
+      </section>
+
+      <section class="section">
+        <h2>Con cargo</h2>
+        <p>Con una toolchain de Rust 1.94 o superior instalada:</p>
+        <pre data-lang="bash"><code>rustup update stable
+cargo install rdd-cli</code></pre>
+        <p>Para trabajar sobre el propio framework, desde un clon del repositorio:</p>
+        <pre data-lang="bash"><code>git clone https://github.com/jhonwick20262027-boop/rukito
+cargo install --path rukito/crates/rdd-cli</code></pre>
+        <p>El binario queda en <code>~/.cargo/bin</code>, que rustup ya añade al PATH.
+        Para actualizar, repite el comando con <code>--force</code>.</p>
+        <p>Si lo que vas a crear es una aplicación y no usar la CLI, la biblioteca se
+        declara con el paquete publicado y el alias <code>rdd</code>; las rutas
+        <code>::rdd::</code> que generan las macros siguen siendo válidas
+        (RA-013):</p>
+        <pre data-lang="toml"><code>[dependencies]
+rdd = { package = "rdd-framework", version = "0.1" }</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Verificar, actualizar y desinstalar</h2>
+        <pre data-lang="bash"><code>rdd --version    # rdd 0.1.0
+rdd --help</code></pre>
+        <table>
+          <tr><th>Tarea</th><th>Instalador</th><th>cargo</th></tr>
+          <tr><td>Actualizar</td><td>Vuelve a ejecutar el instalador; sin <code>RDD_VERSION</code> toma la última release.</td><td><code>cargo install rdd-cli --force</code></td></tr>
+          <tr><td>Desinstalar</td><td>Borra <code>rdd</code> de <code>~/.local/bin</code> o <code>%LOCALAPPDATA%\rdd\bin</code>; en Windows quita también el directorio del PATH del usuario.</td><td><code>cargo uninstall rdd-cli</code></td></tr>
+          <tr><td>Versión concreta</td><td><code>RDD_VERSION=v0.1.0</code> o <code>-Version v0.1.0</code></td><td><code>cargo install rdd-cli --version 0.1.0</code></td></tr>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Problemas comunes</h2>
+        <table>
+          <tr><th>Síntoma</th><th>Causa y solución</th></tr>
+          <tr><td><code>arquitectura no soportada</code></td><td>Windows ARM64 y arquitecturas de 32 bits no tienen binario todavía. Usa <code>cargo install rdd-cli</code>.</td></tr>
+          <tr><td><code>rdd: command not found</code></td><td>El directorio de instalación no está en el PATH. En Unix añade la línea <code>export</code> que imprime el instalador; en Windows abre una terminal nueva.</td></tr>
+          <tr><td><code>checksum incorrecto</code></td><td>La descarga se corrompió o un proxy la alteró. Repite la descarga o usa el binario de la release con verificación manual.</td></tr>
+          <tr><td><code>no se pudo resolver la última versión</code></td><td>La API de GitHub no es accesible (red corporativa o límite de peticiones). Fija <code>RDD_VERSION</code> y descarga el archivo directamente.</td></tr>
+          <tr><td>macOS bloquea el ejecutable descargado con el navegador</td><td>El instalador usa <code>curl</code> y no marca cuarentena. Si descargaste el zip con el navegador, ejecuta <code>xattr -d com.apple.quarantine "$(command -v rdd)"</code>.</td></tr>
+          <tr><td>El binario de Linux no arranca en una distribución antigua</td><td>Se compila en Ubuntu 22.04 (glibc 2.35). En sistemas anteriores usa <code>cargo install rdd-cli</code>.</td></tr>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Siguiente paso</h2>
+        <p>Con <code>rdd</code> en el PATH, continúa con la
+        <a href="inicio-rapido.html">guía rápida</a> para crear el proyecto,
+        generar un módulo, migrar y ejecutar tu primera API.</p>
+      </section>
+
+      <nav class="doc-pager" aria-label="Navegación de la guía">
+        <a class="pager-link prev" href="inicio-rapido.html"><span class="dir">← Anterior</span><span class="title">Guía rápida</span></a>
+        <a class="pager-link next" href="arquitectura.html"><span class="dir">Siguiente →</span><span class="title">Arquitectura</span></a>
+      </nav>
+    </main>
+  </article>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      RDD.enhanceCode(document);
+    });
+  </script>
+</body>
+</html>

@@ -18,6 +18,7 @@ Datos canónicos del proyecto:
 ## Documentación
 
 - [Guía rápida](https://jhonwick20262027-boop.github.io/rukito/guide/inicio-rapido.html): instalar `rdd-cli`, crear un proyecto, generar un módulo, migrar y ejecutar.
+- [Instalación](https://jhonwick20262027-boop.github.io/rukito/guide/instalacion.html): instalador de una línea con SHA256, binarios por plataforma, `cargo install rdd-cli`, PATH, actualización y diagnóstico.
 - [Arquitectura](https://jhonwick20262027-boop.github.io/rukito/guide/arquitectura.html): crates del workspace, dependencias permitidas, stack tecnológico e interfaz de plataforma.
 - [Referencia de la CLI](https://jhonwick20262027-boop.github.io/rukito/guide/cli.html): comandos, opciones de generación y `rdd migrate`.
 - [GraphQL](https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html): esquema desde tipos Rust, montaje de `/graphql`, consultas, mutaciones, suscripciones SSE y explorer.

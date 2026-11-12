@@ -8,6 +8,7 @@
   };
   RDD.searchIndex = [
     { title: "Guía rápida", section: "Inicio", keywords: "rdd, rust, api, empezar", url: "guide/inicio-rapido.html" },
+    { title: "Instalación", section: "Inicio", keywords: "instalar, installer, rdd-cli, windows, linux, macos, cargo install, sha256, binario", url: "guide/instalacion.html" },
     { title: "Arquitectura", section: "Framework", keywords: "rdd, crates, workspace, dependencias", url: "guide/arquitectura.html" },
     { title: "CLI", section: "Referencia", keywords: "rdd, comandos, new, module, run", url: "guide/cli.html" },
     { title: "GraphQL", section: "Guías", keywords: "graphql, schema, explorer, macros, sse, subscriptions", url: "guide/graphql.html" },

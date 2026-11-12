@@ -182,7 +182,11 @@ async fn main() -> Result<()> {
           <div class="step-card">
             <div class="step-num">1</div>
             <h3>Instalar la CLI</h3>
-            <p><code>cargo install rdd-cli</code> o usa el binario del workspace</p>
+            <p>Linux o macOS, sin privilegios de administrador:</p>
+            <pre data-lang="bash"><code>curl -fsSL https://jhonwick20262027-boop.github.io/rukito/install.sh | sh</code></pre>
+            <p>Windows, desde PowerShell:</p>
+            <pre data-lang="bash"><code>powershell -NoProfile -Command "iex (irm 'https://jhonwick20262027-boop.github.io/rukito/install.ps1')"</code></pre>
+            <p>Con una toolchain de Rust también sirve <code>cargo install rdd-cli</code>.</p>
           </div>
 
           <div class="step-card">

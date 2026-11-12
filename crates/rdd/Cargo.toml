@@ -1,5 +1,7 @@
 [package]
-name        = "rdd"
+# El nombre `rdd` está ocupado en crates.io por otro crate, así que la fachada se
+# publica como `rdd-framework` y el usuario la renombra a `rdd` al depender.
+name        = "rdd-framework"
 description = "Fachada del framework: re-exporta rdd-core y las macros, y elige la plataforma por feature."
 version.workspace = true
 edition.workspace = true
@@ -9,6 +11,11 @@ repository.workspace = true
 
 [lints]
 workspace = true
+
+# Las macros emiten rutas `::rdd::...` (RA-013); el nombre de la librería las
+# mantiene válidas aunque la dependencia llegue como `rdd-framework`.
+[lib]
+name = "rdd"
 
 [dependencies]
 # RA-013: el usuario depende de este crate, nunca de rdd-core a secas, porque lo

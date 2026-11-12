@@ -26,7 +26,7 @@ version      = "0.1.0"
 edition      = "2024"
 rust-version = "1.94"
 license      = "MIT"
-repository   = "https://example.invalid/rdd"
+repository   = "https://github.com/jhonwick20262027-boop/rukito"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -39,7 +39,7 @@ doc_markdown = "allow"
 [workspace.dependencies]
 rdd-core           = { path = "crates/rdd-core",           version = "0.1.0" }
 rdd-macros         = { path = "crates/rdd-macros",         version = "0.1.0" }
-rdd                = { path = "crates/rdd",                version = "0.1.0" }
+rdd                = { path = "crates/rdd",                version = "0.1.0", package = "rdd-framework" }
 rdd-axum           = { path = "crates/rdd-axum",           version = "0.1.0" }
 rdd-platform-tests = { path = "crates/rdd-platform-tests", version = "0.1.0" }
 rdd-db-tests       = { path = "crates/rdd-db-tests",       version = "0.1.0" }

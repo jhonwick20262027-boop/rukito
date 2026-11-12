@@ -1374,36 +1374,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
-name = "rdd"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "dotenvy",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "rdd-axum",
- "rdd-core",
- "rdd-graphql",
- "rdd-macros",
- "rdd-mcp",
- "rdd-openapi",
- "rdd-postgres",
- "rdd-socket",
- "rdd-sqlite",
- "rdd-static",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "trybuild",
- "uuid",
-]
-
-[[package]]
 name = "rdd-axum"
 version = "0.1.0"
 dependencies = [
@@ -1501,6 +1471,36 @@ dependencies = [
  "rdd-core",
  "serde_json",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rdd-framework"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "dotenvy",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rdd-axum",
+ "rdd-core",
+ "rdd-graphql",
+ "rdd-macros",
+ "rdd-mcp",
+ "rdd-openapi",
+ "rdd-postgres",
+ "rdd-socket",
+ "rdd-sqlite",
+ "rdd-static",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "trybuild",
  "uuid",
 ]
 
@@ -2261,8 +2261,8 @@ dependencies = [
  "hyper-util",
  "jsonwebtoken",
  "password-hash",
- "rdd",
  "rdd-cors",
+ "rdd-framework",
  "serde",
  "serde_json",
  "tokio",

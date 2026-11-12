@@ -121,7 +121,7 @@
         <h2>Activar la feature y montar <code>/site</code></h2>
         <p>La fachada declara la feature <code>static-files</code>, que trae el
         crate neutral y el montaje de la plataforma:</p>
-        <pre data-lang="toml"><code>rdd = { version = "0.1", features = ["static-files"] }</code></pre>
+        <pre data-lang="toml"><code>rdd = { package = "rdd-framework", version = "0.1", features = ["static-files"] }</code></pre>
         <p>El montaje va en <code>main.rs</code>, después de componer la app. La
         raíz se canonicaliza al construir <code>StaticFiles</code> y la
         configuración se valida antes de abrir el socket:</p>

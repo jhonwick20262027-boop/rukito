@@ -164,7 +164,7 @@ pub enum SocketMessage {
         <p>El canal se declara en <code>App</code>, no en un módulo, y no participa del
         404/405 del <code>fallback</code>:</p>
         <pre data-lang="toml"><code># La feature `socket` trae el hub de §10.5 y el transporte WS de `rdd-axum`.
-rdd = { version = "0.1", features = ["socket"] }</code></pre>
+rdd = { package = "rdd-framework", version = "0.1", features = ["socket"] }</code></pre>
         <pre data-lang="rust"><code>let feed = modules::tasks::TaskFeed::new();
 
 let app = App::new()

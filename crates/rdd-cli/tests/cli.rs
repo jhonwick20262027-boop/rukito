@@ -177,7 +177,7 @@ fn new_database_flag_reaches_the_files_and_rejects_unsupported_engines() {
     assert!(default.status.success());
     let manifest = std::fs::read_to_string(dir.join("default-app/Cargo.toml")).unwrap();
     assert!(
-        manifest.contains("rdd = \"0.1\""),
+        manifest.contains("rdd = { package = \"rdd-framework\", version = \"0.1\" }"),
         "sin el flag la fachada va con sus features por defecto: {manifest}"
     );
 

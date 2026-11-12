@@ -119,7 +119,7 @@
         <h2>Activar la feature y montar <code>/graphql</code></h2>
         <p>La fachada declara la feature <code>graphql</code>, que trae el motor, las
         macros y el montaje de la plataforma:</p>
-        <pre data-lang="toml"><code>rdd = { version = "0.1", features = ["graphql"] }</code></pre>
+        <pre data-lang="toml"><code>rdd = { package = "rdd-framework", version = "0.1", features = ["graphql"] }</code></pre>
         <p>El montaje va en <code>main.rs</code>, después de componer la app:</p>
         <pre data-lang="rust"><code>use rdd::AxumPlatform;
 use rdd::graphql::{GraphqlHttp, GraphqlHttpConfig, Schema};

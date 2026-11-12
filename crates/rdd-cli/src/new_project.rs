@@ -96,7 +96,9 @@ pub fn module_files(name: &str) -> Vec<GeneratedFile> {
 }
 
 /// Dependencia TOML de `rdd`: versión publicada o ruta local para desarrollo,
-/// más la feature del motor cuando no viene ya en `default` (RF-189).
+/// más la feature del motor cuando no viene ya en `default` (RF-189). El paquete
+/// publicado es `rdd-framework`; el alias conserva el nombre `rdd` que usan las
+/// rutas `::rdd::...` de las macros (RA-013).
 fn rdd_dependency(local: Option<&Path>, engine: Database) -> String {
     let source = match local {
         Some(path) => {
@@ -115,11 +117,7 @@ fn rdd_dependency(local: Option<&Path>, engine: Database) -> String {
     } else {
         format!(", features = [\"{}\"]", engine.feature())
     };
-    if local.is_none() && features.is_empty() {
-        "\"0.1\"".to_owned()
-    } else {
-        format!("{{ {source}{features} }}")
-    }
+    format!("{{ package = \"rdd-framework\", {source}{features} }}")
 }
 
 #[cfg(test)]
@@ -131,7 +129,7 @@ mod tests {
         ProjectContext {
             package: "todo-app",
             database: "todo_app",
-            rdd_dependency: "\"0.1\"",
+            rdd_dependency: "{ package = \"rdd-framework\", version = \"0.1\" }",
             engine: Database::Sqlite,
         }
     }
@@ -436,7 +434,10 @@ mod tests {
     #[test]
     fn sqlite_is_the_default_and_needs_no_extra_feature() {
         let generated = all_files(true);
-        assert!(contents(&generated, "Cargo.toml").contains("rdd = \"0.1\""));
+        assert!(
+            contents(&generated, "Cargo.toml")
+                .contains("rdd = { package = \"rdd-framework\", version = \"0.1\" }")
+        );
         assert!(contents(&generated, "rdd.toml").contains("provider = \"sqlite\""));
         assert!(contents(&generated, "prisma/schema.prisma").contains("provider = \"sqlite\""));
         assert!(
@@ -525,13 +526,19 @@ mod tests {
 
     #[test]
     fn the_dependency_names_the_feature_only_when_it_is_not_default() {
-        assert_eq!(rdd_dependency(None, Database::Sqlite), "\"0.1\"");
+        assert_eq!(
+            rdd_dependency(None, Database::Sqlite),
+            "{ package = \"rdd-framework\", version = \"0.1\" }"
+        );
         assert_eq!(
             rdd_dependency(None, Database::Postgres),
-            "{ version = \"0.1\", features = [\"postgres\"] }"
+            "{ package = \"rdd-framework\", version = \"0.1\", features = [\"postgres\"] }"
         );
         let local = rdd_dependency(Some(Path::new(".")), Database::Postgres);
-        assert!(local.starts_with("{ path = \""), "{local}");
+        assert!(
+            local.starts_with("{ package = \"rdd-framework\", path = \""),
+            "{local}"
+        );
         assert!(local.ends_with(", features = [\"postgres\"] }"), "{local}");
         assert!(!local.contains("version"), "{local}");
     }

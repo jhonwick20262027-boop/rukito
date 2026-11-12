@@ -15,6 +15,7 @@ use rdd::graphql::{GraphqlHttp, GraphqlHttpConfig, Schema};
 use rdd::mcp::{Extensions, McpHttp, McpHttpConfig, McpServer};
 use rdd::openapi::{OpenApiHttp, OpenApiHttpConfig};
 use rdd::prelude::*;
+use rdd::{StaticFiles, StaticFilesConfig};
 use rdd_cors::Cors;
 use uuid::Uuid;
 
@@ -120,9 +121,9 @@ async fn main() -> Result<()> {
         return rdd::mcp::serve_stdio_with(server, ext).await;
     }
 
-    // Los tres montajes opcionales comparten router y contenedor; se acumulan
-    // para que `--graphql --openapi` sirva el explorer y la documentación a la
-    // vez sobre el mismo servidor REST.
+    // Los cuatro montajes opcionales comparten router y contenedor; se acumulan
+    // para que `--graphql --openapi --static` sirva el explorer, la documentación
+    // y la página del demo a la vez sobre el mismo servidor REST.
     let mut platform = AxumPlatform::new();
     let mut mounted = false;
 
@@ -162,7 +163,7 @@ async fn main() -> Result<()> {
     }
 
     // §26.10: `--openapi` documenta las mismas rutas en `/api-docs` (más `/docs`
-    // y `/swagger`). El documento se compone en `openapi.rs` y la plataforma
+    // y `/swagger`). El documento se compone en `openapi/mod.rs` y la plataforma
     // comprueba que cubra exactamente las rutas montadas (RF-248).
     if std::env::args().skip(1).any(|arg| arg == "--openapi") {
         let docs = config::openapi_config::load();
@@ -176,6 +177,27 @@ async fn main() -> Result<()> {
                 .authorize(require_session),
         );
         platform = platform.openapi(openapi);
+        mounted = true;
+    }
+
+    // §26.11: `--static` sirve `client/` en `/site`. La cadena global corre antes
+    // que el disco; con `STATIC_PUBLIC=false`, `require_session` exige la sesión
+    // que dejó `JwtMiddleware` (RF-259).
+    if std::env::args().skip(1).any(|arg| arg == "--static") {
+        let site = config::static_config::load();
+        let files = StaticFiles::new(&site.dir)
+            .and_then(|files| {
+                files.config(
+                    StaticFilesConfig::new()
+                        .mount(site.mount)
+                        .spa(site.spa)
+                        .public(site.public)
+                        .dotfiles(site.dotfiles)
+                        .authorize(require_session),
+                )
+            })
+            .map_err(Error::internal)?;
+        platform = platform.static_files(files);
         mounted = true;
     }
 

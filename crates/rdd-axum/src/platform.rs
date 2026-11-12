@@ -14,7 +14,12 @@ use axum::response::Response;
 use axum::routing::{Route, any};
 use axum::{Router, routing::MethodRouter};
 use rdd_core::error::{PlatformError, PlatformResult};
-#[cfg(any(feature = "graphql", feature = "openapi", feature = "mcp-http"))]
+#[cfg(any(
+    feature = "graphql",
+    feature = "openapi",
+    feature = "mcp-http",
+    feature = "static-files"
+))]
 use rdd_core::http::normalize_path;
 use rdd_core::http::{
     BoxHandler, HttpApp, Method, Platform, PlatformFuture, RouteDef, ShutdownSignal,
@@ -58,6 +63,8 @@ pub struct AxumPlatform {
     mcp: Vec<Arc<rdd_mcp::McpHttp>>,
     #[cfg(feature = "openapi")]
     openapi: Vec<Arc<rdd_openapi::OpenApiHttp>>,
+    #[cfg(feature = "static-files")]
+    static_files: Vec<Arc<rdd_static::StaticFiles>>,
 }
 
 impl Default for AxumPlatform {
@@ -77,6 +84,8 @@ impl AxumPlatform {
             mcp: Vec::new(),
             #[cfg(feature = "openapi")]
             openapi: Vec::new(),
+            #[cfg(feature = "static-files")]
+            static_files: Vec::new(),
         }
     }
 
@@ -117,6 +126,18 @@ impl AxumPlatform {
         self
     }
 
+    /// Monta un directorio de archivos estáticos en su prefijo (RF-255, RP-033).
+    ///
+    /// La ruta se sirve con `any(...)` para que la cadena global (CORS, JWT,
+    /// RateLimit) decida antes que el disco. Un choque exacto con una ruta HTTP,
+    /// un canal, `/mcp`, `/graphql`, la documentación OpenAPI u otro montaje
+    /// estático, o una configuración inválida, impiden arrancar.
+    #[cfg(feature = "static-files")]
+    pub fn static_files(mut self, files: rdd_static::StaticFiles) -> Self {
+        self.static_files.push(Arc::new(files));
+        self
+    }
+
     /// Añade una capa Tower al servidor (RP-011).
     ///
     /// Las capacidades del servidor se configuran aquí, nunca en `App`. La capa
@@ -142,7 +163,7 @@ impl AxumPlatform {
     fn router(&self, app: Arc<HttpApp>, shutdown: ShutdownSignal) -> PlatformResult<Router> {
         #[cfg(feature = "mcp-http")]
         validate_mcp(&self.mcp, &app)?;
-        #[cfg(any(feature = "graphql", feature = "openapi"))]
+        #[cfg(any(feature = "graphql", feature = "openapi", feature = "static-files"))]
         let mcp_paths: Vec<String> = {
             #[cfg(feature = "mcp-http")]
             {
@@ -158,18 +179,48 @@ impl AxumPlatform {
         };
         #[cfg(feature = "graphql")]
         validate_graphql(&self.graphql, &mcp_paths, &app)?;
-        #[cfg(feature = "openapi")]
-        {
+        #[cfg(any(feature = "openapi", feature = "static-files"))]
+        let graphql_paths: Vec<String> = {
             #[cfg(feature = "graphql")]
-            let graphql_paths: Vec<String> = self
-                .graphql
-                .iter()
-                .map(|graphql| normalize_path(graphql.path()))
-                .collect();
+            {
+                self.graphql
+                    .iter()
+                    .map(|graphql| normalize_path(graphql.path()))
+                    .collect()
+            }
             #[cfg(not(feature = "graphql"))]
-            let graphql_paths: Vec<String> = Vec::new();
-            validate_openapi(&self.openapi, &mcp_paths, &graphql_paths, &app)?;
-        }
+            {
+                Vec::new()
+            }
+        };
+        #[cfg(feature = "openapi")]
+        validate_openapi(&self.openapi, &mcp_paths, &graphql_paths, &app)?;
+        #[cfg(all(feature = "openapi", feature = "static-files"))]
+        let openapi_paths: Vec<String> = self
+            .openapi
+            .iter()
+            .flat_map(|openapi| {
+                let settings = openapi.settings();
+                std::iter::once(normalize_path(settings.mount_path()))
+                    .chain(
+                        settings
+                            .alias_paths()
+                            .iter()
+                            .map(|alias| normalize_path(alias)),
+                    )
+                    .chain([normalize_path(&settings.json_path())])
+            })
+            .collect();
+        #[cfg(all(feature = "static-files", not(feature = "openapi")))]
+        let openapi_paths: Vec<String> = Vec::new();
+        #[cfg(feature = "static-files")]
+        validate_static(
+            &self.static_files,
+            &app,
+            &mcp_paths,
+            &graphql_paths,
+            &openapi_paths,
+        )?;
         let limits = app.limits;
         #[cfg(not(feature = "ws"))]
         let _ = shutdown;
@@ -257,6 +308,34 @@ impl AxumPlatform {
                     router =
                         router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
                 }
+            }
+        }
+
+        #[cfg(feature = "static-files")]
+        for files in &self.static_files {
+            let mount = normalize_path(files.settings().mount_path());
+            let handler = {
+                let app = Arc::clone(&app);
+                let files = Arc::clone(files);
+                move |req: Request| {
+                    let app = Arc::clone(&app);
+                    let files = Arc::clone(&files);
+                    async move { crate::static_files::serve_static(app, files, req).await }
+                }
+            };
+            // El comodín cubre el subárbol; las rutas literales del núcleo siguen
+            // teniendo prioridad en Axum (RP-033).
+            let patterns: Vec<String> = if mount == "/" {
+                vec!["/".to_owned(), "/{*path}".to_owned()]
+            } else {
+                vec![
+                    mount.clone(),
+                    format!("{mount}/"),
+                    format!("{mount}/{{*path}}"),
+                ]
+            };
+            for pattern in patterns {
+                router = router.route(&pattern, apply_layers(any(handler.clone()), &self.layers));
             }
         }
 
@@ -552,6 +631,60 @@ fn validate_openapi(
         }
     }
     Ok(())
+}
+
+/// Comprueba los montajes estáticos antes de arrancar (RF-255, RP-033).
+#[cfg(feature = "static-files")]
+fn validate_static(
+    sites: &[Arc<rdd_static::StaticFiles>],
+    app: &HttpApp,
+    mcp_paths: &[String],
+    graphql_paths: &[String],
+    openapi_paths: &[String],
+) -> PlatformResult<()> {
+    let mut seen: Vec<String> = Vec::new();
+    for site in sites {
+        site.settings().validate().map_err(|err| {
+            PlatformError::other(anyhow::anyhow!(
+                "configuración de archivos estáticos inválida: {err}"
+            ))
+        })?;
+
+        let mount = normalize_path(site.settings().mount_path());
+        if seen.iter().any(|other| overlaps(other, &mount)) {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "el montaje estático `{mount}` se solapa con otro montaje"
+            )));
+        }
+        let conflict = app
+            .routes
+            .iter()
+            .any(|def| normalize_path(&def.path) == mount)
+            || app
+                .upgrades
+                .iter()
+                .any(|upgrade| normalize_path(&upgrade.path) == mount)
+            || mcp_paths.contains(&mount)
+            || graphql_paths.contains(&mount)
+            || openapi_paths.contains(&mount);
+        if conflict {
+            return Err(PlatformError::other(anyhow::anyhow!(
+                "el montaje estático `{mount}` colisiona con otra ruta montada"
+            )));
+        }
+        seen.push(mount);
+    }
+    Ok(())
+}
+
+/// `true` si los dos prefijos se pisan: uno es el otro o cuelga de él.
+#[cfg(feature = "static-files")]
+fn overlaps(a: &str, b: &str) -> bool {
+    a == b
+        || a == "/"
+        || b == "/"
+        || b.strip_prefix(a).is_some_and(|rest| rest.starts_with('/'))
+        || a.strip_prefix(b).is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// Comprueba rutas de montaje antes de arrancar (RF-222).

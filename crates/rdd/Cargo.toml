@@ -40,6 +40,8 @@ rdd-graphql = { workspace = true, optional = true }
 # Documentación OpenAPI 3.1 (§10.10). El montaje lo aporta
 # `AxumPlatform::openapi`.
 rdd-openapi = { workspace = true, optional = true }
+# Archivos estáticos (§10.11). El montaje lo aporta `AxumPlatform::static_files`.
+rdd-static = { workspace = true, optional = true }
 # Lo que genera la macro GraphQL habla JSON; se re-exporta para que el proyecto
 # del usuario no tenga que declararlo (RN-012).
 serde_json.workspace = true
@@ -67,6 +69,9 @@ graphql  = ["dep:rdd-graphql", "rdd-axum/graphql"]
 # §10.10, RF-245: la documentación OpenAPI y su montaje `/api-docs`. Requiere
 # `axum`, igual que GraphQL.
 openapi  = ["dep:rdd-openapi", "rdd-axum/openapi"]
+# §10.11, RF-255: archivos estáticos desde disco. Requiere `axum`, igual que
+# GraphQL y OpenAPI.
+static-files = ["dep:rdd-static", "rdd-axum/static-files"]
 
 [dev-dependencies]
 bytes.workspace = true
@@ -77,6 +82,8 @@ hyper.workspace = true
 hyper-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# La suite S crea un directorio temporal con su `index.html` y sus assets.
+tempfile.workspace = true
 tokio.workspace = true
 trybuild.workspace = true
 uuid.workspace = true

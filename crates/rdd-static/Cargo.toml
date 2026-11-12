@@ -1,0 +1,23 @@
+[package]
+name        = "rdd-static"
+description = "Archivos estáticos para rdd: resolución segura de rutas, MIME, caché y SPA, neutral respecto del servidor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# RA-023: el crate no conoce el router; solo consume y produce tipos neutros.
+rdd-core.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+# MIME por extensión sin `tower-http`; `mime_guess` ya está en la caché offline.
+mime_guess.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+
+[dev-dependencies]
+tempfile.workspace = true

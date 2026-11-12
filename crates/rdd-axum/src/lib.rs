@@ -25,6 +25,8 @@ mod mcp_http;
 mod openapi_http;
 mod platform;
 mod shim;
+#[cfg(feature = "static-files")]
+mod static_files;
 #[cfg(feature = "ws")]
 mod ws;
 

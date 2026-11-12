@@ -107,6 +107,24 @@ compile_error!(
      features = [\"axum\", \"openapi\"] (RP-012)"
 );
 
+/// Archivos estáticos servidos desde disco (§10.11, RF-255).
+#[cfg(feature = "static-files")]
+pub mod static_files {
+    pub use rdd_static::{
+        AuthorizeFn, DEFAULT_INDEX, DEFAULT_MOUNT, StaticFiles, StaticFilesConfig,
+    };
+}
+
+/// Archivos estáticos sin prefijo de módulo, para el arranque.
+#[cfg(feature = "static-files")]
+pub use rdd_static::{StaticFiles, StaticFilesConfig};
+
+#[cfg(all(feature = "static-files", not(feature = "axum")))]
+compile_error!(
+    "la feature `static-files` necesita la plataforma `axum`: activa `rdd` con \
+     features = [\"axum\", \"static-files\"] (RP-012)"
+);
+
 /// Puebla el registro de adaptadores del núcleo (RF-191).
 ///
 /// Los seis motores se declaran siempre, aunque su feature esté apagada: es lo

@@ -3,7 +3,7 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.11.0-draft |
+| Versión del documento | 0.12.0-draft |
 | Fecha | 2026-11-12 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
@@ -40,7 +40,7 @@
 
 ## 2. Alcance
 
-### 2.1 Dentro del alcance (fases 0.1 a 0.12)
+### 2.1 Dentro del alcance (fases 0.1 a 0.13)
 
 - Servidor REST con controladores declarativos por macros, sobre una interfaz de plataforma (§4.4). **Axum es la plataforma por defecto** (`rdd-axum`).
 - Building blocks DDD mínimos: `Aggregate`, `Service`, `Repo<T>`, `Error` de dominio.
@@ -56,6 +56,7 @@
 - **GraphQL** opcional (fase 0.10, §10.9): el crate `rdd-graphql` implementa un subconjunto tipado del lenguaje —queries, mutations, subscriptions, variables, fragmentos e introspección— con un motor propio (ADR-26) y un explorer profesional embebido (ADR-29). El esquema se declara con macros sobre Rust, sin SDL (ADR-27); las subscriptions viajan por **SSE** (ADR-28) y el punto de entrada `/graphql` lo monta `rdd-axum` con la feature `graphql`. Los resolvers son adaptadores de presentación: llaman a los mismos casos de uso y leen la identidad por contexto (§10.9).
 - **OpenAPI** opcional (fase 0.12, §10.10): el crate `rdd-openapi` modela el documento OpenAPI 3.1 con un builder tipado y una validación de arranque que compara las operaciones documentadas con las rutas montadas. La documentación se sirve en `/api-docs` (alias `/docs` y `/swagger`) y el JSON en `/api-docs/openapi.json`; la UI es una app Vue 3 + shadcn-vue con el tema «oxide forge» compilada a un único HTML embebido, y el montaje lo hace `rdd-axum` con la feature `openapi` (ADR-30). Como GraphQL, no genera el documento desde los controllers: lo compone la app y el framework lo valida (RP-032, RA-022).
 - **Rendimiento medido** (fase 0.12): el crate interno `rdd-bench` mide HTTP con keep-alive y eco WebSocket contra un `AxumPlatform` real en un puerto efímero, calcula p50/p95/p99 y tasas, y publica un informe JSON versionado que alimenta la página `docs/benchmark.html` del sitio (ADR-31).
+- **Archivos estáticos** opcionales (fase 0.13, §10.11): el crate `rdd-static` sirve un directorio del disco con resolución segura de rutas, MIME, ETag, caché, índice y fallback de SPA; es neutral —solo depende de `rdd-core`— y el montaje lo hace `rdd-axum` con la feature `static-files` (ADR-32, RP-033). Los archivos se leen en tiempo de petición: no hay *hot reload*, vigilancia de archivos ni empaquetado de assets en el binario; los únicos artefactos embebidos siguen siendo el explorer (§10.9) y la UI de OpenAPI (§10.10).
 
 ### 2.2 Fuera del alcance (explícito)
 
@@ -81,6 +82,8 @@
 | OpenAPI generado automáticamente desde los controllers o las macros | El documento se compone a mano con `OpenApiBuilder` y el framework lo valida al montar (§10.10). Derivarlo de las rutas o de las macros queda como extensión futura; no se simula. |
 | Servir Swagger UI o Redoc desde CDN | La UI es propia, compilada a un único HTML embebido, sin CDN ni `eval` (§10.10, ADR-30). |
 | Benchmark como criterio de CI o comparación entre máquinas | `rdd-bench` publica un informe reproducible con su entorno (§20); no es una compuerta de rendimiento ni un número absoluto (ADR-31). |
+| **Hot reload / recarga en caliente de archivos estáticos** | `rdd-static` lee el archivo en cada petición, pero no vigila el directorio ni reinicia nada: el navegador recarga y el servidor sirve la versión actual del disco, sin watcher, sin WebSocket de desarrollo y sin recompilar. Un watcher de desarrollo queda fuera de 0.x (§10.11, ADR-32). |
+| Empaquetar los archivos estáticos en el binario, minificarlos o procesarlos | El montaje sirve el directorio tal cual, con MIME por extensión; no hay bundler, huella de contenido ni transformación. Los únicos HTML embebidos son el explorer y la UI de OpenAPI, que no son archivos de usuario (§10.9, §10.10). |
 | Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. §26 muestra cómo escribir JWT y roles **a nivel de aplicación** con ese mecanismo, que es lo único que el framework promete hoy. |
 | Motores sin adaptador publicado | El puerto `DbAdapter` (§12) es la vía de extensión. SQLite está implementado en `rdd-sqlite` y es el adaptador predeterminado; Oracle, Cassandra y DynamoDB no están previstos. |
 | Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
@@ -117,7 +120,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd/                      # FACHADA: re-exporta rdd-core + rdd-macros + plataformas por feature
 │   ├── rdd-core/                 # núcleo: App, DI, middlewares, errores, Repo<T>, puerto DbAdapter, HttpApp, trait Platform
 │   ├── rdd-macros/               # proc-macros
-│   ├── rdd-axum/                 # plataforma por defecto (features `mcp-http`, `graphql` y `openapi`)
+│   ├── rdd-axum/                 # plataforma por defecto (features `mcp-http`, `graphql`, `openapi` y `static-files`)
 │   ├── rdd-hyper/                # plataforma propia (fase 0.5)
 │   ├── rdd-platform-tests/       # suite de conformidad de plataformas (§4.5)
 │   ├── rdd-db-tests/             # suite de conformidad de adaptadores (§12.4)
@@ -133,6 +136,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd-mcp/                  # servidor MCP: JSON-RPC 2.0, stdio y `McpHttp` neutral (fases 0.7 y 0.9)
 │   ├── rdd-graphql/              # motor GraphQL propio: esquema, parser, ejecutor, SSE y explorer (fases 0.10–0.11)
 │   ├── rdd-openapi/              # documento OpenAPI 3.1, validación de rutas y UI embebida (fase 0.12)
+│   ├── rdd-static/               # archivos estáticos: rutas seguras, MIME, caché y SPA (fase 0.13)
 │   ├── rdd-bench/                # arnés interno de rendimiento HTTP y WebSocket (fase 0.12, no se publica)
 │   ├── rdd-prisma/               # parser de schema.prisma + generador
 │   └── rdd-cli/                  # binario `rdd`
@@ -153,6 +157,8 @@ rdd-mcp  = "..."                          # opcional: servidor MCP por stdio (§
 # rdd = { version = "...", features = ["graphql"] }
 # o, con la documentación OpenAPI de la fase 0.12:
 # rdd = { version = "...", features = ["openapi"] }
+# o, con archivos estáticos de la fase 0.13:
+# rdd = { version = "...", features = ["static-files"] }
 uuid     = { version = "1", features = ["v4", "serde"] }   # el id del agregado (§7.2)
 # o, sin Axum:
 # rdd = { version = "...", default-features = false, features = ["hyper", "sqlite"] }
@@ -167,12 +173,14 @@ rdd-core ◄───┼── rdd (fachada) ──► [feature axum]   rdd-axum
      │       │                 ├─► [feature socket] rdd-socket
      │       │                 ├─► [feature mcp]    rdd-mcp
      │       │                 ├─► [feature graphql] rdd-graphql
-     │       │                 └─► [feature openapi] rdd-openapi
+     │       │                 ├─► [feature openapi] rdd-openapi
+     │       │                 └─► [feature static-files] rdd-static
      ├── rdd-axum, rdd-hyper
      ├── rdd-axum ──► rdd-mcp (solo feature `mcp-http`, RA-020)
      ├── rdd-axum ──► rdd-graphql (solo feature `graphql`, RA-021)
      ├── rdd-axum ──► rdd-openapi (solo feature `openapi`, RA-022)
-     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql, rdd-openapi
+     ├── rdd-axum ──► rdd-static (solo feature `static-files`, RA-023)
+     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql, rdd-openapi, rdd-static
      ├── rdd-sqlite, rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
      ├── rdd-platform-tests ──► (dev) cada plataforma
      └── rdd-db-tests ────────► (dev) cada adaptador
@@ -184,15 +192,16 @@ rdd-bench ──► rdd-axum (herramienta interna, nadie depende de ella)
 |---|---|---|
 | `rdd-core` | `http`, `bytes`, `futures`, `tokio`, `serde`, `serde_json`, `tracing`, `uuid`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower-http`, cualquier plataforma, **cualquier driver de BD** (`sqlx`, `mongodb`, `redis`, `tiberius`), Prisma, Node |
 | `rdd-macros` | `syn`, `quote`, `proc-macro2`, crate de diagnósticos | `rdd-core` |
-| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp`, `rdd-graphql` y `rdd-openapi` (opcionales por feature) | — |
+| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp`, `rdd-graphql`, `rdd-openapi` y `rdd-static` (opcionales por feature) | — |
 | `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
-| `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http`; `rdd-mcp` solo con la feature `mcp-http`; `rdd-graphql` solo con la feature `graphql`; `rdd-openapi` solo con la feature `openapi` | `rdd-hyper` |
+| `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http`; `rdd-mcp` solo con la feature `mcp-http`; `rdd-graphql` solo con la feature `graphql`; `rdd-openapi` solo con la feature `openapi`; `rdd-static` solo con la feature `static-files` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
 | `rdd-cors`, `rdd-logger` | `rdd-core`, `http`, `bytes`, `serde`, `thiserror`, `toml`, `tracing` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
 | `rdd-socket` | `rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tracing`, `thiserror` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD |
 | `rdd-mcp` | `rdd-core`, `serde`, `serde_json`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-graphql` | `rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-openapi` | `rdd-core`, `serde`, `serde_json`, `bytes`, `anyhow` | `axum`, `hyper`, `tower`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
+| `rdd-static` | `rdd-core`, `anyhow`, `bytes`, `mime_guess`, `tokio` (feature `fs`) | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-bench` | `rdd-core`, `rdd-axum` (con `ws`), `hyper`, `hyper-util`, `http`, `http-body-util`, `tokio-tungstenite`, `serde`, `serde_json`, `tokio`, `bytes`, `futures`, `anyhow`, `tracing` | cualquier crate del framework (es una herramienta interna; no se publica ni lo usa ningún otro crate) |
 | `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
@@ -239,6 +248,16 @@ es la excepción declarada: no es un crate del framework, es una herramienta
 interna que depende de `rdd-axum` para medir la plataforma completa y ningún
 crate depende de ella (ADR-31).
 
+`rdd-static` sigue la misma secuencia que los tres montajes anteriores (RA-023):
+la resolución de rutas, la prevención de traversal, el MIME, el ETag, la caché,
+el índice y el fallback de SPA viven en un crate neutral que solo usa
+`rdd_core::http` y el sistema de archivos; el montaje —leer el cuerpo con
+límite, ejecutar `prepare`, traducir la respuesta y devolver el 404 canónico en
+un fallo— lo pone `rdd-axum` con la feature `static-files`. `mime_guess` entra
+solo en `rdd-static` porque la plataforma no debe elegir tipos MIME ni arrastrar
+`tower-http` para algo que es una tabla por extensión. El crate no vigila el
+directorio ni empaqueta los archivos: lee el archivo en cada petición (ADR-32).
+
 | ID | Requisito |
 |---|---|
 | RA-011 | `rdd-core`, `rdd-cors` y `rdd-logger` NO DEBEN tener a `axum` ni `hyper` en su árbol de dependencias. CI DEBE verificarlo (`cargo tree -p rdd-core` y regla `bans` de `cargo-deny`). |
@@ -252,6 +271,7 @@ crate depende de ella (ADR-31).
 | RA-021 | La dependencia entre `rdd-axum` y `rdd-graphql` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-graphql` con la feature `graphql`, y `rdd-graphql` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower, de `tokio-tungstenite` ni de un driver de BD: solo de `rdd-core` y crates neutrales. El documento GraphQL, el ejecutor y el explorer no tocan el router de ningún servidor; `GraphqlHttp` (§10.9) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-graphql` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-graphql`). |
 | RA-020 | La dependencia entre `rdd-axum` y `rdd-mcp` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-mcp` con la feature `mcp-http`, y `rdd-mcp` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma. La fachada declara `mcp-http = ["mcp", "axum/mcp-http"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-mcp` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-mcp`). |
 | RA-022 | La dependencia entre `rdd-axum` y `rdd-openapi` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-openapi` con la feature `openapi`, y `rdd-openapi` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower ni de un driver de BD: solo de `rdd-core` y crates neutrales. El documento, el builder, la validación de rutas y el HTML de la UI no tocan el router; `OpenApiHttp` (§10.10) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-openapi` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-openapi`). `rdd-bench` es una herramienta interna que ningún crate del framework usa (ADR-31). |
+| RA-023 | La dependencia entre `rdd-axum` y `rdd-static` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-static` con la feature `static-files`, y `rdd-static` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower, de `tower-http` ni de un driver de BD: solo de `rdd-core` y crates neutrales (`anyhow`, `bytes`, `mime_guess`, `tokio` con `fs`). La resolución de rutas, el MIME, la caché y el SPA no tocan el router; `StaticFiles::handle` (§10.11) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `static-files = ["dep:rdd-static", "rdd-axum/static-files"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-static` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-static`). |
 
 ### 4.3 Stack tecnológico
 
@@ -283,6 +303,7 @@ crate depende de ella (ADR-31).
 | Documento OpenAPI | tipos propios en `rdd-openapi` sobre `serde`/`serde_json` | `rdd-openapi` | Ningún crate de OpenAPI está en la caché offline y el subconjunto 3.1 que servimos es corto; escribirlo deja validación y errores bajo el contrato (§10.10, ADR-30). |
 | UI de la documentación | Vue 3 + TypeScript + Tailwind + shadcn-vue + Lucide con el tema «oxide forge», compilada con Vite a un único HTML | `rdd-openapi/ui` | Mismo stack y misma paleta que el explorer; el artefacto se embebe con `include_str!` y no usa CDN ni `eval` (§10.10, ADR-30). |
 | Arnés de rendimiento | `hyper` con keep-alive y `tokio-tungstenite` contra un `AxumPlatform` real en puerto efímero | `rdd-bench` | Mide el camino HTTP y el canal completos —router, cadena de middlewares y transporte—, no funciones aisladas; el informe es reproducible y versionado (§20, ADR-31). |
+| Archivos estáticos | `tokio::fs` para leer el archivo pedido y `mime_guess` para el `Content-Type` por extensión | `rdd-static` | Lectura en tiempo de petición, sin empaquetar ni vigilar el directorio; la tabla MIME es una dependencia pequeña y evita que la plataforma elija tipos (§10.11, ADR-32). |
 | Errores | `thiserror` + `anyhow` (interno) | núcleo | Errores tipados en el borde, contexto interno. |
 | Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
 | IDs | `uuid` | núcleo | Estándar. |
@@ -367,6 +388,7 @@ App::new().module(tasks::module()).run_on(HyperPlatform::new(), "0.0.0.0:3000").
 | Puntos de entrada fuera de la tabla: cadena global y petición preparada (RP-028) | Montar `/mcp`, leer el cuerpo y volcar SSE (RP-029) |
 | Documento, validación, ejecución, introspección, stream SSE y HTML del explorer de GraphQL (§10.9) | Montar `/graphql`: leer el cuerpo, devolver el HTML ya generado y volcar el stream SSE (RP-030, RP-031) |
 | Documento OpenAPI, validación de rutas, JSON y HTML de la UI (§10.10) | Montar `/api-docs` y sus alias: leer el cuerpo, ejecutar `prepare` y servir HTML o JSON (RP-032) |
+| Resolución segura del directorio, MIME, ETag, caché, índice y SPA (§10.11) | Montar el prefijo: registrar el subárbol, leer el cuerpo con límite, ejecutar `prepare` y traducir la respuesta (RP-033) |
 | Abrir el `TcpListener` y capturar señales (`SIGTERM`, `Ctrl+C`) | Servir sobre el `TcpListener` recibido |
 
 **Requisitos de plataforma**
@@ -397,8 +419,9 @@ App::new().module(tasks::module()).run_on(HyperPlatform::new(), "0.0.0.0:3000").
 | RP-030 | Un montaje fuera de la tabla (`/graphql`, §10.9) DEBE ejecutar `prepare` antes de su propio guardián y renderizar el `Reject` de `prepare` y el `Err` de `authorize` con el mismo mapeo a Problem Details que los handlers (§10.3). La plataforma solo traduce el cuerpo, sirve el HTML del explorer y vuelca el stream SSE; NO DEBE interpretar ni reescribir el documento GraphQL ni los eventos (RP-004). `rdd-axum` expone el montaje con la feature `graphql`; otra plataforma que lo exponga DEBE pasar G-01 a G-09 (§20). |
 | RP-031 | Las suscripciones GraphQL DEBEN viajar por el mismo cuerpo SSE que el montaje ya vuelca: el motor entrega un `SseStream` neutral (bytes ya formateados con `event:`/`data:` y comentarios de latido) y la plataforma lo convierte en `Body::from_stream` sin tocar los eventos. Al desconectarse el cliente, el montaje DEBE cancelar la suscripción cerrando la cola; el motor NO DEBE reconectar ni reintentar por su cuenta, y NO DEBE abrir un canal WebSocket (ADR-28). |
 | RP-032 | Un montaje fuera de la tabla (`/api-docs`, §10.10) DEBE ejecutar `prepare` antes de su propio guardián, respetar RP-006 (límite de cuerpo y 413 antes del handler) y renderizar el `Reject` de `prepare` y el `Err` de `authorize` con el mismo mapeo a Problem Details que los handlers (§10.3). La plataforma solo traduce el cuerpo: sirve el HTML y el JSON ya generados y NO DEBE reescribir el documento (RP-004). `rdd-axum` expone el montaje con la feature `openapi`; otra plataforma que lo exponga DEBE pasar O-01 a O-06 (§20). |
+| RP-033 | Un montaje de archivos estáticos (`/site`, §10.11) DEBE ejecutar `prepare` antes de tocar el disco y respetar RP-006 (límite de cuerpo y 413 antes del handler). La plataforma NO DEBE resolver rutas, elegir MIME ni interpretar el archivo: registra el prefijo sobre todos los métodos para que la cadena global decida primero y delega en `StaticFiles::handle`. Si no hay archivo ni índice, DEBE responder el 404 canónico del núcleo **sin repetir la cadena global** (ya corrió en `prepare`). Las rutas literales del núcleo conservan prioridad sobre el subárbol del montaje. `rdd-axum` expone el montaje con la feature `static-files` y valida al arrancar el prefijo, los solapamientos y los choques con rutas HTTP, canales y otros montajes; otra plataforma que lo exponga DEBE pasar S-01 a S-08 (§20). |
 
-**Nota sobre `rdd-axum`:** registra las rutas de forma **nativa** en el router de Axum (no usa `dispatch`), para aprovechar su enrutado y el soporte de capas Tower. Como hay dos implementaciones de enrutado (Axum y `dispatch`), el riesgo de divergencia se controla con la suite de conformidad (§4.5), que se ejecuta contra ambas. Los canales de §10.4 siguen el mismo patrón: Axum aporta el transporte WebSocket (feature `ws`) y el handshake lo decide `HttpApp::negotiate` (RP-024). El montaje `/mcp` sigue el patrón otra vez: Axum lee el cuerpo, ejecuta `prepare` y vuelca la cola SSE; `McpHttp` decide todo lo demás (§10.8, RP-029). `/graphql` repite el mismo reparto: Axum sirve el HTML del explorer, ejecuta `prepare` y vuelca el `SseStream`; `GraphqlHttp` decide documento, validación, ejecución y eventos (§10.9, RP-030, RP-031). `/api-docs` hace lo mismo con la documentación: Axum lee el cuerpo, ejecuta `prepare` y devuelve el HTML o el JSON compilados; `OpenApiHttp` decide método, guardián, rutas y cuerpo (§10.10, RP-032).
+**Nota sobre `rdd-axum`:** registra las rutas de forma **nativa** en el router de Axum (no usa `dispatch`), para aprovechar su enrutado y el soporte de capas Tower. Como hay dos implementaciones de enrutado (Axum y `dispatch`), el riesgo de divergencia se controla con la suite de conformidad (§4.5), que se ejecuta contra ambas. Los canales de §10.4 siguen el mismo patrón: Axum aporta el transporte WebSocket (feature `ws`) y el handshake lo decide `HttpApp::negotiate` (RP-024). El montaje `/mcp` sigue el patrón otra vez: Axum lee el cuerpo, ejecuta `prepare` y vuelca la cola SSE; `McpHttp` decide todo lo demás (§10.8, RP-029). `/graphql` repite el mismo reparto: Axum sirve el HTML del explorer, ejecuta `prepare` y vuelca el `SseStream`; `GraphqlHttp` decide documento, validación, ejecución y eventos (§10.9, RP-030, RP-031). `/api-docs` hace lo mismo con la documentación: Axum lee el cuerpo, ejecuta `prepare` y devuelve el HTML o el JSON compilados; `OpenApiHttp` decide método, guardián, rutas y cuerpo (§10.10, RP-032). El montaje estático repite el patrón por última vez: Axum registra el prefijo sobre un comodín, lee el cuerpo, ejecuta `prepare` y traduce la respuesta; `StaticFiles` resuelve la ruta, el MIME, el ETag, la caché y el SPA, y un fallo se responde con el 404 canónico sin volver a correr la cadena global (§10.11, RP-033).
 
 ### 4.5 Suite de conformidad (`rdd-platform-tests`)
 
@@ -412,7 +435,7 @@ async fn conformance() {
 }
 ```
 
-La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023). El montaje `/mcp` no añade casos C: su suite es la M de §20 y se ejecuta contra `rdd-axum` con la feature `mcp-http` (RP-029); `dispatch` no lo sirve porque el montaje vive en la plataforma, así que una petición a `/mcp` por `dispatch` recibe el 404 del `fallback`. `/graphql` sigue la misma regla: su suite es la G de §20, se ejecuta contra `rdd-axum` con la feature `graphql` (RP-030) y no añade casos C. `/api-docs` también: su suite es la O de §20, se ejecuta contra `rdd-axum` con la feature `openapi` (RP-032) y no añade casos C.
+La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023). El montaje `/mcp` no añade casos C: su suite es la M de §20 y se ejecuta contra `rdd-axum` con la feature `mcp-http` (RP-029); `dispatch` no lo sirve porque el montaje vive en la plataforma, así que una petición a `/mcp` por `dispatch` recibe el 404 del `fallback`. `/graphql` sigue la misma regla: su suite es la G de §20, se ejecuta contra `rdd-axum` con la feature `graphql` (RP-030) y no añade casos C. `/api-docs` también: su suite es la O de §20, se ejecuta contra `rdd-axum` con la feature `openapi` (RP-032) y no añade casos C. El montaje estático sigue la regla: su suite es la S de §20, se ejecuta contra `rdd-axum` con la feature `static-files` (RP-033) y no añade casos C; `dispatch` no sirve el directorio porque el montaje vive en la plataforma.
 
 | Caso | Verifica | Requisitos |
 |---|---|---|
@@ -1704,7 +1727,7 @@ embebe en la UI al construir `OpenApiHttp`, así que el HTML y el JSON salen del
 mismo binario y no hay lecturas en tiempo de petición.
 
 ```rust
-// openapi.rs — el documento lo compone la app (§26.10)
+// openapi/mod.rs — el documento lo compone la app (§26.10)
 use rdd::openapi::{OpenApi, OpenApiBuilder, Operation, Server, Tag};
 
 pub fn document() -> OpenApi {
@@ -1768,8 +1791,84 @@ style-src 'unsafe-inline'; connect-src 'self'`. La UI no se relaja: no hay CDN,
 | RF-248 | Al montar, `AxumPlatform` DEBE validar el documento con `OpenApi::validate` y compararlo con `HttpApp.routes` con `OpenApi::check_routes`, normalizando `{id}`→`:id`, el método a mayúsculas y la barra final: una operación documentada sin ruta montada DEBE impedir el arranque siempre, y una ruta montada sin documentar solo cuando `strict_routes` es `true` (por defecto). El mensaje DEBE listar `MÉTODO /ruta`. Las rutas del propio montaje no se comparan consigo mismas, pero sí se comprueba que no choquen con una operación ni con otra ruta (RF-246). |
 | RF-249 | `OpenApiHttpConfig::authorize(&Request)` DEBE ejecutarse después de los globales y antes de decidir ruta o método: `Ok` continúa y `Err` se responde con el mapeo del núcleo a Problem Details (§10.3). El guardián DEBE cubrir la UI, los alias y el JSON; con `public_docs(true)` toda la documentación se sirve sin ejecutar `authorize`. `authorize` recibe la petición preparada, con las extensiones que dejó la cadena global —incluido el `Arc<Container>` de RF-084—, para que la app decida con la identidad de `JwtMiddleware`. |
 | RF-250 | `OpenApiHttpConfig` DEBE exponer `path` (`/api-docs`), `docs` (`true`), `public_docs` (`false`), `aliases` (`/docs` y `/swagger`) y `strict_routes` (`true`). `validate` DEBE aceptar solo rutas literales —con `/` inicial, distintas de `/` y sin `:`, `*`, `{`, `}`, `?` ni espacios—, rechazar duplicados y un JSON que choque con otra ruta, y un valor inválido DEBE fallar el arranque nombrando la ruta. Los límites de cuerpo y de apagado vienen de `Limits` y no se duplican (RF-017, RP-009). |
-| RF-251 | La UI DEBE ser una app Vue 3 con TypeScript estricto, Tailwind y componentes shadcn-vue, compilada con Vite a un único HTML con JS y CSS inline, embebido con `include_str!` y commiteado; el build DEBE ser reproducible (`npm ci && npm run build`) y un paso de finalización DEBE rechazar recursos externos, `eval` y hojas de estilo enlazadas. Usa el tema «oxide forge» del sitio público —mismos neutros cálidos, óxido, ámbar, verde ácido, arco y magenta; tipografías del sistema con degradación— con tema oscuro por defecto y variante clara, y DEBE agrupar las operaciones por etiqueta, mostrar parámetros, cuerpo de ejemplo y respuestas con sus esquemas, copiar un `cURL`, y ejecutar la operación contra el mismo origen con cabeceras —incluido `Authorization`— y el cuerpo editables. El documento se embebe como `<script type="application/json">` y la CSP de RF-247 no se relaja. |
+| RF-251 | La UI DEBE ser una app Vue 3 con TypeScript estricto, Tailwind y componentes shadcn-vue, compilada con Vite a un único HTML con JS y CSS inline, embebido con `include_str!` y commiteado; el build DEBE ser reproducible (`npm ci && npm run build`) y un paso de finalización DEBE rechazar recursos externos, `eval` y hojas de estilo enlazadas. Usa el tema «oxide forge» del sitio público —mismos neutros cálidos, óxido, ámbar, verde ácido, arco y magenta; tipografías del sistema con degradación— con tema oscuro por defecto y variante clara, y DEBE agrupar las operaciones por etiqueta, mostrar parámetros, cuerpo de ejemplo y respuestas con sus esquemas, copiar un `cURL`, y ejecutar la operación contra el mismo origen con cabeceras —incluido `Authorization`— y el cuerpo editables; el cuerpo se edita con CodeMirror —resaltado de JSON e indentación automática y con `Tab`/`Shift-Tab`, como el explorer de §10.9—. El documento se embebe como `<script type="application/json">` y la CSP de RF-247 no se relaja. |
 | RF-252 | La fachada DEBE declarar `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]` y reexportar `rdd_openapi` como `rdd::openapi` con el documento, el builder, `OpenApiHttp`, `OpenApiHttpConfig` y `OpenApiHttpResponse`; `rdd-axum` DEBE declarar `openapi = ["dep:rdd-openapi"]`. Activar `openapi` sin `axum` es un error de compilación claro (RP-012) y `rdd-openapi` no aparece en el árbol de `rdd-core` ni de `rdd-hyper` (RA-022). |
+
+### 10.11 Archivos estáticos (`rdd-static`)
+
+Servir un directorio del disco es otra **entrada** de la app y sigue el mismo
+reparto que MCP, GraphQL y OpenAPI: la resolución, la seguridad de rutas, el
+MIME, la caché y el SPA viven en `rdd-static`, que solo usa `rdd_core::http` y el
+sistema de archivos; el montaje —leer el cuerpo con límite, ejecutar `prepare` y
+traducir la respuesta— lo hace `rdd-axum` con la feature `static-files` (§4.4,
+RP-033). No hay *hot reload*: el archivo se lee en cada petición y el servidor
+sirve lo que hay en el disco, sin vigilar el directorio, sin reiniciar y sin
+empaquetar los archivos en el binario (§2.2, ADR-32).
+
+```rust
+// main.rs — montaje (§26.11)
+use rdd::{StaticFiles, StaticFilesConfig};
+
+let files = StaticFiles::new("client")?.config(
+    StaticFilesConfig::new()
+        .mount("/site")
+        .spa(true)
+        .public(true)
+        .authorize(require_session),
+)?;
+app.run_on(AxumPlatform::new().static_files(files), &addr).await;
+```
+
+La raíz se canonicaliza al construir `StaticFiles`: un directorio inexistente o
+que no sea una carpeta es un error de arranque, no un 404 por petición. La
+configuración se valida antes de abrir el socket y un prefijo, índice o prefijo
+inmutable mal formado impide arrancar nombrando el valor. El montaje registra el
+prefijo sobre **todos** los métodos, para que CORS, JWT y RateLimit decidan antes
+que el disco; las rutas literales del núcleo (`/health`, `/tasks`) conservan
+prioridad sobre el subárbol. Un choque exacto con una ruta HTTP, un canal de
+§10.4, `/mcp`, `/graphql`, la documentación `/api-docs` o su JSON, o un
+solapamiento entre dos montajes estáticos, también impide arrancar.
+
+**Resolución y seguridad.** La ruta pedida se decodifica (`%XX`) **antes** de
+dividir en segmentos, así que `%2e%2e%2f` cuenta como `../`. Ningún segmento
+puede ser vacío, `.` o `..`, ni contener `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`
+o caracteres de control; los que empiezan por punto solo pasan con
+`dotfiles(true)`. El candidato se canonicaliza y se exige que siga bajo la raíz
+canonizada, de modo que un enlace simbólico que escape tampoco se sirve. Un
+fallo de resolución no inventa un 403: `handle` devuelve `None` y la plataforma
+responde el **404 canónico** del núcleo, sin repetir la cadena global (ya corrió
+en `prepare`).
+
+| Petición | Respuesta |
+|---|---|
+| `GET` de un archivo existente | 200 con `Content-Type`, `Content-Length`, `ETag`, `Cache-Control` y `X-Content-Type-Options: nosniff` |
+| `GET`/`HEAD` de un directorio | 200 con el índice (`index.html` por defecto), también en la raíz del montaje |
+| `HEAD` | Las mismas cabeceras que `GET`, sin cuerpo y con `Content-Length` real |
+| `If-None-Match` coincide con el `ETag` (incluye `W/` y `*`) | 304 sin cuerpo con `ETag`, `Cache-Control` y `nosniff` |
+| Método distinto de `GET`/`HEAD` | 405 Problem Details con `Allow: GET, HEAD` |
+| Ruta ausente, traversal, archivo oculto o enlace que escapa | 404 Problem Details canónico |
+| `spa(true)` y ruta sin extensión con `Accept: text/html` | 200 con el índice de la raíz |
+| `authorize` rechaza (y `public(false)`) | 401/403 Problem Details, antes de tocar el disco |
+| Cuerpo mayor a `limits.body_limit_bytes` | 413 Problem Details (RP-006) |
+
+El `Content-Type` sale de la extensión con `mime_guess`; los tipos textuales
+(`text/*`, `+json`, `+xml`, `application/json`, `application/javascript`,
+`image/svg+xml`) llevan `charset=utf-8`. El índice y los archivos fuera de los
+prefijos inmutables usan `Cache-Control: no-cache`; un archivo bajo un prefijo de
+`immutable` (por defecto `/assets`) usa `public, max-age=31536000, immutable`.
+El `ETag` es fuerte y se deriva de tamaño y fecha de modificación, así que un
+cambio en disco se refleja en la petición siguiente sin reiniciar nada. El
+fallback de SPA solo se aplica a rutas **sin extensión** y con `Accept:
+text/html`: nunca convierte una petición de API o de asset en `index.html`.
+
+| ID | Requisito |
+|---|---|
+| RF-255 | `StaticFiles::new(root)` DEBE canonicalizar la raíz al construir y fallar si no existe o no es una carpeta; `StaticFilesConfig::new()` DEBE partir de `mount` `/`, `index` `index.html`, `spa` `false`, `public` `false`, `dotfiles` `false` e `immutable` `/assets`, y ofrecer `mount`, `index`, `spa`, `public`, `dotfiles`, `immutable` y `authorize`. `validate` DEBE aceptar solo un prefijo literal (con `/` inicial, normalizado y sin `:`, `*`, `{`, `}`, `?`, `#`, `\` ni espacios), un índice que sea un nombre (no vacío, distinto de `.` y `..`, sin separadores ni comodines) y prefijos inmutables literales; un valor inválido DEBE impedir el arranque nombrando el valor. |
+| RF-256 | El montaje DEBE servir solo `GET` y `HEAD`; cualquier otro método DEBE responder 405 en Problem Details con `Allow: GET, HEAD`. `GET` y `HEAD` de un archivo DEBEN responder 200 con `Content-Type`, `Content-Length`, `ETag`, `Cache-Control` y `X-Content-Type-Options: nosniff`; `HEAD` NO DEBE llevar cuerpo pero sí la longitud real. Un `If-None-Match` que coincida con el `ETag` (incluidas la forma débil `W/` y `*`) DEBE responder 304 sin cuerpo con el `ETag` y la caché. El cuerpo se limita con `limits.body_limit_bytes` y por encima se responde 413 sin tocar el disco (RP-006). |
+| RF-257 | Con la feature `static-files`, `AxumPlatform::static_files(files)` DEBE montar el prefijo sobre **todos** los métodos para que la cadena global corra antes (RP-028, RP-033), cubriendo el prefijo exacto, su barra final y su subárbol; las rutas literales del núcleo DEBEN conservar prioridad. Un prefijo inválido, dos montajes iguales o solapados (uno cuelga del otro o alguno es `/`), o un choque exacto con una ruta HTTP, un canal de §10.4, `/mcp`, `/graphql`, la ruta o alias de `/api-docs` o su JSON DEBE impedir el arranque con un `PlatformError` que nombre el prefijo. Sin la feature o sin `.static_files(...)` el router no cambia; `HttpApp::dispatch` no sirve el directorio y una petición ahí recibe el 404 del `fallback` (§4.5). |
+| RF-258 | La ruta DEBE decodificarse (`%XX`) antes de dividirse en segmentos; ningún segmento puede ser vacío, `.` o `..` ni contener `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|` o caracteres de control, y los que empiezan por punto solo se sirven con `dotfiles(true)`. El candidato DEBE canonicalizarse y su ruta real DEBE seguir bajo la raíz canonicalizada; un enlace simbólico que escape NO DEBE servirse. Una ruta que no resuelve DEBE producir el 404 canónico del núcleo, nunca un 403 que revele si el archivo existe. |
+| RF-259 | El `Content-Type` DEBE salir de la extensión con `mime_guess`, con `charset=utf-8` para los tipos textuales. Un directorio (incluida la raíz del montaje) DEBE servirse con el índice configurado, y con `spa(true)` una ruta sin extensión y con `Accept: text/html` DEBE devolver el índice de la raíz; una ruta con extensión o sin `Accept: text/html` NO DEBE recibir el fallback. La caché DEBE ser `no-cache` para el índice y para los archivos fuera de los prefijos inmutables, y `public, max-age=31536000, immutable` bajo un prefijo inmutable. El `ETag` DEBE ser fuerte y derivarse de tamaño y fecha de modificación, de modo que un cambio en disco se vea en la petición siguiente sin reiniciar el servidor. |
+| RF-260 | `authorize(&Request)` DEBE ejecutarse después de los globales y antes de resolver la ruta; `Err` se responde con el mapeo del núcleo a Problem Details (§10.3) y con `public(true)` se omite. La fachada DEBE declarar `static-files = ["dep:rdd-static", "rdd-axum/static-files"]` y reexportar `StaticFiles`, `StaticFilesConfig`, `AuthorizeFn`, `DEFAULT_MOUNT` y `DEFAULT_INDEX` (también como `rdd::static_files`); `rdd-axum` DEBE declarar `static-files = ["dep:rdd-static"]` y `rdd-hyper` NO DEBE arrastrarlo (RA-023). Activar `static-files` sin `axum` es un error de compilación claro (RP-012). La suite S-01 a S-08 (§20) DEBE cubrirlo y NO DEBE existir vigilancia de archivos, recarga en caliente ni empaquetado de los archivos en el binario. |
 
 ---
 
@@ -2142,8 +2241,9 @@ crate y una línea en la fachada.
 Las features de la fachada son `axum` y `sqlite` por defecto, más una por motor
 opcional (`postgres`, y las que se añadan con cada crate), `socket` para
 `rdd-socket` (§10.5), `mcp` para `rdd-mcp` (§10.6), `mcp-http` para el montaje
-`/mcp` (§10.8), `graphql` para `rdd-graphql` y el montaje `/graphql` (§10.9) y
-`openapi` para `rdd-openapi` y la documentación `/api-docs` (§10.10).
+`/mcp` (§10.8), `graphql` para `rdd-graphql` y el montaje `/graphql` (§10.9),
+`openapi` para `rdd-openapi` y la documentación `/api-docs` (§10.10) y
+`static-files` para `rdd-static` y el montaje de archivos estáticos (§10.11).
 Activar la feature de un motor trae el crate como dependencia
 `optional`, re-exporta su adaptador y hace que `rdd::run_main` llame a su
 `register()`; `socket` activa `rdd-socket` y la feature `ws` de `rdd-axum`, y
@@ -2155,7 +2255,11 @@ conectar; `mcp-http` activa `mcp` y `rdd-axum/mcp-http` y re-exporta `McpHttp`,
 `rdd-axum/graphql` y re-exporta `rdd_graphql` como `rdd::graphql` con su motor y
 sus macros (RF-243), sin nada que registrar; `openapi` activa `rdd-openapi` y
 `rdd-axum/openapi` y re-exporta el documento, el builder y el montaje como
-`rdd::openapi` (RF-252), tampoco hay nada que registrar ni conectar. Es `run_main` —el código que expande `#[rdd::main]`— y no un
+`rdd::openapi` (RF-252), tampoco hay nada que registrar ni conectar;
+`static-files` activa `rdd-static` y `rdd-axum/static-files` y re-exporta
+`StaticFiles`, `StaticFilesConfig`, `AuthorizeFn`, `DEFAULT_MOUNT` y
+`DEFAULT_INDEX` (también como `rdd::static_files`, RF-260), sin nada que
+registrar. Es `run_main` —el código que expande `#[rdd::main]`— y no un
 inicializador global, porque la fachada solo puede ejecutar código en el camino
 que ella misma genera, igual que RP-012 con la plataforma.
 `register()` es idempotente y hace ambas cosas: `declare` para sus esquemas e
@@ -2758,6 +2862,24 @@ en la plataforma (§4.5). El demo documentado cierra la suite en O-06.
 | O-05 | La validación del documento rechaza versión no `3.x`, título vacío, ruta sin `/`, operación sin respuestas y `operationId` duplicado; el arranque valida en ambos sentidos: una operación documentada sin ruta montada es fatal siempre, una ruta montada sin documentar es fatal con `strict_routes(true)` y solo avisa con `false` | RF-245, RF-248, RF-250 |
 | O-06 | El montaje no ocupa una ruta existente: documentar una ruta que la app ya monta o montar la UI sobre una ruta HTTP existente aborta el arranque nombrando la ruta en conflicto | RF-246, RF-250 |
 
+### Suite de archivos estáticos (`rdd-static`)
+
+Los casos S-01 a S-07 cubren §10.11 contra un `AxumPlatform` real con la feature
+`static-files` en `127.0.0.1:0`, sobre un directorio temporal por prueba; S-08
+lanza el demo con `--static`. No se ejecutan contra `dispatch` porque el montaje
+vive en la plataforma (§4.5) y no modifican archivos del repositorio.
+
+| Caso | Verifica | Requisitos |
+|---|---|---|
+| S-01 | `GET /site/` sirve `index.html` con `text/html; charset=utf-8`, `no-cache` y `nosniff`; con un montaje en `/`, las rutas literales del núcleo (`/health`, `/tasks`) siguen ganando al subárbol | RF-256, RF-257, RF-259 |
+| S-02 | Un asset bajo `/assets` sale con el MIME por extensión, `public, max-age=31536000, immutable` y ETag; `HEAD` devuelve las mismas cabeceras, la longitud real y ningún byte de cuerpo | RF-256, RF-259 |
+| S-03 | Repetir el `GET` con `If-None-Match` igual al ETag responde 304 sin cuerpo, conservando `ETag`, `Cache-Control` y `nosniff` | RF-256 |
+| S-04 | `..`, `%2e%2e`, barras invertidas y `/.env` no salen de la raíz ni se sirven; con `dotfiles(true)` el archivo oculto sí se sirve | RF-258 |
+| S-05 | Con `spa(true)`, una ruta sin extensión y `Accept: text/html` devuelve el índice; una ruta con extensión o sin `Accept: text/html` recibe 404 | RF-259 |
+| S-06 | `POST` al montaje responde 405 con `Allow: GET, HEAD`; una ruta inexistente responde el 404 canónico en Problem Details sin repetir la cadena global | RF-256, RP-033 |
+| S-07 | `authorize` corre después de los globales: un rechazo produce 401/403 y no toca el disco; un montaje que choca con `/health`, otro montaje solapado o una configuración inválida impiden arrancar nombrando el prefijo | RF-255, RF-257, RF-260 |
+| S-08 | `example/todo-app --static` sirve `client/` en `/site`: la página, el CSS con su MIME, un `HEAD` de `app.js` y un 404 en Problem Details | RF-256, RF-259, §26.11 |
+
 ### Suite de rendimiento (`rdd-bench`)
 
 El arnés `rdd-bench` no es una prueba de corrección: mide un binario `--release` en
@@ -3068,7 +3190,7 @@ con el informe y la página de benchmark, demo `--openapi` y casos O-01 a O-06.
       `openapi_config` y UI servida en `/api-docs`; acumulación de argumentos
       `--mcp-http`, `--graphql` y `--openapi` (§26.9, §26.10)
 - [ ] Casos O-01 a O-06 en `crates/rdd/tests/openapi.rs`; el documento del demo
-      se valida con una prueba unitaria en `example/todo-app/src/openapi.rs`
+      se valida con una prueba unitaria en `example/todo-app/src/openapi/mod.rs`
       (RF-245 a RF-252)
 - [ ] RA-022 verificada: `cargo tree -p rdd-openapi` sin plataformas y
       `cargo tree -p rdd-hyper` sin `rdd-openapi`
@@ -3083,6 +3205,44 @@ autenticada con el Bearer; `rdd-bench --release` emite un informe con `errors`
 0 y la página muestra los mismos números que el JSON, sin peticiones externas;
 `cargo tree -p rdd-openapi` cumple RA-022.
 
+### Fase 0.13 — Archivos estáticos (`rdd-static`)
+
+**Entrega:** crate `rdd-static` (resolución, seguridad de rutas, MIME, caché,
+índice y SPA), montaje en `rdd-axum` con la feature `static-files`, demo
+`--static` y casos S-01 a S-08. El *hot reload* queda explícitamente fuera
+(§2.2, ADR-32).
+
+- [ ] `rdd-static`: `StaticFiles::new(root)` con raíz canonicalizada,
+      `StaticFilesConfig` con `mount`, `index`, `spa`, `public`, `dotfiles`,
+      `immutable` y `authorize`, y `validate` de arranque (RF-255)
+- [ ] Decodificación `%XX` antes de segmentar, rechazo de `..`/`.`/separadores y
+      canonicalización bajo la raíz; sin traversal ni enlaces que escapen
+      (RF-258)
+- [ ] `GET`/`HEAD` con MIME por extensión, `ETag` fuerte, 304 con
+      `If-None-Match`, `no-cache` para índice y `immutable` para `/assets`,
+      índice de directorio y fallback de SPA acotado (RF-256, RF-259)
+- [ ] `AxumPlatform::static_files` con la feature `static-files`, montaje del
+      subárbol con prioridad de las rutas del núcleo, 404 canónico en un fallo y
+      validación de solapamientos y choques al arrancar (RF-257, RP-033)
+- [ ] Feature `static-files` de la fachada con re-export de `StaticFiles`,
+      `StaticFilesConfig`, `AuthorizeFn`, `DEFAULT_MOUNT` y `DEFAULT_INDEX`; sin
+      `axum` es un error de compilación claro (RF-260, RA-023)
+- [ ] Demo `--static`: `client/index.html` y `client/assets/*`, configuración
+      `STATIC_*` y montaje en `/site` junto a los demás modos acumulables
+      (§26.11)
+- [ ] Casos S-01 a S-07 en `crates/rdd/tests/static_files.rs` y S-08 en
+      `example/todo-app/tests/static_files.rs` (RF-255 a RF-260)
+- [ ] RA-023 verificada: `cargo tree -p rdd-static` sin plataformas y
+      `cargo tree -p rdd-hyper` sin `rdd-static`
+- [ ] Docs regenerados y `specVersion` a `0.12.0-draft`
+
+**Aceptación:** el demo sirve su página y sus assets desde `/site` con el MIME y
+la caché correctos; un `HEAD` coincide con el `GET` sin cuerpo y un `If-None-Match`
+da 304; `..`, `%2e%2e` y los archivos ocultos no se sirven; una ruta inexistente
+responde el 404 canónico; un montaje que choca con una ruta existente o se
+solapa con otro aborta el arranque; no hay watcher ni recarga en caliente; la
+suite S pasa completa y `cargo tree -p rdd-static` cumple RA-023.
+
 ### Criterios transversales (todas las fases)
 
 - [ ] `cargo clippy -- -D warnings`, `cargo fmt --check` y `cargo test` en CI
@@ -3094,6 +3254,7 @@ autenticada con el Bearer; `rdd-bench --release` emite un informe con `errors`
 - [ ] RA-020 verificada en CI (`rdd-mcp` no depende de plataformas y `rdd-hyper` no arrastra `rdd-mcp`)
 - [ ] RA-021 verificada en CI (`rdd-graphql` no arrastra plataformas, Tower, WebSocket ni drivers y `rdd-hyper` no arrastra `rdd-graphql`)
 - [ ] RA-022 verificada en CI (`rdd-openapi` no arrastra plataformas ni drivers y `rdd-hyper` no arrastra `rdd-openapi`)
+- [ ] RA-023 verificada en CI (`rdd-static` no arrastra plataformas, Tower ni drivers y `rdd-hyper` no arrastra `rdd-static`)
 - [ ] Cobertura de pruebas de integración para cada requisito `RF-` marcado como DEBE
 - [ ] Cada diagnóstico de macro tiene un test `trybuild` con su mensaje esperado
 - [ ] Documentación con ejemplo ejecutable (`cargo test --doc`) por cada API pública
@@ -3132,6 +3293,7 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | V24 | Explorer Vue + shadcn-vue + CodeMirror compilado a un solo HTML: medir el tamaño del bundle y verificar que Vite `singlefile` no deje `src`/`href` externos, `eval` ni peticiones a terceros; comprobar la CSP con script inline y el autocompletado de CodeMirror contra `__schema` real. Verificar `npm ci && npm run build` reproducible (artefacto idéntico o equivalente) y con caché de npm en CI sin red. | 0.11 | §10.9, RF-241, ADR-29 |
 | V25 | UI OpenAPI Vue + shadcn-vue compilada a un solo HTML: medir el bundle, comprobar que `vite-plugin-singlefile` no deja `src`/`href` externos, `eval` ni peticiones a terceros, que la CSP `default-src 'none'` no rompe los estilos ni el script inline, y que el documento embebido se escapa sin cerrar el `script` (`</script>` en descripciones). Verificar que *Try it* funciona en el mismo origen y que `npm ci && npm run build` es reproducible sin red. | 0.12 | §10.10, RF-251, ADR-30 |
 | V26 | Estabilidad de los percentiles del arnés: cuántas muestras y qué ventana hacen que p99 no oscile más de un 10 % entre ejecuciones en la misma máquina; confirmar que el keep-alive de `hyper` y el eco WebSocket de `tokio-tungstenite` no acumulan memoria ni conexiones y que el informe con `errors` 0 es reproducible. | 0.12 | §20, RF-253, ADR-31 |
+| V27 | Archivos estáticos en los sistemas objetivo: si leer un archivo mientras otro proceso lo reescribe (editor, despliegue) devuelve contenido parcial en Windows, si la resolución del `ETag` por fecha de modificación basta en todos los sistemas de archivos usados y si `mime_guess` cubre las extensiones del sitio. Verificar también que la canonicalización detecta enlaces simbólicos que escapan a la raíz en Windows. Un watcher de desarrollo se evaluó y queda fuera por decisión (§2.2, ADR-32); no se implementa. | 0.13 | §10.11, RF-258, RF-259 |
 
 ---
 
@@ -3170,6 +3332,7 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | ADR-29 | **Explorer profesional compilado a un único HTML embebido.** App Vue 3 + TypeScript + Tailwind + shadcn-vue + CodeMirror construida con Vite y `vite-plugin-singlefile`; el artefacto (`explorer.html` con JS/CSS inline) se commitea y se embebe con `include_str!`. | (a) Servir GraphiQL desde CDN; (b) servir el bundle como assets sueltos; (c) mantener el HTML a mano; (d) no incluir explorer. | (a) rompe el funcionamiento offline y abre la CSP a terceros. (b) pierde `include_str!` y obliga a rutas estáticas distintas en cada plataforma. (c) no alcanza la paridad de editor, documentación y tema que pide la fase 0.11. (d) era una petición explícita del usuario. El costo es una cadena de build JS pinneada por `package-lock.json` y el tamaño del bundle en el binario; el runtime sigue sin red, sin `eval` y con la CSP intacta, y el artefacto se auditaba de una lectura. |
 | ADR-30 | **El documento OpenAPI lo compone la aplicación y la UI viene embebida.** `rdd-openapi` modela OpenAPI 3.1, valida el documento y lo contrasta con las rutas montadas; la UI Vue + shadcn-vue con el tema del explorer se compila a un único HTML y se embebe con `include_str!`, servida en `/api-docs` con alias `/docs` y `/swagger` y el documento en `path/openapi.json`. | (a) Generar el documento desde los controllers con una macro; (b) servir Swagger UI o Redoc desde CDN; (c) generar YAML estático en build; (d) embeber solo el JSON y dejar la UI al usuario. | (a) acopla la documentación a la tabla de rutas y no cubre operaciones que no son CRUD ni descripciones que decide la app; además obliga a introspeccionar tipos en compilación. (b) rompe el modo offline y la CSP, y ya se descartó para el explorer (ADR-29). (c) crea una segunda fuente de verdad que puede divergir del binario y no conoce los alias ni el montaje. (d) deja al usuario sin la UI que pide la fase. Componer el documento en código deja la validación al arrancar —incluido el contraste con las rutas montadas— y la UI comparte tema, build y garantías de CSP con `/graphql`. |
 | ADR-31 | **El benchmark es una herramienta interna reproducible, no una compuerta de CI.** `rdd-bench` mide `AxumPlatform` real en un puerto efímero, publica `docs/assets/benchmarks.json` y la página lo embebe de forma idempotente. | (a) Umbral de rendimiento en CI que rompa el build; (b) publicación automática en cada release; (c) `criterion` en proceso sobre `dispatch`. | (a) es frágil: la varianza de una máquina de CI haría fallar cambios correctos y el número no representa el despliegue. (b) exige infraestructura y un runner estable que §2.2 mantiene fuera. (c) mide el núcleo en proceso, no la pila HTTP ni WebSocket completa, y no describe la latencia que ve un cliente. El arnés se ejecuta a mano, registra el entorno para que la comparación sea honesta y su informe es un dato, no un contrato. |
+| ADR-32 | **Los archivos estáticos se sirven desde el disco con un crate neutral y montaje en la plataforma; sin *hot reload* ni empaquetado.** `rdd-static` resuelve la ruta, valida el traversal, elige MIME y caché, aplica índice y SPA y devuelve una respuesta de `rdd_core::http`; `AxumPlatform::static_files` (feature `static-files`) lee el cuerpo, ejecuta `prepare` y traduce la respuesta. El archivo se lee en cada petición: el servidor sirve siempre lo que hay en disco y el navegador recarga, sin vigilar directorios ni reiniciar el proceso. | (a) `tower_http::services::ServeDir` en `rdd-axum`; (b) embeber el directorio en el binario (`include_dir`/`rust-embed`); (c) un watcher/HMR de desarrollo en el framework; (d) un bundler propio que minifique y huellé los assets. | (a) ata la funcionalidad a una plataforma y a Tower, rompe RA-023/ADR-11 y no cubre `rdd-hyper`; además deja la seguridad de rutas y la política de caché fuera del contrato. (b) obliga a recompilar para cambiar un CSS y contradice la petición de servir archivos del proyecto; los únicos embebidos siguen siendo las dos UIs del framework. (c) es una herramienta de desarrollo que §2.2 mantiene fuera: añade un watcher, un canal de recarga y más superficie sin mejorar el contrato de servir archivos. (d) convierte al framework en un bundler ajeno a su alcance. La lectura en tiempo de petición hace que el cambio en disco se vea sin reiniciar, que es el único «recargar» que se promete. |
 
 ---
 
@@ -3203,7 +3366,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.10.0-draft | 2026-11-11 | **Explorer profesional y documento público configurable.** Petición del usuario: un explorer tipo Apollo Sandbox con Vue + shadcn y paleta de GitHub. (1) **ADR-29** se enmienda: el explorer pasa de HTML a mano a una app Vue 3 + TypeScript + Tailwind + shadcn-vue + CodeMirror compilada con Vite a un único HTML inline, commiteado y embebido con `include_str!`; el runtime sigue sin CDN ni `eval` y la CSP no cambia. (2) **RF-239/241/242**: `authorize` exime solo el documento cuando `public_explorer(true)` (por defecto `false`); el explorer gana esquema/documentación por introspección, autocompletado, variables/cabeceras, respuesta, SSE e historial con tema Primer claro/oscuro. (3) **G-06/G-08/G-09** cubren el HTML único y el documento público; el demo activa `public_explorer(true)`. (4) **§21**: fase 0.11 con aceptación en navegador. (5) **§22**: **V24** (tamaño, CSP y reproducibilidad del bundle). (6) **§26.9**: el demo monta el explorer público y las operaciones siguen con JWT. |
 | 0.10.1-draft | 2026-11-11 | **El explorer adopta el sistema de diseño del sitio público.** Petición del usuario: alinear la UI con el design system de la documentación. (1) **RF-241** cambia la paleta Primer por «oxide forge»: neutros cálidos, óxido `#ff5a1f`, ámbar `#ffb347`, verde ácido `#a3e635`, arco `#4f9dff` y magenta `#ff3d7f`; tipografías Space Grotesk/Inter/JetBrains Mono con degradación a fuentes del sistema, sin descargas externas. (2) **§21/fase 0.11**: la casilla pasa a exigir tema oscuro por defecto y variante clara; el documento sube a `0.10.1-draft`. (3) El resaltado de CodeMirror deja de depender de `@uiw/codemirror-theme-github` y pasa a un tema propio que consume las variables CSS del design system, de modo que el cambio claro/oscuro es inmediato y el artefacto sigue siendo un único HTML sin red ni `eval`. |
 | 0.10.2-draft | 2026-11-11 | **Tab indenta y acepta la sugerencia del editor.** Petición del usuario: el editor de CodeMirror no indentaba al tabular y el autocompletado debía funcionar. (1) **RF-241**: el editor DEBE indentar la línea o la selección con Tab, desindentar con Shift+Tab y aceptar la sugerencia activa con Tab cuando el desplegable está abierto; además autocompleta al escribir y con Ctrl+Espacio. (2) **§21/fase 0.11**: la casilla del editor incorpora Tab; el documento sube a `0.10.2-draft`. (3) El cambio vive en la extensión de teclas del explorer y no altera el artefacto autocontenido ni la CSP. |
-| 0.11.0-draft | 2026-11-12 | **Documentación OpenAPI (`/api-docs`) y benchmarks reproducibles.** Petición del usuario: documentar por HTTP con una UI del mismo stack y tema que el explorer, y publicar un menú de rendimiento con gráficos. (1) **§2.1/§2.2**: OpenAPI entra como fase 0.12 opcional; siguen fuera la generación automática desde controllers, Swagger UI/Redoc desde CDN y el benchmark como compuerta de CI. (2) **§4.1/§4.2/§4.3/§4.4**: entran `rdd-openapi` (neutral, sin plataformas) y `rdd-bench` (herramienta interna); `rdd-axum` gana la feature `openapi`; nueva **RA-022** (solo `rdd-axum` depende de `rdd-openapi` y `rdd-hyper` no lo arrastra) y **RP-032** (el montaje `/api-docs` valida el documento al arrancar, no interpreta la UI y se prueba con O-01 a O-06). (3) **§10.10 nuevo**: modelo OpenAPI 3.1, `OpenApiBuilder`, `OpenApi::validate`, `OpenApi::check_routes`, `OpenApiHttp`, `OpenApiHttpConfig`, `AxumPlatform::openapi` y **RF-245 a RF-252** (modelo y validación; montaje con alias y JSON; solo `GET` con 405/404/413; validación bidireccional de rutas; `authorize` con `public_docs`; configuración; UI Vue 3 + TS estricto + Tailwind + shadcn-vue con el tema oxide forge, autocontenida y *Try it* del mismo origen; feature de la fachada). (4) **§12.6**: feature `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]` y re-export como `rdd::openapi`. (5) **§20**: suites O-01 a O-06 y la metodología de `rdd-bench` con **RF-253** (arnés HTTP/WS con p50/p95/p99 y entorno) y **RF-254** (informe y página idempotentes). (6) **§21**: fase 0.12 con aceptación de UI, JSON, 405, validación al arrancar y informe sin errores; criterio transversal de RA-022. (7) **§22**: **V25** (bundle, CSP, escape del documento embebido y reproducibilidad de la UI) y **V26** (estabilidad de percentiles y ausencia de fugas en el arnés). (8) **§23**: **ADR-30** (documento compuesto por la app y UI embebida, en vez de macro, CDN o YAML estático) y **ADR-31** (benchmark interno reproducible, no compuerta de CI). (9) **§26.9/§26.10**: el demo acumula `--mcp-http`, `--graphql` y `--openapi`, y documenta las diez rutas con su documento, su montaje y su configuración. (10) **Sitio**: `docs/benchmark.html`, `docs/assets/benchmarks.json`, `scripts/build-benchmark-page.mjs`, el ítem *Benchmark* en nav, buscador, portada, sitemap y `llms.txt`. El documento sube a `0.11.0-draft`. |
+| 0.11.0-draft | 2026-11-12 | **Documentación OpenAPI (`/api-docs`) y benchmarks reproducibles.** Petición del usuario: documentar por HTTP con una UI del mismo stack y tema que el explorer, y publicar un menú de rendimiento con gráficos. (1) **§2.1/§2.2**: OpenAPI entra como fase 0.12 opcional; siguen fuera la generación automática desde controllers, Swagger UI/Redoc desde CDN y el benchmark como compuerta de CI. (2) **§4.1/§4.2/§4.3/§4.4**: entran `rdd-openapi` (neutral, sin plataformas) y `rdd-bench` (herramienta interna); `rdd-axum` gana la feature `openapi`; nueva **RA-022** (solo `rdd-axum` depende de `rdd-openapi` y `rdd-hyper` no lo arrastra) y **RP-032** (el montaje `/api-docs` valida el documento al arrancar, no interpreta la UI y se prueba con O-01 a O-06). (3) **§10.10 nuevo**: modelo OpenAPI 3.1, `OpenApiBuilder`, `OpenApi::validate`, `OpenApi::check_routes`, `OpenApiHttp`, `OpenApiHttpConfig`, `AxumPlatform::openapi` y **RF-245 a RF-252** (modelo y validación; montaje con alias y JSON; solo `GET` con 405/404/413; validación bidireccional de rutas; `authorize` con `public_docs`; configuración; UI Vue 3 + TS estricto + Tailwind + shadcn-vue con el tema oxide forge, autocontenida y *Try it* del mismo origen; feature de la fachada). (4) **§12.6**: feature `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]` y re-export como `rdd::openapi`. (5) **§20**: suites O-01 a O-06 y la metodología de `rdd-bench` con **RF-253** (arnés HTTP/WS con p50/p95/p99 y entorno) y **RF-254** (informe y página idempotentes). (6) **§21**: fase 0.12 con aceptación de UI, JSON, 405, validación al arrancar y informe sin errores; criterio transversal de RA-022. (7) **§22**: **V25** (bundle, CSP, escape del documento embebido y reproducibilidad de la UI) y **V26** (estabilidad de percentiles y ausencia de fugas en el arnés). (8) **§23**: **ADR-30** (documento compuesto por la app y UI embebida, en vez de macro, CDN o YAML estático) y **ADR-31** (benchmark interno reproducible, no compuerta de CI). (9) **§26.9/§26.10**: el demo acumula `--mcp-http`, `--graphql` y `--openapi`, y documenta las diez rutas con su documento, su montaje y su configuración. (10) **Sitio**: `docs/benchmark.html`, `docs/assets/benchmarks.json`, `scripts/build-benchmark-page.mjs`, el ítem *Benchmark* en nav, buscador, portada, sitemap y `llms.txt`. (11) **UI**: el cuerpo del *Try it* se edita con CodeMirror —resaltado de JSON e indentación automática y con `Tab`/`Shift-Tab`, igual que el explorer—. El documento sube a `0.11.0-draft`. |
+| 0.12.0-draft | 2026-11-12 | **Archivos estáticos (`rdd-static`) sin *hot reload*.** Petición del usuario: implementar solo el módulo de archivos estáticos y dejar la recarga en caliente fuera del desarrollo. (1) **§2.1/§2.2**: los archivos estáticos entran como fase 0.13 opcional; se excluyen explícitamente el *hot reload*/watcher, el empaquetado de assets en el binario y su transformación. (2) **§4.1/§4.2/§4.3/§4.4**: entra `rdd-static` (neutral: `rdd-core`, `anyhow`, `bytes`, `mime_guess` y `tokio` con `fs`); `rdd-axum` gana la feature `static-files`; nueva **RA-023** (solo `rdd-axum` depende de `rdd-static` y `rdd-hyper` no lo arrastra) y **RP-033** (el montaje ejecuta `prepare`, no interpreta la ruta y devuelve el 404 canónico sin repetir la cadena global). (3) **§10.11 nuevo**: `StaticFiles`, `StaticFilesConfig`, `AuthorizeFn`, la resolución con decodificación previa al corte de segmentos, la canonicalización bajo la raíz, el MIME con `charset` textual, ETag/304, la caché `no-cache`/`immutable`, el índice, el SPA acotado, `dotfiles` y **RF-255 a RF-260**. (4) **§12.6**: feature `static-files = ["dep:rdd-static", "rdd-axum/static-files"]` y re-export como `rdd::static_files`. (5) **§20**: suite S-01 a S-08 contra un servidor real y el demo. (6) **§21**: fase 0.13 con aceptación de página, assets, `HEAD`, 304, traversal bloqueado, 404 canónico y montajes inválidos; criterio transversal de RA-023. (7) **§22**: **V27** (lectura mientras se reescribe el archivo, resolución del ETag, cobertura de `mime_guess` y enlaces que escapan en Windows). (8) **§23**: **ADR-32** (disco + crate neutral + montaje, frente a `ServeDir`, embeber, watcher o bundler). (9) **§26.2/§26.11**: el demo acumula `--static`, sirve `client/` en `/site` con `STATIC_*` y sus tests S-08. El documento sube a `0.12.0-draft`. |
 | 0.10.4-draft | 2026-11-11 | **Las raíces GraphQL del demo se separan por archivo.** Petición del usuario: mutaciones, consultas y tipos estaban mezclados en `app_graphql.rs`. (1) **§26.9**: las raíces viven en `src/graphql/{query,mutation,subscription}.rs` y `mod.rs` solo reexporta; la macro emite un `impl GraphqlRoot` por bloque anotado, así que no puede haber dos sobre la misma raíz y publicar raíces por módulo exigiría cambiar la macro y enmendar RF-240. (2) `CreateTaskInput` baja a `modules/tasks/presentation/task_graphql.rs` junto a `Task` y el módulo lo reexporta (RA-004): el contrato GraphQL lo publica el módulo dueño. (3) El demo pasa a `mod graphql;` y `.query(graphql::Query)`, sin cambios de comportamiento. El documento sube a `0.10.4-draft`. |
 | 0.10.3-draft | 2026-11-11 | **El montaje de `/graphql` se configura por entorno.** Petición del usuario: ver dónde se configuran `path`, `explorer`, `public_explorer` y `max_depth`. (1) **§26.9**: el bloque `--graphql` de `main.rs` consume `config/graphql_config.rs`, que expone `GRAPHQL_PATH`, `GRAPHQL_EXPLORER`, `GRAPHQL_PUBLIC_EXPLORER` y `GRAPHQL_MAX_DEPTH` con los valores que antes estaban fijos; el demo mantiene el explorer público para G-09 y en producción se desactiva con `GRAPHQL_EXPLORER=false` o se protege con `GRAPHQL_PUBLIC_EXPLORER=false`. (2) El README del demo documenta las cuatro variables y el listado de argumentos del binario (`--mcp`, `--mcp-http`, `--graphql` y `--explorer-token`), y la guía de la CLI documenta `rdd run --memory` y el reenvío tras `--`. El documento sube a `0.10.3-draft`. |
 | 0.9.0-draft | 2026-11-11 | **GraphQL opcional (`/graphql`): consultas, mutaciones, suscripciones y explorer.** Petición del usuario. Se resuelve con un motor propio, macros y SSE, por las mismas razones de portabilidad que MCP. (1) **§2.1/§2.2**: GraphQL sale de la lista de exclusiones y entra como fase 0.10 opcional, sobre el mismo `HttpApp` y el mismo contenedor; siguen fuera SDL, directivas propias, interfaces, uniones, enums, `@defer`/`@stream`, batching, consultas persistidas y el subprotocolo `graphql-transport-ws`. (2) **§4.1/§4.2/§4.3**: entra `rdd-graphql` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow`); `rdd-axum` gana la feature `graphql`; nueva **RA-021** (la dependencia va en una sola dirección, el motor no arrastra plataformas ni WebSocket y `rdd-hyper` no arrastra `rdd-graphql`). (3) **§4.4**: nuevas **RP-030** (el montaje `/graphql` ejecuta `prepare`, no interpreta el documento y se prueba con G-01 a G-09) y **RP-031** (el stream SSE sale del motor y la plataforma solo lo vuelca; desconectar cancela; sin reintento ni WebSocket). **§4.5**: la suite G no añade casos C. (4) **§8.7**: diagnósticos **RDD0501** (tipo o firma no soportada) y **RDD0502** (nombre duplicado o reservado). (5) **§10.9 nuevo**: `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y `AxumPlatform::graphql`, con el subconjunto del documento, la forma de `errors`, la introspección, el formato `graphql-sse` y **RF-233 a RF-244** (montaje y choque de rutas; POST/GET con su tabla de estados; subconjunto del documento con `max_depth`; validación, ejecución y burbujeo de `null`; introspección; SSE con `next`/`complete` y cancelación; `authorize` e identidad por `ext`/`get`/`resolve`; macros con RDD0501/RDD0502; explorer embebido con CSP; configuración; feature de la fachada; validación del esquema y errores internos). (6) **§12.6**: feature `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y re-export como `rdd::graphql`. (7) **§20**: suite G-01 a G-09 contra el motor y un servidor real. (8) **§21**: fase 0.10 con aceptación de dos usuarios, 401 en explorer y suscripción, explorer sin red, SSE y errores con `locations`/`path`. (9) **§22**: **V22** (clientes GraphQL reales e introspección/GET/SSE) y **V23** (expansión de macros y coste de `max_depth`). (10) **§23**: **ADR-26** (motor propio), **ADR-27** (macros en vez de SDL), **ADR-28** (suscripciones solo por SSE) y **ADR-29** (explorer propio embebido). (11) **§26.9**: el demo monta `/graphql` con JWT, un esquema sobre los casos de uso, una suscripción sobre `TaskFeed` filtrada por dueño y el explorer. |
@@ -3407,6 +3571,11 @@ publica `/auth/register`, `/auth/login` y `/users/me`.
 
 ```
 example/todo-app/
+├── client/                     # página pública servida por --static (§26.11)
+│   ├── index.html
+│   └── assets/
+│       ├── app.js
+│       └── style.css
 ├── migrations/
 │   ├── 0001_tasks.sql          # lo genera el CLI (RF-192)
 │   └── 0002_users.sql          # lo añade el demo
@@ -3416,7 +3585,8 @@ example/todo-app/
 │   │   ├── graphql_config.rs   # ruta, explorer y max_depth (§26.9)
 │   │   ├── jwt_config.rs       # secreto, expiración y ADMIN_EMAIL, solo del entorno
 │   │   ├── mcp_config.rs       # MCP_ALLOWED_ORIGINS para el montaje /mcp (§26.8)
-│   │   └── openapi_config.rs   # ruta, UI y políticas de /api-docs (§26.10)
+│   │   ├── openapi_config.rs   # ruta, UI y políticas de /api-docs (§26.10)
+│   │   └── static_config.rs    # directorio, prefijo y políticas de --static (§26.11)
 │   ├── graphql/                # raíces del esquema, una por archivo (§26.9)
 │   │   ├── mod.rs
 │   │   ├── mutation.rs
@@ -3436,13 +3606,15 @@ example/todo-app/
 │   │           ├── task_feed.rs     # canal /ws/tasks (§26.7)
 │   │           ├── task_graphql.rs  # contrato GraphQL del módulo (§26.9)
 │   │           └── task_tools.rs    # tools MCP de §26.7
-│   ├── openapi.rs              # documento OpenAPI 3.1 del demo (§26.10)
+│   ├── openapi/                # documento OpenAPI 3.1 del demo (§26.10)
+│   │   └── mod.rs
 │   └── main.rs
 └── tests/
     ├── acceptance.rs           # 401, 403, 429 y preflight
     ├── graphql.rs              # G-09: el binario con --graphql
     ├── mcp_stdio.rs            # M-09: el binario con --mcp
-    └── mcp_http.rs             # M-16: el binario con --mcp-http
+    ├── mcp_http.rs             # M-16: el binario con --mcp-http
+    └── static_files.rs         # S-08: el binario con --static
 ```
 
 `src/middleware/` y `config/jwt_config.rs` los añade el demo, no el CLI: no todos
@@ -4026,13 +4198,14 @@ nuevo initializer `config/explorer_config.rs`, ajustable por
 explorer entre arranques. El token no se registra en la base y caduca con
 `JWT_TTL_SECS` (§26.3).
 
-El binario reconoce cinco argumentos: `--mcp` (stdio, sin puerto),
+El binario reconoce seis argumentos: `--mcp` (stdio, sin puerto),
 `--explorer-token` (imprime el Bearer y sigue), `--mcp-http` (`/mcp`),
-`--graphql` (`GRAPHQL_PATH`) y `--openapi` (`OPENAPI_PATH`, §26.10). `--mcp` sigue
-siendo excluyente porque no abre puerto; los tres montajes de servidor se
-**acumulan** sobre un solo `AxumPlatform`, así que `--graphql --openapi` sirve el
-explorer y la documentación a la vez. El README del demo mantiene el listado y los
-ejemplos de combinación.
+`--graphql` (`GRAPHQL_PATH`), `--openapi` (`OPENAPI_PATH`, §26.10) y `--static`
+(`STATIC_MOUNT`, §26.11). `--mcp` sigue siendo excluyente porque no abre puerto;
+los cuatro montajes de servidor se **acumulan** sobre un solo `AxumPlatform`, así
+que `--graphql --openapi --static` sirve el explorer, la documentación y la
+página del demo a la vez. El README del demo mantiene el listado y los ejemplos
+de combinación.
 
 ```rust
 // config/explorer_config.rs — identidad del token de explorer (§26.9)
@@ -4073,12 +4246,12 @@ plataforma comprueba al arrancar que cubra exactamente las rutas montadas
 rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi"] }
 ```
 
-El documento vive en `src/openapi.rs` y usa los DTOs como esquemas con
+El documento vive en `src/openapi/mod.rs` y usa los DTOs como esquemas con
 `$ref` a `components.schemas`; el dueño sale de la sesión y por eso
 `Task.owner_id` documenta la respuesta, no un cuerpo de entrada:
 
 ```rust
-// src/openapi.rs — documento del demo (§10.10)
+// src/openapi/mod.rs — documento del demo (§10.10)
 pub fn document() -> OpenApi {
     OpenApiBuilder::new("todo-app", env!("CARGO_PKG_VERSION"))
         .description("Demo de rdd: TODO con JWT, roles, CORS, rate limit, GraphQL y MCP.")
@@ -4153,3 +4326,96 @@ documentada que no existe; O-06 que la UI no ocupa una ruta de la app. En vivo,
 `GET /api-docs`, `/docs` y `/swagger` sirven la misma UI sin red,
 `GET /api-docs/openapi.json` devuelve el documento y *Try it* ejecuta
 `listTasks` con el Bearer pegado en Cabeceras.
+
+### 26.11 Archivos estáticos del demo
+
+`example/todo-app --static` sirve `client/` en `/site` sobre el mismo servidor
+REST y el mismo contenedor (§10.11). El modo se acumula con `--mcp-http`,
+`--graphql` y `--openapi`: un solo proceso puede servir la página, el explorer,
+la documentación y la API. La feature se añade al `Cargo.toml` del demo:
+
+```toml
+rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi", "static-files"] }
+```
+
+`client/index.html` es la página pública del demo y usa rutas **absolutas**
+(`/site/assets/style.css`, `/site/assets/app.js`): con un montaje en `/site`, una
+ruta relativa se resolvería contra `/site/` y funcionaría, pero al pedir `/site`
+sin barra final se rompería, así que la página no depende de la barra. Sus
+assets viven bajo `/site/assets`, que es el prefijo inmutable por defecto; la
+página hace un `fetch` a `/health` para mostrar el estado del servicio.
+
+El montaje sale de `config/static_config.rs`:
+
+```rust
+// config/static_config.rs — política de `--static` (§10.11, RF-255)
+pub struct StaticConfig {
+    pub dir: String,
+    pub mount: String,
+    pub spa: bool,
+    pub public: bool,
+    pub dotfiles: bool,
+}
+
+pub fn load() -> StaticConfig {
+    StaticConfig {
+        dir: super::env_or("STATIC_DIR", "client"),
+        mount: super::env_or("STATIC_MOUNT", "/site"),
+        spa: super::env_or("STATIC_SPA", "false") == "true",
+        public: super::env_or("STATIC_PUBLIC", "true") == "true",
+        dotfiles: super::env_or("STATIC_DOTFILES", "false") == "true",
+    }
+}
+```
+
+| Variable | Por defecto | Efecto |
+|---|---|---|
+| `STATIC_DIR` | `client` | Directorio servido; se canonicaliza al arrancar y debe existir |
+| `STATIC_MOUNT` | `/site` | Prefijo literal del montaje |
+| `STATIC_SPA` | `false` | Devuelve el índice ante una ruta sin extensión y `Accept: text/html` |
+| `STATIC_PUBLIC` | `true` | `false` activa `require_session` después de la cadena global |
+| `STATIC_DOTFILES` | `false` | `true` permite servir archivos y carpetas que empiezan por punto |
+
+El bloque de `main.rs` construye el montaje junto a los demás y lo acumula en el
+mismo `AxumPlatform`:
+
+```rust
+// main.rs — `--static` (§10.11, §26.11)
+if std::env::args().skip(1).any(|arg| arg == "--static") {
+    let site = config::static_config::load();
+    let files = StaticFiles::new(&site.dir)
+        .and_then(|files| {
+            files.config(
+                StaticFilesConfig::new()
+                    .mount(site.mount)
+                    .spa(site.spa)
+                    .public(site.public)
+                    .dotfiles(site.dotfiles)
+                    .authorize(require_session),
+            )
+        })
+        .map_err(Error::internal)?;
+    platform = platform.static_files(files);
+    mounted = true;
+}
+```
+
+`STATIC_PUBLIC=true` es una decisión de demo, igual que el explorer y el
+documento: la página se lee sin JWT para que quien evalúa el framework vea el
+sitio, y la API que consume sigue exigiendo el token. En producción se pone
+`STATIC_PUBLIC=false` y `authorize` protege el directorio; la cadena global corre
+igual en los dos casos, así que CORS y RateLimit también cubren los assets.
+
+**Sin hot reload.** No hay watcher ni recarga automática: al editar un archivo de
+`client/`, basta con recargar el navegador y el servidor devuelve la versión
+actual del disco, porque cada petición lee el archivo. El índice y los archivos
+fuera de `/assets` llevan `Cache-Control: no-cache`, de modo que el navegador
+revalida con el `ETag` y recibe 304 si nada cambió; los assets bajo `/assets` son
+inmutables por contrato, así que en desarrollo conviene servir un nombre distinto
+o cambiar `STATIC_MOUNT`/el prefijo inmutable si se edita un archivo cacheado.
+
+**Verificación.** S-08 levanta el binario con `--static` y comprueba que
+`GET /site/` devuelve la página, que el CSS sale con su MIME, que `HEAD` de
+`app.js` no lleva cuerpo y que una ruta inexistente responde 404 en Problem
+Details. En vivo, `GET /site/` muestra la portada, `/site/assets/style.css` y
+`/site/assets/app.js` se sirven con su tipo y `/site/no-existe` responde 404.

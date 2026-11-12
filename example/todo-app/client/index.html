@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>todo-app · rdd</title>
+    <link rel="stylesheet" href="/site/assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">rdd · §10.11</p>
+        <h1>Archivos estáticos sin salir del router</h1>
+        <p class="lead">
+          Esta carpeta la sirve <code>rdd-static</code> en <code>/site</code>.
+          Cada petición pasa primero por CORS, JWT y RateLimit; después el
+          servicio resuelve la ruta contra el disco.
+        </p>
+      </header>
+
+      <section class="grid">
+        <article>
+          <h2>API REST</h2>
+          <p>Tareas con JWT y roles sobre el mismo servidor.</p>
+          <a href="/tasks">GET /tasks</a>
+        </article>
+        <article>
+          <h2>OpenAPI</h2>
+          <p>Documentación 3.1 con UI para lanzar operaciones.</p>
+          <a href="/api-docs">/api-docs</a>
+        </article>
+        <article>
+          <h2>GraphQL</h2>
+          <p>Explorer con consultas, mutaciones y suscripciones.</p>
+          <a href="/graphql">/graphql</a>
+        </article>
+        <article>
+          <h2>Tiempo real</h2>
+          <p>El feed de tareas sale por WebSocket.</p>
+          <a href="/ws/tasks">/ws/tasks</a>
+        </article>
+      </section>
+
+      <footer>
+        <span id="health">comprobando /health…</span>
+        <span>cache inmutable en <code>/site/assets</code></span>
+      </footer>
+    </main>
+    <script src="/site/assets/app.js"></script>
+  </body>
+</html>

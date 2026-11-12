@@ -10,3 +10,8 @@
 crates/rdd-graphql/explorer/node_modules/
 crates/rdd-graphql/explorer/dist/
 crates/rdd-graphql/explorer/.vite/
+
+# UI de OpenAPI: mismo criterio (el artefacto es src/api-docs.html).
+crates/rdd-openapi/ui/node_modules/
+crates/rdd-openapi/ui/dist/
+crates/rdd-openapi/ui/.vite/

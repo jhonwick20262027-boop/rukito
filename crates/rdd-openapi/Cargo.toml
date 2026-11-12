@@ -1,0 +1,20 @@
+[package]
+name        = "rdd-openapi"
+description = "Documento OpenAPI 3.1 y su interfaz embebida para rdd: modelo, builder y montaje neutral."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# RA-022: la documentación no depende de la plataforma; el montaje lo aporta
+# rdd-axum, igual que /graphql y /mcp.
+rdd-core.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true

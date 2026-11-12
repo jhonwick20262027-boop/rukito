@@ -1366,6 +1366,7 @@ dependencies = [
  "rdd-graphql",
  "rdd-macros",
  "rdd-mcp",
+ "rdd-openapi",
  "rdd-postgres",
  "rdd-socket",
  "rdd-sqlite",
@@ -1393,6 +1394,7 @@ dependencies = [
  "rdd-core",
  "rdd-graphql",
  "rdd-mcp",
+ "rdd-openapi",
  "rdd-platform-tests",
  "serde",
  "serde_json",
@@ -1400,6 +1402,26 @@ dependencies = [
  "tower",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rdd-bench"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "futures",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rdd-axum",
+ "rdd-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
 ]
 
 [[package]]
@@ -1493,6 +1515,17 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rdd-openapi"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "rdd-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

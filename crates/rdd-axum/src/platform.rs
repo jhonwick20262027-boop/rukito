@@ -14,9 +14,11 @@ use axum::response::Response;
 use axum::routing::{Route, any};
 use axum::{Router, routing::MethodRouter};
 use rdd_core::error::{PlatformError, PlatformResult};
+#[cfg(any(feature = "graphql", feature = "openapi", feature = "mcp-http"))]
+use rdd_core::http::normalize_path;
 use rdd_core::http::{
     BoxHandler, HttpApp, Method, Platform, PlatformFuture, RouteDef, ShutdownSignal,
-    normalize_path, to_route_syntax,
+    to_route_syntax,
 };
 use tokio::net::TcpListener;
 use tower::util::BoxCloneSyncService;
@@ -54,6 +56,8 @@ pub struct AxumPlatform {
     graphql: Vec<Arc<rdd_graphql::GraphqlHttp>>,
     #[cfg(feature = "mcp-http")]
     mcp: Vec<Arc<rdd_mcp::McpHttp>>,
+    #[cfg(feature = "openapi")]
+    openapi: Vec<Arc<rdd_openapi::OpenApiHttp>>,
 }
 
 impl Default for AxumPlatform {
@@ -71,6 +75,8 @@ impl AxumPlatform {
             graphql: Vec::new(),
             #[cfg(feature = "mcp-http")]
             mcp: Vec::new(),
+            #[cfg(feature = "openapi")]
+            openapi: Vec::new(),
         }
     }
 
@@ -94,6 +100,20 @@ impl AxumPlatform {
     #[cfg(feature = "mcp-http")]
     pub fn mcp(mut self, mcp: rdd_mcp::McpHttp) -> Self {
         self.mcp.push(Arc::new(mcp));
+        self
+    }
+
+    /// Monta la documentación OpenAPI en `/api-docs`, sus alias y su JSON
+    /// (RF-245, RP-032).
+    ///
+    /// Las rutas se sirven con `any(...)` para que la cadena global (CORS, JWT,
+    /// RateLimit) decida antes que la documentación. Un choque con una ruta HTTP,
+    /// un canal, `/mcp`, `/graphql` u otro montaje de documentación, un documento
+    /// que no cubra las rutas montadas o una configuración inválida impiden
+    /// arrancar.
+    #[cfg(feature = "openapi")]
+    pub fn openapi(mut self, openapi: rdd_openapi::OpenApiHttp) -> Self {
+        self.openapi.push(Arc::new(openapi));
         self
     }
 
@@ -122,17 +142,33 @@ impl AxumPlatform {
     fn router(&self, app: Arc<HttpApp>, shutdown: ShutdownSignal) -> PlatformResult<Router> {
         #[cfg(feature = "mcp-http")]
         validate_mcp(&self.mcp, &app)?;
-        #[cfg(feature = "graphql")]
-        {
+        #[cfg(any(feature = "graphql", feature = "openapi"))]
+        let mcp_paths: Vec<String> = {
             #[cfg(feature = "mcp-http")]
-            let mcp_paths: Vec<String> = self
-                .mcp
-                .iter()
-                .map(|mcp| normalize_path(mcp.path()))
-                .collect();
+            {
+                self.mcp
+                    .iter()
+                    .map(|mcp| normalize_path(mcp.path()))
+                    .collect()
+            }
             #[cfg(not(feature = "mcp-http"))]
-            let mcp_paths: Vec<String> = Vec::new();
-            validate_graphql(&self.graphql, &mcp_paths, &app)?;
+            {
+                Vec::new()
+            }
+        };
+        #[cfg(feature = "graphql")]
+        validate_graphql(&self.graphql, &mcp_paths, &app)?;
+        #[cfg(feature = "openapi")]
+        {
+            #[cfg(feature = "graphql")]
+            let graphql_paths: Vec<String> = self
+                .graphql
+                .iter()
+                .map(|graphql| normalize_path(graphql.path()))
+                .collect();
+            #[cfg(not(feature = "graphql"))]
+            let graphql_paths: Vec<String> = Vec::new();
+            validate_openapi(&self.openapi, &mcp_paths, &graphql_paths, &app)?;
         }
         let limits = app.limits;
         #[cfg(not(feature = "ws"))]
@@ -192,6 +228,35 @@ impl AxumPlatform {
             };
             for spelling in spellings(&path) {
                 router = router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
+            }
+        }
+
+        #[cfg(feature = "openapi")]
+        for openapi in &self.openapi {
+            let settings = openapi.settings();
+            let canonical = normalize_path(settings.mount_path());
+            let alias_paths = settings
+                .alias_paths()
+                .iter()
+                .map(|alias| normalize_path(alias));
+            let json_path = normalize_path(&settings.json_path());
+            let handler = {
+                let app = Arc::clone(&app);
+                let openapi = Arc::clone(openapi);
+                move |req: Request| {
+                    let app = Arc::clone(&app);
+                    let openapi = Arc::clone(&openapi);
+                    async move { crate::openapi_http::serve_openapi(app, openapi, req).await }
+                }
+            };
+            for path in std::iter::once(canonical)
+                .chain(alias_paths)
+                .chain([json_path])
+            {
+                for spelling in spellings(&path) {
+                    router =
+                        router.route(&spelling, apply_layers(any(handler.clone()), &self.layers));
+                }
             }
         }
 
@@ -402,6 +467,89 @@ fn validate_graphql(
             )));
         }
         seen.push(path);
+    }
+    Ok(())
+}
+
+/// Comprueba la documentación OpenAPI antes de arrancar (RF-245, RF-248).
+#[cfg(feature = "openapi")]
+fn validate_openapi(
+    openapis: &[Arc<rdd_openapi::OpenApiHttp>],
+    mcp_paths: &[String],
+    graphql_paths: &[String],
+    app: &HttpApp,
+) -> PlatformResult<()> {
+    let mut seen: Vec<String> = Vec::new();
+    for openapi in openapis {
+        let settings = openapi.settings();
+        settings.validate().map_err(|err| {
+            PlatformError::other(anyhow::anyhow!("configuración OpenAPI inválida: {err}"))
+        })?;
+
+        let doc = openapi.document();
+        doc.validate().map_err(|err| {
+            PlatformError::other(anyhow::anyhow!("documento OpenAPI inválido: {err}"))
+        })?;
+        doc.check_routes(
+            app.routes.iter().map(|def| {
+                (
+                    def.method.as_str().to_uppercase(),
+                    normalize_path(&def.path),
+                )
+            }),
+            settings.strict_routes_enabled(),
+        )
+        .map_err(|err| {
+            PlatformError::other(anyhow::anyhow!(
+                "el documento OpenAPI no coincide con las rutas montadas: {err}"
+            ))
+        })?;
+
+        let canonical = normalize_path(settings.mount_path());
+        let alias_paths = settings
+            .alias_paths()
+            .iter()
+            .map(|alias| normalize_path(alias));
+        let json_path = normalize_path(&settings.json_path());
+        for path in std::iter::once(canonical)
+            .chain(alias_paths)
+            .chain([json_path])
+        {
+            if app
+                .routes
+                .iter()
+                .any(|def| normalize_path(&def.path) == path)
+            {
+                return Err(PlatformError::other(anyhow::anyhow!(
+                    "la ruta OpenAPI `{path}` colisiona con una ruta HTTP"
+                )));
+            }
+            if app
+                .upgrades
+                .iter()
+                .any(|upgrade| normalize_path(&upgrade.path) == path)
+            {
+                return Err(PlatformError::other(anyhow::anyhow!(
+                    "la ruta OpenAPI `{path}` colisiona con un canal de actualización"
+                )));
+            }
+            if mcp_paths.contains(&path) {
+                return Err(PlatformError::other(anyhow::anyhow!(
+                    "la ruta OpenAPI `{path}` colisiona con el montaje `/mcp`"
+                )));
+            }
+            if graphql_paths.contains(&path) {
+                return Err(PlatformError::other(anyhow::anyhow!(
+                    "la ruta OpenAPI `{path}` colisiona con el montaje `/graphql`"
+                )));
+            }
+            if seen.contains(&path) {
+                return Err(PlatformError::other(anyhow::anyhow!(
+                    "ruta OpenAPI duplicada `{path}`: ya hay un montaje en esa ruta"
+                )));
+            }
+            seen.push(path);
+        }
     }
     Ok(())
 }

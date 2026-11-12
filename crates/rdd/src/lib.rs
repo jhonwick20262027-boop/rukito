@@ -87,6 +87,26 @@ compile_error!(
      features = [\"axum\", \"graphql\"] (RP-012)"
 );
 
+/// Documentación OpenAPI 3.1 y su montaje `/api-docs` (§10.10, RF-245).
+#[cfg(feature = "openapi")]
+pub mod openapi {
+    pub use rdd_openapi::{
+        ApiResponse, Components, Info, MediaType, OpenApi, OpenApiBuilder, OpenApiHttp,
+        OpenApiHttpConfig, OpenApiHttpResponse, Operation, Parameter, ParameterLocation, PathItem,
+        RequestBody, Server, Tag,
+    };
+}
+
+/// OpenAPI sin prefijo de módulo, para el documento de `main`.
+#[cfg(feature = "openapi")]
+pub use rdd_openapi::{OpenApi, OpenApiBuilder, OpenApiHttp, OpenApiHttpConfig, Operation};
+
+#[cfg(all(feature = "openapi", not(feature = "axum")))]
+compile_error!(
+    "la feature `openapi` necesita la plataforma `axum`: activa `rdd` con \
+     features = [\"axum\", \"openapi\"] (RP-012)"
+);
+
 /// Puebla el registro de adaptadores del núcleo (RF-191).
 ///
 /// Los seis motores se declaran siempre, aunque su feature esté apagada: es lo

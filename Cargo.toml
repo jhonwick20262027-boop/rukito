@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/rdd",
     "crates/rdd-axum",
+    "crates/rdd-bench",
     "crates/rdd-cli",
     "crates/rdd-core",
     "crates/rdd-cors",
@@ -10,6 +11,7 @@ members = [
     "crates/rdd-graphql",
     "crates/rdd-macros",
     "crates/rdd-mcp",
+    "crates/rdd-openapi",
     "crates/rdd-platform-tests",
     "crates/rdd-postgres",
     "crates/rdd-socket",
@@ -46,6 +48,7 @@ rdd-cors           = { path = "crates/rdd-cors",           version = "0.1.0" }
 rdd-logger         = { path = "crates/rdd-logger",         version = "0.1.0" }
 rdd-mcp            = { path = "crates/rdd-mcp",            version = "0.1.0" }
 rdd-graphql        = { path = "crates/rdd-graphql",        version = "0.1.0" }
+rdd-openapi        = { path = "crates/rdd-openapi",        version = "0.1.0" }
 rdd-socket         = { path = "crates/rdd-socket",         version = "0.1.0" }
 
 anyhow             = "1.0"

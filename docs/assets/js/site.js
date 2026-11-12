@@ -4,7 +4,7 @@
   RDD.config = {
     repo: "https://github.com/jhonwick20262027-boop/rukito",
     version: "v0.1.0",
-    specVersion: "0.10.3-draft",
+    specVersion: "0.11.0-draft",
   };
   RDD.searchIndex = [
     { title: "Guía rápida", section: "Inicio", keywords: "rdd, rust, api, empezar", url: "guide/inicio-rapido.html" },
@@ -13,6 +13,7 @@
     { title: "GraphQL", section: "Guías", keywords: "graphql, schema, explorer, macros, sse, subscriptions", url: "guide/graphql.html" },
     { title: "Tiempo real (WebSocket)", section: "Guías", keywords: "websocket, socket.io, rdd-socket, hub, salas, presencia, ws", url: "guide/tiempo-real.html" },
     { title: "JWT en el explorer", section: "Guías", keywords: "jwt, bearer, token, explorer, graphql, cabeceras, login", url: "guide/jwt-explorer.html" },
+    { title: "Benchmark", section: "Rendimiento", keywords: "benchmark, rendimiento, latencia, p99, rps, http, websocket, rdd-bench", url: "benchmark.html" },
     { title: "Especificación", section: "Referencia", keywords: "rdd, spec, requisitos, arquitectura", url: "especificacion.html" },
   ];
 
@@ -45,6 +46,7 @@
     { key: "guide", label: "Guía", href: "guide/index.html" },
     { key: "arch", label: "Arquitectura", href: "guide/arquitectura.html" },
     { key: "cli", label: "CLI", href: "guide/cli.html" },
+    { key: "bench", label: "Benchmark", href: "benchmark.html" },
     { key: "spec", label: "Especificación", href: "especificacion.html" },
   ];
   const activeNav = document.body.dataset.nav || "";

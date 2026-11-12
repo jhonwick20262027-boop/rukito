@@ -37,6 +37,9 @@ rdd-socket = { workspace = true, optional = true }
 rdd-mcp = { workspace = true, optional = true }
 # Motor GraphQL (§10.9). El montaje lo aporta `AxumPlatform::graphql`.
 rdd-graphql = { workspace = true, optional = true }
+# Documentación OpenAPI 3.1 (§10.10). El montaje lo aporta
+# `AxumPlatform::openapi`.
+rdd-openapi = { workspace = true, optional = true }
 # Lo que genera la macro GraphQL habla JSON; se re-exporta para que el proyecto
 # del usuario no tenga que declararlo (RN-012).
 serde_json.workspace = true
@@ -61,6 +64,9 @@ mcp-http = ["mcp", "rdd-axum/mcp-http"]
 # §10.9, RF-243: el motor y las macros. El montaje `/graphql` requiere `axum`;
 # sin esa feature el crate emite un `compile_error!` claro (RP-012).
 graphql  = ["dep:rdd-graphql", "rdd-axum/graphql"]
+# §10.10, RF-245: la documentación OpenAPI y su montaje `/api-docs`. Requiere
+# `axum`, igual que GraphQL.
+openapi  = ["dep:rdd-openapi", "rdd-axum/openapi"]
 
 [dev-dependencies]
 bytes.workspace = true

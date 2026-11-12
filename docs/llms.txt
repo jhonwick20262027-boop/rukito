@@ -22,6 +22,7 @@ Datos canónicos del proyecto:
 - [GraphQL](https://jhonwick20262027-boop.github.io/rukito/guide/graphql.html): esquema desde tipos Rust, montaje de `/graphql`, consultas, mutaciones, suscripciones SSE y explorer.
 - [Tiempo real](https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html): canal WebSocket con `.socket`, `SocketHandler`, hub de salas y presencia de `rdd-socket`; no es Socket.IO.
 - [JWT en el explorer](https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html): obtener un Bearer, pegarlo en la pestaña Cabeceras y ejecutar operaciones autenticadas.
+- [Benchmark](https://jhonwick20262027-boop.github.io/rukito/benchmark.html): latencia p50/p95/p99 y tasas de HTTP y WebSocket del arnés `rdd-bench`.
 - [Especificación completa](https://jhonwick20262027-boop.github.io/rukito/especificacion.html): principios, requisitos RF/RA/RP, decisiones de arquitectura y criterios de aceptación.
 
 ## Referencia técnica

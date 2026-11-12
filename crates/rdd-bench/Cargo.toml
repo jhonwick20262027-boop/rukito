@@ -1,0 +1,30 @@
+[package]
+name = "rdd-bench"
+description = "Arnés reproducible de benchmarks HTTP y WebSocket del framework (§10.10, suite O)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Solo usa la API pública del núcleo y la plataforma por defecto; el transporte
+# WS lo aporta `rdd-axum/ws`, igual que en el demo.
+rdd-core.workspace = true
+rdd-axum = { workspace = true, features = ["ws"] }
+anyhow.workspace = true
+bytes.workspace = true
+futures.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+tracing.workspace = true

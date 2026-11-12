@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.10.3-draft |
-| Fecha | 2026-11-11 |
+| Versión del documento | 0.11.0-draft |
+| Fecha | 2026-11-12 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
 
@@ -40,7 +40,7 @@
 
 ## 2. Alcance
 
-### 2.1 Dentro del alcance (fases 0.1 a 0.10)
+### 2.1 Dentro del alcance (fases 0.1 a 0.12)
 
 - Servidor REST con controladores declarativos por macros, sobre una interfaz de plataforma (§4.4). **Axum es la plataforma por defecto** (`rdd-axum`).
 - Building blocks DDD mínimos: `Aggregate`, `Service`, `Repo<T>`, `Error` de dominio.
@@ -54,6 +54,8 @@
 - Tiempo real **opcional** (fase 0.8): WebSocket sobre un **puerto de actualización** en el núcleo (§10.4) y el crate `rdd-socket` con un hub de salas y presencia (§10.5). El REST sigue siendo el camino principal: sin el crate y sin `.socket(...)` la app se comporta igual que hoy.
 - Servidor **MCP** opcional: el crate `rdd-mcp` implementa JSON-RPC 2.0 a mano y lo expone por **stdio** (fase 0.7, §10.6, §10.7) y por **Streamable HTTP** en una ruta `/mcp` (fase 0.9, §10.8) montada por `rdd-axum` con la feature `mcp-http`. Los tools son otro adaptador de entrada del módulo: llaman a los casos de uso, igual que el controller REST. Los dos transportes comparten protocolo, tools y sesión por petición (ADR-22, ADR-25).
 - **GraphQL** opcional (fase 0.10, §10.9): el crate `rdd-graphql` implementa un subconjunto tipado del lenguaje —queries, mutations, subscriptions, variables, fragmentos e introspección— con un motor propio (ADR-26) y un explorer profesional embebido (ADR-29). El esquema se declara con macros sobre Rust, sin SDL (ADR-27); las subscriptions viajan por **SSE** (ADR-28) y el punto de entrada `/graphql` lo monta `rdd-axum` con la feature `graphql`. Los resolvers son adaptadores de presentación: llaman a los mismos casos de uso y leen la identidad por contexto (§10.9).
+- **OpenAPI** opcional (fase 0.12, §10.10): el crate `rdd-openapi` modela el documento OpenAPI 3.1 con un builder tipado y una validación de arranque que compara las operaciones documentadas con las rutas montadas. La documentación se sirve en `/api-docs` (alias `/docs` y `/swagger`) y el JSON en `/api-docs/openapi.json`; la UI es una app Vue 3 + shadcn-vue con el tema «oxide forge» compilada a un único HTML embebido, y el montaje lo hace `rdd-axum` con la feature `openapi` (ADR-30). Como GraphQL, no genera el documento desde los controllers: lo compone la app y el framework lo valida (RP-032, RA-022).
+- **Rendimiento medido** (fase 0.12): el crate interno `rdd-bench` mide HTTP con keep-alive y eco WebSocket contra un `AxumPlatform` real en un puerto efímero, calcula p50/p95/p99 y tasas, y publica un informe JSON versionado que alimenta la página `docs/benchmark.html` del sitio (ADR-31).
 
 ### 2.2 Fuera del alcance (explícito)
 
@@ -76,7 +78,9 @@
 | Streaming de cuerpos de petición/respuesta | Cuerpos en memoria con límite en 0.x (ADR-12). El canal WebSocket de §10.4 y las respuestas SSE de `/mcp` (§10.8) y `/graphql` (§10.9) son recursos aparte, no cuerpos HTTP. |
 | Capas Tower por ruta, o dentro de `App` | Solo como opción de `AxumPlatform` (RF-089). |
 | Runtimes distintos de Tokio | El núcleo y las plataformas asumen Tokio (ADR-11). |
-| OpenAPI automático | Candidato post-0.4. |
+| OpenAPI generado automáticamente desde los controllers o las macros | El documento se compone a mano con `OpenApiBuilder` y el framework lo valida al montar (§10.10). Derivarlo de las rutas o de las macros queda como extensión futura; no se simula. |
+| Servir Swagger UI o Redoc desde CDN | La UI es propia, compilada a un único HTML embebido, sin CDN ni `eval` (§10.10, ADR-30). |
+| Benchmark como criterio de CI o comparación entre máquinas | `rdd-bench` publica un informe reproducible con su entorno (§20); no es una compuerta de rendimiento ni un número absoluto (ADR-31). |
 | Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. §26 muestra cómo escribir JWT y roles **a nivel de aplicación** con ese mecanismo, que es lo único que el framework promete hoy. |
 | Motores sin adaptador publicado | El puerto `DbAdapter` (§12) es la vía de extensión. SQLite está implementado en `rdd-sqlite` y es el adaptador predeterminado; Oracle, Cassandra y DynamoDB no están previstos. |
 | Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
@@ -113,7 +117,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd/                      # FACHADA: re-exporta rdd-core + rdd-macros + plataformas por feature
 │   ├── rdd-core/                 # núcleo: App, DI, middlewares, errores, Repo<T>, puerto DbAdapter, HttpApp, trait Platform
 │   ├── rdd-macros/               # proc-macros
-│   ├── rdd-axum/                 # plataforma por defecto (feature `mcp-http` en la fase 0.9)
+│   ├── rdd-axum/                 # plataforma por defecto (features `mcp-http`, `graphql` y `openapi`)
 │   ├── rdd-hyper/                # plataforma propia (fase 0.5)
 │   ├── rdd-platform-tests/       # suite de conformidad de plataformas (§4.5)
 │   ├── rdd-db-tests/             # suite de conformidad de adaptadores (§12.4)
@@ -128,6 +132,8 @@ rdd/                              # repositorio del framework
 │   ├── rdd-socket/               # hub de salas y presencia (fase 0.8)
 │   ├── rdd-mcp/                  # servidor MCP: JSON-RPC 2.0, stdio y `McpHttp` neutral (fases 0.7 y 0.9)
 │   ├── rdd-graphql/              # motor GraphQL propio: esquema, parser, ejecutor, SSE y explorer (fases 0.10–0.11)
+│   ├── rdd-openapi/              # documento OpenAPI 3.1, validación de rutas y UI embebida (fase 0.12)
+│   ├── rdd-bench/                # arnés interno de rendimiento HTTP y WebSocket (fase 0.12, no se publica)
 │   ├── rdd-prisma/               # parser de schema.prisma + generador
 │   └── rdd-cli/                  # binario `rdd`
 └── todo-app-ddd/                 # app de ejemplo (§25): la genera `rdd new`, miembro del workspace
@@ -145,6 +151,8 @@ rdd-mcp  = "..."                          # opcional: servidor MCP por stdio (§
 # rdd = { version = "...", features = ["socket", "mcp-http"] }
 # o, con GraphQL de la fase 0.10:
 # rdd = { version = "...", features = ["graphql"] }
+# o, con la documentación OpenAPI de la fase 0.12:
+# rdd = { version = "...", features = ["openapi"] }
 uuid     = { version = "1", features = ["v4", "serde"] }   # el id del agregado (§7.2)
 # o, sin Axum:
 # rdd = { version = "...", default-features = false, features = ["hyper", "sqlite"] }
@@ -158,29 +166,34 @@ rdd-core ◄───┼── rdd (fachada) ──► [feature axum]   rdd-axum
      ▲       │                 ├─► [feature hyper]  rdd-hyper
      │       │                 ├─► [feature socket] rdd-socket
      │       │                 ├─► [feature mcp]    rdd-mcp
-     │       │                 └─► [feature graphql] rdd-graphql
+     │       │                 ├─► [feature graphql] rdd-graphql
+     │       │                 └─► [feature openapi] rdd-openapi
      ├── rdd-axum, rdd-hyper
      ├── rdd-axum ──► rdd-mcp (solo feature `mcp-http`, RA-020)
      ├── rdd-axum ──► rdd-graphql (solo feature `graphql`, RA-021)
-     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql
+     ├── rdd-axum ──► rdd-openapi (solo feature `openapi`, RA-022)
+     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql, rdd-openapi
      ├── rdd-sqlite, rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
      ├── rdd-platform-tests ──► (dev) cada plataforma
      └── rdd-db-tests ────────► (dev) cada adaptador
 rdd-prisma ──► rdd-cli
+rdd-bench ──► rdd-axum (herramienta interna, nadie depende de ella)
 ```
 
 | Crate | Puede depender de | NO DEBE depender de |
 |---|---|---|
 | `rdd-core` | `http`, `bytes`, `futures`, `tokio`, `serde`, `serde_json`, `tracing`, `uuid`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower-http`, cualquier plataforma, **cualquier driver de BD** (`sqlx`, `mongodb`, `redis`, `tiberius`), Prisma, Node |
 | `rdd-macros` | `syn`, `quote`, `proc-macro2`, crate de diagnósticos | `rdd-core` |
-| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp` y `rdd-graphql` (opcionales por feature) | — |
+| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp`, `rdd-graphql` y `rdd-openapi` (opcionales por feature) | — |
 | `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
-| `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http`; `rdd-mcp` solo con la feature `mcp-http`; `rdd-graphql` solo con la feature `graphql` | `rdd-hyper` |
+| `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http`; `rdd-mcp` solo con la feature `mcp-http`; `rdd-graphql` solo con la feature `graphql`; `rdd-openapi` solo con la feature `openapi` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
 | `rdd-cors`, `rdd-logger` | `rdd-core`, `http`, `bytes`, `serde`, `thiserror`, `toml`, `tracing` | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma |
 | `rdd-socket` | `rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tracing`, `thiserror` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD |
 | `rdd-mcp` | `rdd-core`, `serde`, `serde_json`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-graphql` | `rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower`, `tokio-tungstenite`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
+| `rdd-openapi` | `rdd-core`, `serde`, `serde_json`, `bytes`, `anyhow` | `axum`, `hyper`, `tower`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
+| `rdd-bench` | `rdd-core`, `rdd-axum` (con `ws`), `hyper`, `hyper-util`, `http`, `http-body-util`, `tokio-tungstenite`, `serde`, `serde_json`, `tokio`, `bytes`, `futures`, `anyhow`, `tracing` | cualquier crate del framework (es una herramienta interna; no se publica ni lo usa ningún otro crate) |
 | `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
 | `rdd-redis` | `rdd-core`, cliente Redis, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
@@ -218,6 +231,13 @@ introspección, el formato SSE y el explorer viven en el crate neutral, y el
 montaje HTTP —cuerpo de Axum, `Body::from_stream` para el stream SSE— lo hace
 `rdd-axum` con la feature `graphql`. Tampoco implementa un servidor WebSocket ni
 depende de él: las suscripciones viajan por el mismo SSE (§10.9, ADR-28).
+`rdd-openapi` cierra la misma secuencia (RA-022): el modelo del documento, el
+builder, la validación de rutas, el JSON y el HTML de la UI viven en un crate
+neutral que solo usa `rdd_core::http`; el montaje —leer el cuerpo, `prepare` y
+traducir la respuesta— lo pone `rdd-axum` con la feature `openapi`. `rdd-bench`
+es la excepción declarada: no es un crate del framework, es una herramienta
+interna que depende de `rdd-axum` para medir la plataforma completa y ningún
+crate depende de ella (ADR-31).
 
 | ID | Requisito |
 |---|---|
@@ -231,6 +251,7 @@ depende de él: las suscripciones viajan por el mismo SSE (§10.9, ADR-28).
 | RA-018 | `rdd-mcp` NO DEBE depender de ninguna plataforma, de Tower, de un cliente o servidor WebSocket ni de un driver de BD: solo de `rdd-core` y crates neutrales. El protocolo y los transportes no usan el router de ningún servidor: stdio no abre puertos (§10.7) y `McpHttp` (§10.8) solo consume y produce los tipos de `rdd_core::http`. CI DEBE verificarlo con `cargo tree -p rdd-mcp`. |
 | RA-021 | La dependencia entre `rdd-axum` y `rdd-graphql` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-graphql` con la feature `graphql`, y `rdd-graphql` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower, de `tokio-tungstenite` ni de un driver de BD: solo de `rdd-core` y crates neutrales. El documento GraphQL, el ejecutor y el explorer no tocan el router de ningún servidor; `GraphqlHttp` (§10.9) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-graphql` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-graphql`). |
 | RA-020 | La dependencia entre `rdd-axum` y `rdd-mcp` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-mcp` con la feature `mcp-http`, y `rdd-mcp` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma. La fachada declara `mcp-http = ["mcp", "axum/mcp-http"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-mcp` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-mcp`). |
+| RA-022 | La dependencia entre `rdd-axum` y `rdd-openapi` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-openapi` con la feature `openapi`, y `rdd-openapi` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower ni de un driver de BD: solo de `rdd-core` y crates neutrales. El documento, el builder, la validación de rutas y el HTML de la UI no tocan el router; `OpenApiHttp` (§10.10) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-openapi` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-openapi`). `rdd-bench` es una herramienta interna que ningún crate del framework usa (ADR-31). |
 
 ### 4.3 Stack tecnológico
 
@@ -259,6 +280,9 @@ depende de él: las suscripciones viajan por el mismo SSE (§10.9, ADR-28).
 | Esquema GraphQL | macros `#[derive(GraphqlObject)]`, `#[derive(GraphqlInput)]` y `#[graphql_object(...)]` | `rdd-macros` / `rdd-graphql` | El tipo Rust es el esquema: sin SDL aparte ni codegen en build, y un nombre duplicado es un diagnóstico de compilación (§10.9, ADR-27). |
 | Suscripciones GraphQL | SSE (`event: next` / `event: complete`) sobre una cola `tokio::sync::mpsc` | `rdd-graphql` + `rdd-axum` | El hub de §10.5 ya es un `mpsc`; el subprotocolo `graphql-transport-ws` exigiría un transporte WS nuevo y no aporta nada al cliente SSE (§10.9, ADR-28). |
 | Explorer GraphQL | App Vue 3 + TypeScript + Tailwind + shadcn-vue + CodeMirror, compilada con Vite a un único HTML con JS/CSS inline | `rdd-graphql` | El runtime sigue sin CDN ni peticiones externas: el artefacto es un solo HTML embebido con `include_str!`; la cadena de build vive fuera del binario y el artefacto se commitea (ADR-29). |
+| Documento OpenAPI | tipos propios en `rdd-openapi` sobre `serde`/`serde_json` | `rdd-openapi` | Ningún crate de OpenAPI está en la caché offline y el subconjunto 3.1 que servimos es corto; escribirlo deja validación y errores bajo el contrato (§10.10, ADR-30). |
+| UI de la documentación | Vue 3 + TypeScript + Tailwind + shadcn-vue + Lucide con el tema «oxide forge», compilada con Vite a un único HTML | `rdd-openapi/ui` | Mismo stack y misma paleta que el explorer; el artefacto se embebe con `include_str!` y no usa CDN ni `eval` (§10.10, ADR-30). |
+| Arnés de rendimiento | `hyper` con keep-alive y `tokio-tungstenite` contra un `AxumPlatform` real en puerto efímero | `rdd-bench` | Mide el camino HTTP y el canal completos —router, cadena de middlewares y transporte—, no funciones aisladas; el informe es reproducible y versionado (§20, ADR-31). |
 | Errores | `thiserror` + `anyhow` (interno) | núcleo | Errores tipados en el borde, contexto interno. |
 | Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
 | IDs | `uuid` | núcleo | Estándar. |
@@ -342,6 +366,7 @@ App::new().module(tasks::module()).run_on(HyperPlatform::new(), "0.0.0.0:3000").
 | Límite de mensaje y cola de salida del canal (RF-196) | Cerrar 1009/1013 y 1001 al apagar (RP-026) |
 | Puntos de entrada fuera de la tabla: cadena global y petición preparada (RP-028) | Montar `/mcp`, leer el cuerpo y volcar SSE (RP-029) |
 | Documento, validación, ejecución, introspección, stream SSE y HTML del explorer de GraphQL (§10.9) | Montar `/graphql`: leer el cuerpo, devolver el HTML ya generado y volcar el stream SSE (RP-030, RP-031) |
+| Documento OpenAPI, validación de rutas, JSON y HTML de la UI (§10.10) | Montar `/api-docs` y sus alias: leer el cuerpo, ejecutar `prepare` y servir HTML o JSON (RP-032) |
 | Abrir el `TcpListener` y capturar señales (`SIGTERM`, `Ctrl+C`) | Servir sobre el `TcpListener` recibido |
 
 **Requisitos de plataforma**
@@ -371,8 +396,9 @@ App::new().module(tasks::module()).run_on(HyperPlatform::new(), "0.0.0.0:3000").
 | RP-029 | Un montaje fuera de la tabla (`/mcp`, §10.8) DEBE ejecutar `prepare` antes de su propio guardián, respetar RP-006 (límite de cuerpo y 413 antes del handler) y renderizar el `Reject` de `prepare` y el `Err` de `authorize` con el mismo mapeo a Problem Details que los handlers (§10.3). La plataforma solo traduce el cuerpo y la cola SSE; NO DEBE interpretar ni reescribir mensajes JSON-RPC (RP-004). `rdd-axum` expone el montaje con la feature `mcp-http`; otra plataforma que lo exponga DEBE pasar M-10 a M-15 (§20). |
 | RP-030 | Un montaje fuera de la tabla (`/graphql`, §10.9) DEBE ejecutar `prepare` antes de su propio guardián y renderizar el `Reject` de `prepare` y el `Err` de `authorize` con el mismo mapeo a Problem Details que los handlers (§10.3). La plataforma solo traduce el cuerpo, sirve el HTML del explorer y vuelca el stream SSE; NO DEBE interpretar ni reescribir el documento GraphQL ni los eventos (RP-004). `rdd-axum` expone el montaje con la feature `graphql`; otra plataforma que lo exponga DEBE pasar G-01 a G-09 (§20). |
 | RP-031 | Las suscripciones GraphQL DEBEN viajar por el mismo cuerpo SSE que el montaje ya vuelca: el motor entrega un `SseStream` neutral (bytes ya formateados con `event:`/`data:` y comentarios de latido) y la plataforma lo convierte en `Body::from_stream` sin tocar los eventos. Al desconectarse el cliente, el montaje DEBE cancelar la suscripción cerrando la cola; el motor NO DEBE reconectar ni reintentar por su cuenta, y NO DEBE abrir un canal WebSocket (ADR-28). |
+| RP-032 | Un montaje fuera de la tabla (`/api-docs`, §10.10) DEBE ejecutar `prepare` antes de su propio guardián, respetar RP-006 (límite de cuerpo y 413 antes del handler) y renderizar el `Reject` de `prepare` y el `Err` de `authorize` con el mismo mapeo a Problem Details que los handlers (§10.3). La plataforma solo traduce el cuerpo: sirve el HTML y el JSON ya generados y NO DEBE reescribir el documento (RP-004). `rdd-axum` expone el montaje con la feature `openapi`; otra plataforma que lo exponga DEBE pasar O-01 a O-06 (§20). |
 
-**Nota sobre `rdd-axum`:** registra las rutas de forma **nativa** en el router de Axum (no usa `dispatch`), para aprovechar su enrutado y el soporte de capas Tower. Como hay dos implementaciones de enrutado (Axum y `dispatch`), el riesgo de divergencia se controla con la suite de conformidad (§4.5), que se ejecuta contra ambas. Los canales de §10.4 siguen el mismo patrón: Axum aporta el transporte WebSocket (feature `ws`) y el handshake lo decide `HttpApp::negotiate` (RP-024). El montaje `/mcp` sigue el patrón otra vez: Axum lee el cuerpo, ejecuta `prepare` y vuelca la cola SSE; `McpHttp` decide todo lo demás (§10.8, RP-029). `/graphql` repite el mismo reparto: Axum sirve el HTML del explorer, ejecuta `prepare` y vuelca el `SseStream`; `GraphqlHttp` decide documento, validación, ejecución y eventos (§10.9, RP-030, RP-031).
+**Nota sobre `rdd-axum`:** registra las rutas de forma **nativa** en el router de Axum (no usa `dispatch`), para aprovechar su enrutado y el soporte de capas Tower. Como hay dos implementaciones de enrutado (Axum y `dispatch`), el riesgo de divergencia se controla con la suite de conformidad (§4.5), que se ejecuta contra ambas. Los canales de §10.4 siguen el mismo patrón: Axum aporta el transporte WebSocket (feature `ws`) y el handshake lo decide `HttpApp::negotiate` (RP-024). El montaje `/mcp` sigue el patrón otra vez: Axum lee el cuerpo, ejecuta `prepare` y vuelca la cola SSE; `McpHttp` decide todo lo demás (§10.8, RP-029). `/graphql` repite el mismo reparto: Axum sirve el HTML del explorer, ejecuta `prepare` y vuelca el `SseStream`; `GraphqlHttp` decide documento, validación, ejecución y eventos (§10.9, RP-030, RP-031). `/api-docs` hace lo mismo con la documentación: Axum lee el cuerpo, ejecuta `prepare` y devuelve el HTML o el JSON compilados; `OpenApiHttp` decide método, guardián, rutas y cuerpo (§10.10, RP-032).
 
 ### 4.5 Suite de conformidad (`rdd-platform-tests`)
 
@@ -386,7 +412,7 @@ async fn conformance() {
 }
 ```
 
-La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023). El montaje `/mcp` no añade casos C: su suite es la M de §20 y se ejecuta contra `rdd-axum` con la feature `mcp-http` (RP-029); `dispatch` no lo sirve porque el montaje vive en la plataforma, así que una petición a `/mcp` por `dispatch` recibe el 404 del `fallback`. `/graphql` sigue la misma regla: su suite es la G de §20, se ejecuta contra `rdd-axum` con la feature `graphql` (RP-030) y no añade casos C.
+La suite levanta la plataforma en un puerto efímero (`127.0.0.1:0`, por eso el núcleo abre el `TcpListener`, §4.4) y ejecuta peticiones HTTP reales. Los casos C-13 a C-16 son de canal (§10.4): se ejecutan solo en plataformas que declaran `supports_upgrades()` (RP-027), y `dispatch` responde 501 a un upgrade (RP-023). El montaje `/mcp` no añade casos C: su suite es la M de §20 y se ejecuta contra `rdd-axum` con la feature `mcp-http` (RP-029); `dispatch` no lo sirve porque el montaje vive en la plataforma, así que una petición a `/mcp` por `dispatch` recibe el 404 del `fallback`. `/graphql` sigue la misma regla: su suite es la G de §20, se ejecuta contra `rdd-axum` con la feature `graphql` (RP-030) y no añade casos C. `/api-docs` también: su suite es la O de §20, se ejecuta contra `rdd-axum` con la feature `openapi` (RP-032) y no añade casos C.
 
 | Caso | Verifica | Requisitos |
 |---|---|---|
@@ -1666,6 +1692,85 @@ suscripción) sigue pasando por el guardián (RF-239, RF-242). La CSP y el
 | RF-243 | La fachada DEBE declarar `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y reexportar `rdd_graphql` como `rdd::graphql` con `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y las macros; `rdd-axum` DEBE declarar `graphql = ["dep:rdd-graphql"]`. Activar `graphql` sin `axum` es un error de compilación claro (RP-012) y `rdd-graphql` no aparece en el árbol de `rdd-core` ni de `rdd-hyper` (RA-021). |
 | RF-244 | `SchemaBuilder::build` DEBE validar el esquema y fallar al arrancar si dos raíces publican un campo con el mismo nombre, si un tipo aparece dos veces con definiciones distintas, si un nombre empieza por `__`, o si una raíz declarada no expone ningún campo: el mensaje DEBE nombrar el tipo y el campo. Un `panic` o un `Error` interno de un resolutor NO DEBE tumbar la petición ni el servidor: se registra con `tracing` (RN-040) y el cliente recibe `errors[{message: "error interno"}]` con `path`, sin detalle interno. |
 
+### 10.10 Documentación OpenAPI (`/api-docs`)
+
+El documento OpenAPI es otra **entrada** de la app, no una fuente de rutas: lo
+compone el usuario y el framework lo publica. Se parte en dos piezas por la
+misma razón que MCP y GraphQL: el modelo, el builder, la validación y el HTML
+viven en `rdd-openapi`, que solo usa los tipos neutros de `rdd_core::http`; el
+montaje —leer el cuerpo con límite, ejecutar `prepare` y traducir la respuesta—
+lo hace `rdd-axum` con la feature `openapi` (§4.4, RP-032). El documento se
+embebe en la UI al construir `OpenApiHttp`, así que el HTML y el JSON salen del
+mismo binario y no hay lecturas en tiempo de petición.
+
+```rust
+// openapi.rs — el documento lo compone la app (§26.10)
+use rdd::openapi::{OpenApi, OpenApiBuilder, Operation, Server, Tag};
+
+pub fn document() -> OpenApi {
+    OpenApiBuilder::new("todo-app", env!("CARGO_PKG_VERSION"))
+        .description("API del demo autenticado")
+        .server(Server::new("/"))
+        .tag(Tag::new("tasks").description("Tareas del dueño del token"))
+        .operation(
+            "get",
+            "/tasks",
+            Operation::new("listTasks", "Lista las tareas del token")
+                .tag("tasks")
+                .bearer()
+                .json_response(200, "Tareas", serde_json::json!({ "type": "array" })),
+        )
+        .build()
+}
+```
+
+```rust
+// main.rs — montaje (§26.10)
+let docs = OpenApiHttp::new(openapi::document()).config(
+    OpenApiHttpConfig::new()
+        .path("/api-docs")
+        .aliases(["/docs", "/swagger"])
+        .docs(true)
+        .public_docs(false)
+        .strict_routes(true)
+        .authorize(require_session),
+);
+app.run_on(AxumPlatform::new().openapi(docs), &addr).await;
+```
+
+El documento se valida **al montar**, antes de abrir el socket (RF-248): una
+operación documentada que no exista, una ruta montada sin documentar con
+`strict_routes(true)`, un `operationId` repetido o una ruta de la documentación
+que choque con otra ruta impiden arrancar. La comparación normaliza `{id}` a
+`:id` y la barra final, y el mensaje nombra método y ruta en vez de un conteo.
+
+| Petición | Respuesta |
+|---|---|
+| `GET /api-docs` (o un alias) con `docs(true)` y autorizado | 200 `text/html; charset=utf-8` con la UI embebida |
+| `GET /api-docs/openapi.json` | 200 `application/json; charset=utf-8` con el documento |
+| Método distinto de GET | 405 Problem Details + `Allow: GET` |
+| `docs(false)` | 404 Problem Details, después de autorizar |
+| `authorize` rechaza | 401/403 Problem Details (salvo `public_docs(true)`) |
+| Ruta desconocida bajo el montaje | 404 Problem Details |
+| Cuerpo mayor a `limits.body_limit_bytes` | 413 Problem Details (RP-006) |
+
+Todas las respuestas de `/api-docs` llevan `Cache-Control: no-store`; el HTML y
+el JSON llevan `X-Content-Type-Options: nosniff`, y el HTML además la misma CSP
+que el explorer: `default-src 'none'; script-src 'unsafe-inline';
+style-src 'unsafe-inline'; connect-src 'self'`. La UI no se relaja: no hay CDN,
+`eval` ni peticiones a terceros, y el «probar» usa `fetch` al mismo origen.
+
+| ID | Requisito |
+|---|---|
+| RF-245 | `rdd-openapi` DEBE modelar OpenAPI 3.1 con tipos propios sobre `serde`: `OpenApi`, `Info`, `Server`, `Tag`, `PathItem`, `Operation`, `Parameter`, `ParameterLocation`, `RequestBody`, `MediaType`, `ApiResponse` y `Components`, serializados con la clave `openapi` igual a una versión `3.x`. `OpenApiBuilder::new(title, version)` DEBE encadenar `description`, `server`, `tag`, `schema` y `operation(method, path, operation)`; `Operation` DEBE ofrecer `tag`, `description`, `parameter`, `json_body`, `response`, `json_response`, `bearer` y `deprecated`, y publicar `components.securitySchemes.bearerAuth` en cuanto una operación use `bearer()`. `OpenApi::validate` DEBE rechazar una versión que no empiece por `3.`, `info.title` o `info.version` vacíos, una ruta sin `/` inicial, una ruta sin operaciones, un método fuera de GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS/TRACE, una operación sin respuestas y un `operationId` repetido, nombrando el método y la ruta. |
+| RF-246 | Con la feature `openapi`, `AxumPlatform::openapi(openapi)` DEBE montar `OpenApiHttp` en su ruta (por defecto `/api-docs`) sobre **todos** los métodos, para que la cadena global corra antes de decidir (RP-028, RP-032); el método final lo juzga `OpenApiHttp`. Los alias (por defecto `/docs` y `/swagger`) y la ruta del JSON (`{path}/openapi.json`) se montan igual y participan de RP-008. Un `path`, alias o ruta de JSON inválido, duplicado o que colisione con una ruta HTTP, un canal de §10.4, un montaje `/mcp`, un `/graphql` u otro montaje OpenAPI DEBE impedir el arranque con un `PlatformError` que nombre la ruta. Sin la feature o sin `.openapi(...)` el router no cambia; `HttpApp::dispatch` no sirve la documentación y una petición ahí recibe el 404 del `fallback` (§4.5). |
+| RF-247 | La documentación DEBE responder solo a `GET`: cualquier otro método recibe 405 en Problem Details con `Allow: GET`, incluso con `docs(false)`. Con `docs(false)` las rutas autorizadas responden 404; una ruta desconocida bajo el montaje responde 404. Todo cuerpo se limita con `limits.body_limit_bytes` y por encima se responde 413 sin ejecutar nada (RP-006, RP-032). Toda respuesta DEBE llevar `Cache-Control: no-store`; el HTML `text/html; charset=utf-8` y el JSON `application/json; charset=utf-8` llevan `X-Content-Type-Options: nosniff`. El documento no se registra en `stdout`; se registra el método, la ruta y el estado con `tracing` (RN-040). |
+| RF-248 | Al montar, `AxumPlatform` DEBE validar el documento con `OpenApi::validate` y compararlo con `HttpApp.routes` con `OpenApi::check_routes`, normalizando `{id}`→`:id`, el método a mayúsculas y la barra final: una operación documentada sin ruta montada DEBE impedir el arranque siempre, y una ruta montada sin documentar solo cuando `strict_routes` es `true` (por defecto). El mensaje DEBE listar `MÉTODO /ruta`. Las rutas del propio montaje no se comparan consigo mismas, pero sí se comprueba que no choquen con una operación ni con otra ruta (RF-246). |
+| RF-249 | `OpenApiHttpConfig::authorize(&Request)` DEBE ejecutarse después de los globales y antes de decidir ruta o método: `Ok` continúa y `Err` se responde con el mapeo del núcleo a Problem Details (§10.3). El guardián DEBE cubrir la UI, los alias y el JSON; con `public_docs(true)` toda la documentación se sirve sin ejecutar `authorize`. `authorize` recibe la petición preparada, con las extensiones que dejó la cadena global —incluido el `Arc<Container>` de RF-084—, para que la app decida con la identidad de `JwtMiddleware`. |
+| RF-250 | `OpenApiHttpConfig` DEBE exponer `path` (`/api-docs`), `docs` (`true`), `public_docs` (`false`), `aliases` (`/docs` y `/swagger`) y `strict_routes` (`true`). `validate` DEBE aceptar solo rutas literales —con `/` inicial, distintas de `/` y sin `:`, `*`, `{`, `}`, `?` ni espacios—, rechazar duplicados y un JSON que choque con otra ruta, y un valor inválido DEBE fallar el arranque nombrando la ruta. Los límites de cuerpo y de apagado vienen de `Limits` y no se duplican (RF-017, RP-009). |
+| RF-251 | La UI DEBE ser una app Vue 3 con TypeScript estricto, Tailwind y componentes shadcn-vue, compilada con Vite a un único HTML con JS y CSS inline, embebido con `include_str!` y commiteado; el build DEBE ser reproducible (`npm ci && npm run build`) y un paso de finalización DEBE rechazar recursos externos, `eval` y hojas de estilo enlazadas. Usa el tema «oxide forge» del sitio público —mismos neutros cálidos, óxido, ámbar, verde ácido, arco y magenta; tipografías del sistema con degradación— con tema oscuro por defecto y variante clara, y DEBE agrupar las operaciones por etiqueta, mostrar parámetros, cuerpo de ejemplo y respuestas con sus esquemas, copiar un `cURL`, y ejecutar la operación contra el mismo origen con cabeceras —incluido `Authorization`— y el cuerpo editables. El documento se embebe como `<script type="application/json">` y la CSP de RF-247 no se relaja. |
+| RF-252 | La fachada DEBE declarar `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]` y reexportar `rdd_openapi` como `rdd::openapi` con el documento, el builder, `OpenApiHttp`, `OpenApiHttpConfig` y `OpenApiHttpResponse`; `rdd-axum` DEBE declarar `openapi = ["dep:rdd-openapi"]`. Activar `openapi` sin `axum` es un error de compilación claro (RP-012) y `rdd-openapi` no aparece en el árbol de `rdd-core` ni de `rdd-hyper` (RA-022). |
+
 ---
 
 ## 11. Sistema de middlewares
@@ -2037,7 +2142,8 @@ crate y una línea en la fachada.
 Las features de la fachada son `axum` y `sqlite` por defecto, más una por motor
 opcional (`postgres`, y las que se añadan con cada crate), `socket` para
 `rdd-socket` (§10.5), `mcp` para `rdd-mcp` (§10.6), `mcp-http` para el montaje
-`/mcp` (§10.8) y `graphql` para `rdd-graphql` y el montaje `/graphql` (§10.9).
+`/mcp` (§10.8), `graphql` para `rdd-graphql` y el montaje `/graphql` (§10.9) y
+`openapi` para `rdd-openapi` y la documentación `/api-docs` (§10.10).
 Activar la feature de un motor trae el crate como dependencia
 `optional`, re-exporta su adaptador y hace que `rdd::run_main` llame a su
 `register()`; `socket` activa `rdd-socket` y la feature `ws` de `rdd-axum`, y
@@ -2047,7 +2153,9 @@ re-exporta `McpServer`, `Tool`, `serve_stdio` y `serve_stdio_with` (más
 conectar; `mcp-http` activa `mcp` y `rdd-axum/mcp-http` y re-exporta `McpHttp`,
 `McpHttpConfig` y `McpHttpResponse` (RA-020); `graphql` activa `rdd-graphql` y
 `rdd-axum/graphql` y re-exporta `rdd_graphql` como `rdd::graphql` con su motor y
-sus macros (RF-243), sin nada que registrar. Es `run_main` —el código que expande `#[rdd::main]`— y no un
+sus macros (RF-243), sin nada que registrar; `openapi` activa `rdd-openapi` y
+`rdd-axum/openapi` y re-exporta el documento, el builder y el montaje como
+`rdd::openapi` (RF-252), tampoco hay nada que registrar ni conectar. Es `run_main` —el código que expande `#[rdd::main]`— y no un
 inicializador global, porque la fachada solo puede ejecutar código en el camino
 que ella misma genera, igual que RP-012 con la plataforma.
 `register()` es idempotente y hace ambas cosas: `declare` para sus esquemas e
@@ -2635,6 +2743,42 @@ en la plataforma (§4.5). El demo con dos usuarios cierra la suite en G-09.
 | G-08 | Entrada: sin token `authorize` → 401 en el explorer (por defecto), el POST y la suscripción; con `public_explorer(true)` el `GET` sin `query` sirve el HTML sin token y el POST y la suscripción siguen en 401; con token, `ctx.ext::<Session>()` y `ctx.resolve()` ven la identidad y el provider; un `panic` de resolutor responde `errors` con "error interno", deja el servidor vivo y registra el detalle con `tracing` | RF-239, RF-244 |
 | G-09 | `example/todo-app --graphql`: dos usuarios con JWT consultan y crean tareas por `/graphql`, cada uno solo ve las suyas, completan una tarea y reciben el cambio por suscripción; el explorer responde en `GET /graphql` sin token porque el demo activa `public_explorer`, y las operaciones siguen exigiendo JWT | RF-233, RF-241, §26.9 |
 
+### Suite OpenAPI (`/api-docs`)
+
+Los casos O-01 a O-06 cubren §10.10 contra un `AxumPlatform` real con la feature
+`openapi` en `127.0.0.1:0`. No se ejecutan contra `dispatch` porque el montaje vive
+en la plataforma (§4.5). El demo documentado cierra la suite en O-06.
+
+| Caso | Verifica | Requisitos |
+|---|---|---|
+| O-01 | `GET /api-docs` sirve el HTML compilado, autocontenido y sin peticiones externas, con `Content-Security-Policy` de `default-src 'none'`, `Cache-Control: no-store` y `X-Content-Type-Options: nosniff`; el JSON embebido en `script` coincide con el documento | RF-245, RF-247, RF-251 |
+| O-02 | Los alias `GET /docs` y `GET /swagger` sirven el mismo HTML; `GET /api-docs/openapi.json` devuelve `application/json` con el documento validado; los alias no exponen JSON propio | RF-246, RF-250 |
+| O-03 | Solo `GET`: un `POST`/`PUT`/`DELETE` responde 405 con `Allow: GET` tanto con la UI activa como con `docs(false)`; una ruta desconocida bajo el prefijo → 404; un cuerpo sobre el límite → 413 | RF-247 |
+| O-04 | `authorize` protege la UI y el JSON devolviendo el mismo 401/403 que la app; un `public_docs(true)` exime solo el HTML y el JSON sigue autenticado; la petición autenticada ve `ctx.ext::<Session>()` | RF-249 |
+| O-05 | La validación del documento rechaza versión no `3.x`, título vacío, ruta sin `/`, operación sin respuestas y `operationId` duplicado; el arranque valida en ambos sentidos: una operación documentada sin ruta montada es fatal siempre, una ruta montada sin documentar es fatal con `strict_routes(true)` y solo avisa con `false` | RF-245, RF-248, RF-250 |
+| O-06 | El montaje no ocupa una ruta existente: documentar una ruta que la app ya monta o montar la UI sobre una ruta HTTP existente aborta el arranque nombrando la ruta en conflicto | RF-246, RF-250 |
+
+### Suite de rendimiento (`rdd-bench`)
+
+El arnés `rdd-bench` no es una prueba de corrección: mide un binario `--release` en
+un puerto efímero y publica un informe reproducible. La tabla fija la metodología
+para que dos ejecuciones en la misma máquina sean comparables.
+
+| Aspecto | Regla |
+|---|---|
+| Plataforma | `AxumPlatform` real, puerto `127.0.0.1:0`, sin `dispatch` en proceso |
+| Cliente HTTP | `hyper` con keep-alive HTTP/1.1 y conexiones reutilizadas; cuerpo de respuesta consumido |
+| Cliente WebSocket | `tokio-tungstenite` contra `/ws/echo`; eco de ida y vuelta por muestra |
+| Ventana | Calentamiento fijo + ventana medida fija; la duración y la concurrencia se registran en el informe |
+| Percentiles | p50/p95/p99 por rango más cercano sobre las muestras de la ventana |
+| Salida | `docs/assets/benchmarks.json` con entorno (`os`, `arch`, `cpu`, `rustc`, `profile`), tasas, latencias y `errors`; `errors` debe ser 0 |
+| Página | `docs/benchmark.html` embebe el mismo informe en `<script id="bench-data" type="application/json">` mediante `scripts/build-benchmark-page.mjs` |
+
+| ID | Requisito |
+|---|---|
+| RF-253 | El arnés `rdd-bench` DEBE medir HTTP y WebSocket contra un `AxumPlatform` real en un puerto efímero, calcular p50/p95/p99 por rango más cercano y emitir un JSON con el entorno, las tasas y el conteo de errores; una ejecución con errores distintos de 0 falla. |
+| RF-254 | El informe DEBE publicarse en `docs/assets/benchmarks.json` y la página `docs/benchmark.html` DEBE embeberlo de forma idempotente con los colores y el chrome de la temática, sin peticiones externas ni datos inventados. |
+
 ---
 
 ## 21. Fases, entregables y criterios de aceptación
@@ -2878,7 +3022,7 @@ compilado a un único `explorer.html` inline, `public_explorer` en
       (§26.9)
 - [ ] G-06, G-08 y G-09 actualizados: HTML único, CSP intacta y
       `explorer(false)` en 404 (RF-241)
-- [ ] Docs regenerados y `specVersion` a `0.10.3-draft`
+- [ ] Docs regenerados y `specVersion` a `0.10.4-draft`
 
 **Aceptación:** abrir `GET /graphql` en un navegador sin token muestra el
 explorer y permite ejecutar operaciones tras pegar el Bearer; el editor
@@ -2886,6 +3030,58 @@ autocompleta el esquema; variables, cabeceras, respuesta y suscripción SSE
 funcionan en el navegador; el HTML es un solo archivo sin peticiones externas
 con la CSP sin cambios; el build es reproducible desde
 `crates/rdd-graphql/explorer`.
+
+### Fase 0.12 — Documentación OpenAPI y benchmarks (`/api-docs`)
+
+**Entrega:** crate `rdd-openapi` (modelo, builder, validación, HTTP y UI),
+montaje `/api-docs` en `rdd-axum` con la feature `openapi`, arnés `rdd-bench`
+con el informe y la página de benchmark, demo `--openapi` y casos O-01 a O-06.
+
+- [ ] `rdd-openapi`: modelo OpenAPI 3.1 (`OpenApi`, `Info`, `Server`, `Tag`,
+      `PathItem`, `Operation`, `Parameter`, `RequestBody`, `MediaType`,
+      `ApiResponse`, `Components`), `OpenApiBuilder`, `Operation` y
+      `OpenApi::validate` (RF-245)
+- [ ] `OpenApi::check_routes` con normalización `{id}`→`:id`; documentado sin
+      montar siempre fatal, montado sin documentar fatal con `strict_routes`
+      (RF-248, ADR-30)
+- [ ] `OpenApiHttp`, `OpenApiHttpConfig`, `OpenApiHttpResponse`: UI en
+      `path`, alias `/docs` y `/swagger`, `path/openapi.json`, solo `GET`,
+      `docs(bool)`, `public_docs(bool)`, `authorize` y límite de cuerpo
+      (RF-246, RF-247, RF-249, RF-250)
+- [ ] UI Vue 3 + TypeScript estricto + Tailwind + shadcn-vue con el tema
+      «oxide forge», operaciones agrupadas por tag, parámetros, cuerpos,
+      respuestas, cURL y *Try it* del mismo origen con `Authorization`
+      (RF-251, ⚠️ V25)
+- [ ] Build reproducible (`npm ci && npm run build`) a
+      `crates/rdd-openapi/src/api-docs.html` con JS/CSS inline, sin recursos
+      externos ni `eval`, y CSP `default-src 'none'` (RF-251, ADR-30)
+- [ ] `AxumPlatform::openapi` y validación de choques al arrancar; feature
+      `openapi` de la fachada con re-export `rdd::openapi` (RF-246, RF-252,
+      RA-022)
+- [ ] `rdd-bench`: arnés HTTP con keep-alive y eco WebSocket contra
+      `AxumPlatform` en puerto efímero; p50/p95/p99 por rango más cercano,
+      entorno, tasas y `errors` en un JSON (RF-253, ⚠️ V26)
+- [ ] `docs/assets/benchmarks.json` generado sin errores y
+      `docs/benchmark.html` con KPIs, gráficos por tema y tablas; página
+      registrada en nav, buscador, portada, sitemap y `llms.txt` (RF-254)
+- [ ] Demo `--openapi`: documento de las diez rutas con esquemas, montaje con
+      `openapi_config` y UI servida en `/api-docs`; acumulación de argumentos
+      `--mcp-http`, `--graphql` y `--openapi` (§26.9, §26.10)
+- [ ] Casos O-01 a O-06 en `crates/rdd/tests/openapi.rs`; el documento del demo
+      se valida con una prueba unitaria en `example/todo-app/src/openapi.rs`
+      (RF-245 a RF-252)
+- [ ] RA-022 verificada: `cargo tree -p rdd-openapi` sin plataformas y
+      `cargo tree -p rdd-hyper` sin `rdd-openapi`
+- [ ] Docs regenerados y `specVersion` a `0.11.0-draft`
+
+**Aceptación:** el demo publica un documento OpenAPI 3.1 que cubre sus rutas y
+`GET /api-docs`, `/docs` y `/swagger` sirven una UI autocontenida con la CSP de
+`default-src 'none'`; `GET /api-docs/openapi.json` devuelve el documento; los
+métodos distintos de `GET` responden 405 con `Allow: GET`; un documento que no
+cubre las rutas montadas aborta el arranque; *Try it* ejecuta una operación
+autenticada con el Bearer; `rdd-bench --release` emite un informe con `errors`
+0 y la página muestra los mismos números que el JSON, sin peticiones externas;
+`cargo tree -p rdd-openapi` cumple RA-022.
 
 ### Criterios transversales (todas las fases)
 
@@ -2897,6 +3093,7 @@ con la CSP sin cambios; el build es reproducible desde
 - [ ] RA-018 verificada en CI (`rdd-mcp` no arrastra plataformas, Tower, WebSocket ni drivers)
 - [ ] RA-020 verificada en CI (`rdd-mcp` no depende de plataformas y `rdd-hyper` no arrastra `rdd-mcp`)
 - [ ] RA-021 verificada en CI (`rdd-graphql` no arrastra plataformas, Tower, WebSocket ni drivers y `rdd-hyper` no arrastra `rdd-graphql`)
+- [ ] RA-022 verificada en CI (`rdd-openapi` no arrastra plataformas ni drivers y `rdd-hyper` no arrastra `rdd-openapi`)
 - [ ] Cobertura de pruebas de integración para cada requisito `RF-` marcado como DEBE
 - [ ] Cada diagnóstico de macro tiene un test `trybuild` con su mensaje esperado
 - [ ] Documentación con ejemplo ejecutable (`cargo test --doc`) por cada API pública
@@ -2933,6 +3130,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | V22 | Clientes GraphQL reales sobre el subconjunto: forma exacta de `__schema` que espera graphiql, codificación de `variables` en GET que emiten Apollo/urql y lectura de `graphql-sse` con `fetch`. Verificar además que `Body::from_stream` con `bytes::Bytes` no bufferiza el stream y que `Cache-Control: no-store` no rompe el explorer. | 0.10 | §10.9, RF-234, RF-237, RF-238 |
 | V23 | Expansión de las macros en un `impl` de raíz grande (varios `async fn` con `&GraphqlContext` y tipos anidados): tiempo de compilación y que `trybuild` capture RDD0501/RDD0502 con span en el campo. Medir el coste de `max_depth` con documentos generados de 16 y 17 niveles. | 0.10 | RF-235, RF-240, RF-242, RF-244 |
 | V24 | Explorer Vue + shadcn-vue + CodeMirror compilado a un solo HTML: medir el tamaño del bundle y verificar que Vite `singlefile` no deje `src`/`href` externos, `eval` ni peticiones a terceros; comprobar la CSP con script inline y el autocompletado de CodeMirror contra `__schema` real. Verificar `npm ci && npm run build` reproducible (artefacto idéntico o equivalente) y con caché de npm en CI sin red. | 0.11 | §10.9, RF-241, ADR-29 |
+| V25 | UI OpenAPI Vue + shadcn-vue compilada a un solo HTML: medir el bundle, comprobar que `vite-plugin-singlefile` no deja `src`/`href` externos, `eval` ni peticiones a terceros, que la CSP `default-src 'none'` no rompe los estilos ni el script inline, y que el documento embebido se escapa sin cerrar el `script` (`</script>` en descripciones). Verificar que *Try it* funciona en el mismo origen y que `npm ci && npm run build` es reproducible sin red. | 0.12 | §10.10, RF-251, ADR-30 |
+| V26 | Estabilidad de los percentiles del arnés: cuántas muestras y qué ventana hacen que p99 no oscile más de un 10 % entre ejecuciones en la misma máquina; confirmar que el keep-alive de `hyper` y el eco WebSocket de `tokio-tungstenite` no acumulan memoria ni conexiones y que el informe con `errors` 0 es reproducible. | 0.12 | §20, RF-253, ADR-31 |
 
 ---
 
@@ -2969,6 +3168,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | ADR-27 | **El esquema se declara con macros, no con SDL.** `#[derive(GraphqlObject)]`, `#[derive(GraphqlInput)]` y `#[graphql_object(...)]` generan los tipos y las raíces; no hay archivo `.graphql` ni `build.rs`. | (a) SDL embebida con `include_str!` y parser en arranque; (b) codegen desde SDL en build; (c) resolver el esquema por reflexión en runtime. | (a) y (b) crean una segunda fuente de verdad que puede divergir del tipo Rust y pierden el tipado de los resolutores. (c) no existe en Rust sin macros. Con macros, un campo mal tipado es un error de compilación con span (RDD0501/RDD0502) y `cargo expand` (RN-013) muestra el esquema generado. |
 | ADR-28 | **Suscripciones solo por SSE (`graphql-sse`), sin WebSocket.** El stream viaja por el mismo cuerpo que `/mcp` ya sabe volcar. | (a) `graphql-transport-ws` sobre el canal de §10.4; (b) `graphql-ws` heredado; (c) polling desde el cliente. | (a) y (b) exigirían subprotocolo negociado en el handshake, un estado de conexión propio y clientes que hoy no hablan el puerto `SocketConnection`; además duplican el trabajo de §10.4. (c) gasta CPU y no es tiempo real. SSE reutiliza la infraestructura de `/mcp`, funciona con `fetch` en el navegador y `EventSource` en clientes que no necesitan POST. |
 | ADR-29 | **Explorer profesional compilado a un único HTML embebido.** App Vue 3 + TypeScript + Tailwind + shadcn-vue + CodeMirror construida con Vite y `vite-plugin-singlefile`; el artefacto (`explorer.html` con JS/CSS inline) se commitea y se embebe con `include_str!`. | (a) Servir GraphiQL desde CDN; (b) servir el bundle como assets sueltos; (c) mantener el HTML a mano; (d) no incluir explorer. | (a) rompe el funcionamiento offline y abre la CSP a terceros. (b) pierde `include_str!` y obliga a rutas estáticas distintas en cada plataforma. (c) no alcanza la paridad de editor, documentación y tema que pide la fase 0.11. (d) era una petición explícita del usuario. El costo es una cadena de build JS pinneada por `package-lock.json` y el tamaño del bundle en el binario; el runtime sigue sin red, sin `eval` y con la CSP intacta, y el artefacto se auditaba de una lectura. |
+| ADR-30 | **El documento OpenAPI lo compone la aplicación y la UI viene embebida.** `rdd-openapi` modela OpenAPI 3.1, valida el documento y lo contrasta con las rutas montadas; la UI Vue + shadcn-vue con el tema del explorer se compila a un único HTML y se embebe con `include_str!`, servida en `/api-docs` con alias `/docs` y `/swagger` y el documento en `path/openapi.json`. | (a) Generar el documento desde los controllers con una macro; (b) servir Swagger UI o Redoc desde CDN; (c) generar YAML estático en build; (d) embeber solo el JSON y dejar la UI al usuario. | (a) acopla la documentación a la tabla de rutas y no cubre operaciones que no son CRUD ni descripciones que decide la app; además obliga a introspeccionar tipos en compilación. (b) rompe el modo offline y la CSP, y ya se descartó para el explorer (ADR-29). (c) crea una segunda fuente de verdad que puede divergir del binario y no conoce los alias ni el montaje. (d) deja al usuario sin la UI que pide la fase. Componer el documento en código deja la validación al arrancar —incluido el contraste con las rutas montadas— y la UI comparte tema, build y garantías de CSP con `/graphql`. |
+| ADR-31 | **El benchmark es una herramienta interna reproducible, no una compuerta de CI.** `rdd-bench` mide `AxumPlatform` real en un puerto efímero, publica `docs/assets/benchmarks.json` y la página lo embebe de forma idempotente. | (a) Umbral de rendimiento en CI que rompa el build; (b) publicación automática en cada release; (c) `criterion` en proceso sobre `dispatch`. | (a) es frágil: la varianza de una máquina de CI haría fallar cambios correctos y el número no representa el despliegue. (b) exige infraestructura y un runner estable que §2.2 mantiene fuera. (c) mide el núcleo en proceso, no la pila HTTP ni WebSocket completa, y no describe la latencia que ve un cliente. El arnés se ejecuta a mano, registra el entorno para que la comparación sea honesta y su informe es un dato, no un contrato. |
 
 ---
 
@@ -3002,6 +3203,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.10.0-draft | 2026-11-11 | **Explorer profesional y documento público configurable.** Petición del usuario: un explorer tipo Apollo Sandbox con Vue + shadcn y paleta de GitHub. (1) **ADR-29** se enmienda: el explorer pasa de HTML a mano a una app Vue 3 + TypeScript + Tailwind + shadcn-vue + CodeMirror compilada con Vite a un único HTML inline, commiteado y embebido con `include_str!`; el runtime sigue sin CDN ni `eval` y la CSP no cambia. (2) **RF-239/241/242**: `authorize` exime solo el documento cuando `public_explorer(true)` (por defecto `false`); el explorer gana esquema/documentación por introspección, autocompletado, variables/cabeceras, respuesta, SSE e historial con tema Primer claro/oscuro. (3) **G-06/G-08/G-09** cubren el HTML único y el documento público; el demo activa `public_explorer(true)`. (4) **§21**: fase 0.11 con aceptación en navegador. (5) **§22**: **V24** (tamaño, CSP y reproducibilidad del bundle). (6) **§26.9**: el demo monta el explorer público y las operaciones siguen con JWT. |
 | 0.10.1-draft | 2026-11-11 | **El explorer adopta el sistema de diseño del sitio público.** Petición del usuario: alinear la UI con el design system de la documentación. (1) **RF-241** cambia la paleta Primer por «oxide forge»: neutros cálidos, óxido `#ff5a1f`, ámbar `#ffb347`, verde ácido `#a3e635`, arco `#4f9dff` y magenta `#ff3d7f`; tipografías Space Grotesk/Inter/JetBrains Mono con degradación a fuentes del sistema, sin descargas externas. (2) **§21/fase 0.11**: la casilla pasa a exigir tema oscuro por defecto y variante clara; el documento sube a `0.10.1-draft`. (3) El resaltado de CodeMirror deja de depender de `@uiw/codemirror-theme-github` y pasa a un tema propio que consume las variables CSS del design system, de modo que el cambio claro/oscuro es inmediato y el artefacto sigue siendo un único HTML sin red ni `eval`. |
 | 0.10.2-draft | 2026-11-11 | **Tab indenta y acepta la sugerencia del editor.** Petición del usuario: el editor de CodeMirror no indentaba al tabular y el autocompletado debía funcionar. (1) **RF-241**: el editor DEBE indentar la línea o la selección con Tab, desindentar con Shift+Tab y aceptar la sugerencia activa con Tab cuando el desplegable está abierto; además autocompleta al escribir y con Ctrl+Espacio. (2) **§21/fase 0.11**: la casilla del editor incorpora Tab; el documento sube a `0.10.2-draft`. (3) El cambio vive en la extensión de teclas del explorer y no altera el artefacto autocontenido ni la CSP. |
+| 0.11.0-draft | 2026-11-12 | **Documentación OpenAPI (`/api-docs`) y benchmarks reproducibles.** Petición del usuario: documentar por HTTP con una UI del mismo stack y tema que el explorer, y publicar un menú de rendimiento con gráficos. (1) **§2.1/§2.2**: OpenAPI entra como fase 0.12 opcional; siguen fuera la generación automática desde controllers, Swagger UI/Redoc desde CDN y el benchmark como compuerta de CI. (2) **§4.1/§4.2/§4.3/§4.4**: entran `rdd-openapi` (neutral, sin plataformas) y `rdd-bench` (herramienta interna); `rdd-axum` gana la feature `openapi`; nueva **RA-022** (solo `rdd-axum` depende de `rdd-openapi` y `rdd-hyper` no lo arrastra) y **RP-032** (el montaje `/api-docs` valida el documento al arrancar, no interpreta la UI y se prueba con O-01 a O-06). (3) **§10.10 nuevo**: modelo OpenAPI 3.1, `OpenApiBuilder`, `OpenApi::validate`, `OpenApi::check_routes`, `OpenApiHttp`, `OpenApiHttpConfig`, `AxumPlatform::openapi` y **RF-245 a RF-252** (modelo y validación; montaje con alias y JSON; solo `GET` con 405/404/413; validación bidireccional de rutas; `authorize` con `public_docs`; configuración; UI Vue 3 + TS estricto + Tailwind + shadcn-vue con el tema oxide forge, autocontenida y *Try it* del mismo origen; feature de la fachada). (4) **§12.6**: feature `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]` y re-export como `rdd::openapi`. (5) **§20**: suites O-01 a O-06 y la metodología de `rdd-bench` con **RF-253** (arnés HTTP/WS con p50/p95/p99 y entorno) y **RF-254** (informe y página idempotentes). (6) **§21**: fase 0.12 con aceptación de UI, JSON, 405, validación al arrancar y informe sin errores; criterio transversal de RA-022. (7) **§22**: **V25** (bundle, CSP, escape del documento embebido y reproducibilidad de la UI) y **V26** (estabilidad de percentiles y ausencia de fugas en el arnés). (8) **§23**: **ADR-30** (documento compuesto por la app y UI embebida, en vez de macro, CDN o YAML estático) y **ADR-31** (benchmark interno reproducible, no compuerta de CI). (9) **§26.9/§26.10**: el demo acumula `--mcp-http`, `--graphql` y `--openapi`, y documenta las diez rutas con su documento, su montaje y su configuración. (10) **Sitio**: `docs/benchmark.html`, `docs/assets/benchmarks.json`, `scripts/build-benchmark-page.mjs`, el ítem *Benchmark* en nav, buscador, portada, sitemap y `llms.txt`. El documento sube a `0.11.0-draft`. |
+| 0.10.4-draft | 2026-11-11 | **Las raíces GraphQL del demo se separan por archivo.** Petición del usuario: mutaciones, consultas y tipos estaban mezclados en `app_graphql.rs`. (1) **§26.9**: las raíces viven en `src/graphql/{query,mutation,subscription}.rs` y `mod.rs` solo reexporta; la macro emite un `impl GraphqlRoot` por bloque anotado, así que no puede haber dos sobre la misma raíz y publicar raíces por módulo exigiría cambiar la macro y enmendar RF-240. (2) `CreateTaskInput` baja a `modules/tasks/presentation/task_graphql.rs` junto a `Task` y el módulo lo reexporta (RA-004): el contrato GraphQL lo publica el módulo dueño. (3) El demo pasa a `mod graphql;` y `.query(graphql::Query)`, sin cambios de comportamiento. El documento sube a `0.10.4-draft`. |
 | 0.10.3-draft | 2026-11-11 | **El montaje de `/graphql` se configura por entorno.** Petición del usuario: ver dónde se configuran `path`, `explorer`, `public_explorer` y `max_depth`. (1) **§26.9**: el bloque `--graphql` de `main.rs` consume `config/graphql_config.rs`, que expone `GRAPHQL_PATH`, `GRAPHQL_EXPLORER`, `GRAPHQL_PUBLIC_EXPLORER` y `GRAPHQL_MAX_DEPTH` con los valores que antes estaban fijos; el demo mantiene el explorer público para G-09 y en producción se desactiva con `GRAPHQL_EXPLORER=false` o se protege con `GRAPHQL_PUBLIC_EXPLORER=false`. (2) El README del demo documenta las cuatro variables y el listado de argumentos del binario (`--mcp`, `--mcp-http`, `--graphql` y `--explorer-token`), y la guía de la CLI documenta `rdd run --memory` y el reenvío tras `--`. El documento sube a `0.10.3-draft`. |
 | 0.9.0-draft | 2026-11-11 | **GraphQL opcional (`/graphql`): consultas, mutaciones, suscripciones y explorer.** Petición del usuario. Se resuelve con un motor propio, macros y SSE, por las mismas razones de portabilidad que MCP. (1) **§2.1/§2.2**: GraphQL sale de la lista de exclusiones y entra como fase 0.10 opcional, sobre el mismo `HttpApp` y el mismo contenedor; siguen fuera SDL, directivas propias, interfaces, uniones, enums, `@defer`/`@stream`, batching, consultas persistidas y el subprotocolo `graphql-transport-ws`. (2) **§4.1/§4.2/§4.3**: entra `rdd-graphql` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow`); `rdd-axum` gana la feature `graphql`; nueva **RA-021** (la dependencia va en una sola dirección, el motor no arrastra plataformas ni WebSocket y `rdd-hyper` no arrastra `rdd-graphql`). (3) **§4.4**: nuevas **RP-030** (el montaje `/graphql` ejecuta `prepare`, no interpreta el documento y se prueba con G-01 a G-09) y **RP-031** (el stream SSE sale del motor y la plataforma solo lo vuelca; desconectar cancela; sin reintento ni WebSocket). **§4.5**: la suite G no añade casos C. (4) **§8.7**: diagnósticos **RDD0501** (tipo o firma no soportada) y **RDD0502** (nombre duplicado o reservado). (5) **§10.9 nuevo**: `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y `AxumPlatform::graphql`, con el subconjunto del documento, la forma de `errors`, la introspección, el formato `graphql-sse` y **RF-233 a RF-244** (montaje y choque de rutas; POST/GET con su tabla de estados; subconjunto del documento con `max_depth`; validación, ejecución y burbujeo de `null`; introspección; SSE con `next`/`complete` y cancelación; `authorize` e identidad por `ext`/`get`/`resolve`; macros con RDD0501/RDD0502; explorer embebido con CSP; configuración; feature de la fachada; validación del esquema y errores internos). (6) **§12.6**: feature `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y re-export como `rdd::graphql`. (7) **§20**: suite G-01 a G-09 contra el motor y un servidor real. (8) **§21**: fase 0.10 con aceptación de dos usuarios, 401 en explorer y suscripción, explorer sin red, SSE y errores con `locations`/`path`. (9) **§22**: **V22** (clientes GraphQL reales e introspección/GET/SSE) y **V23** (expansión de macros y coste de `max_depth`). (10) **§23**: **ADR-26** (motor propio), **ADR-27** (macros en vez de SDL), **ADR-28** (suscripciones solo por SSE) y **ADR-29** (explorer propio embebido). (11) **§26.9**: el demo monta `/graphql` con JWT, un esquema sobre los casos de uso, una suscripción sobre `TaskFeed` filtrada por dueño y el explorer. |
 
@@ -3209,21 +3412,35 @@ example/todo-app/
 │   └── 0002_users.sql          # lo añade el demo
 ├── src/
 │   ├── config/
+│   │   ├── explorer_config.rs  # identidad del Bearer de preview (§26.9)
+│   │   ├── graphql_config.rs   # ruta, explorer y max_depth (§26.9)
 │   │   ├── jwt_config.rs       # secreto, expiración y ADMIN_EMAIL, solo del entorno
-│   │   └── mcp_config.rs       # MCP_ALLOWED_ORIGINS para el montaje /mcp (§26.8)
+│   │   ├── mcp_config.rs       # MCP_ALLOWED_ORIGINS para el montaje /mcp (§26.8)
+│   │   └── openapi_config.rs   # ruta, UI y políticas de /api-docs (§26.10)
+│   ├── graphql/                # raíces del esquema, una por archivo (§26.9)
+│   │   ├── mod.rs
+│   │   ├── mutation.rs
+│   │   ├── query.rs
+│   │   └── subscription.rs
 │   ├── middleware/             # transversal de la app, no es un módulo
 │   │   ├── mod.rs
 │   │   ├── jwt.rs              # JwtMiddleware: identifica, no rechaza
 │   │   ├── require_auth.rs     # RequireAuth: 401 si no hay sesión
-│   │   ├── require_mcp.rs      # authorize(&Request) para /mcp (§26.8)
-│   │   └── require_role.rs     # RequireRole: 403 si el rol no alcanza
-│   └── modules/
-│       ├── users/              # las cuatro capas de §5
-│       └── tasks/              # el del CLI, con los guards puestos
-│           └── presentation/
-│               └── task_tools.rs   # tools MCP de §26.7
+│   │   ├── require_mcp.rs      # authorize(&Request) para /mcp y /api-docs
+│   │   ├── require_role.rs     # RequireRole: 403 si el rol no alcanza
+│   │   └── task_events.rs      # difunde los cambios de tareas al hub
+│   ├── modules/
+│   │   ├── users/              # las cuatro capas de §5
+│   │   └── tasks/              # el del CLI, con los guards puestos
+│   │       └── presentation/
+│   │           ├── task_feed.rs     # canal /ws/tasks (§26.7)
+│   │           ├── task_graphql.rs  # contrato GraphQL del módulo (§26.9)
+│   │           └── task_tools.rs    # tools MCP de §26.7
+│   ├── openapi.rs              # documento OpenAPI 3.1 del demo (§26.10)
+│   └── main.rs
 └── tests/
     ├── acceptance.rs           # 401, 403, 429 y preflight
+    ├── graphql.rs              # G-09: el binario con --graphql
     ├── mcp_stdio.rs            # M-09: el binario con --mcp
     └── mcp_http.rs             # M-16: el binario con --mcp-http
 ```
@@ -3558,7 +3775,7 @@ al lado de `TaskResponse` y sin duplicar la regla de negocio:
 
 ```rust
 // modules/tasks/presentation/task_graphql.rs
-use rdd::graphql::GraphqlObject;
+use rdd::{GraphqlInput, GraphqlObject};
 use uuid::Uuid;
 
 use super::dto::TaskResponse;
@@ -3569,6 +3786,12 @@ pub struct Task {
     pub id: Uuid,
     pub title: String,
     pub done: bool,
+}
+
+/// Entrada de `createTask`; el resto de los campos los fija el caso de uso.
+#[derive(GraphqlInput)]
+pub struct CreateTaskInput {
+    pub title: String,
 }
 
 impl From<TaskResponse> for Task {
@@ -3582,23 +3805,35 @@ impl From<TaskResponse> for Task {
 }
 ```
 
-`modules/tasks/mod.rs` lo re-exporta como `GraphqlTask` para no chocar con el
-agregado `Task`, y re-exporta también `TaskResponse` para que la suscripción
-deserialice el evento del hub; `TaskFeed` gana un `pub fn subscribe(&self)` que
-delega en `self.hub.subscribe(TOPIC)` (§10.5). El esquema se compone en `src/app_graphql.rs`,
-la raíz de composición, que es el único sitio que puede nombrar usuarios y tareas
-a la vez (RA-004):
+`modules/tasks/mod.rs` reexporta `Task` como `GraphqlTask` para no chocar con el
+agregado y `CreateTaskInput` como parte del contrato del módulo (RA-004), y
+reexporta también `TaskResponse` para que la suscripción deserialice el evento
+del hub; `TaskFeed` gana un `pub fn subscribe(&self)` que delega en
+`self.hub.subscribe(TOPIC)` (§10.5).
+
+Las raíces se organizan en `src/graphql/`, un archivo por raíz, porque la macro
+emite un `impl GraphqlRoot` por bloque anotado y no admite dos sobre el mismo
+tipo: `mod.rs` solo reexporta y la raíz de composición sigue siendo el único
+sitio que puede nombrar usuarios y tareas a la vez (RA-004). Publicar raíces por
+módulo exigiría cambiar la macro y RF-240.
 
 ```rust
-// src/app_graphql.rs — raíces del esquema (§10.9)
-use rdd::Payload;
-use rdd::graphql::{
-    GraphqlContext, GraphqlInput, GraphqlStream, graphql_object,
-};
-use rdd::prelude::*;
-use uuid::Uuid;
+// src/graphql/mod.rs — raíces del esquema (§10.9)
+mod mutation;
+mod query;
+mod subscription;
 
-use crate::modules::tasks::{GraphqlTask, TaskFeed, TaskResponse, TasksService};
+pub use self::mutation::Mutation;
+pub use self::query::Query;
+pub use self::subscription::Subscription;
+```
+
+```rust
+// src/graphql/query.rs — consultas (§10.9)
+use rdd::graphql::{GraphqlContext, graphql_object};
+use rdd::prelude::*;
+
+use crate::modules::tasks::{GraphqlTask, TaskResponse, TasksService};
 use crate::modules::users::Session;
 
 #[derive(Default)]
@@ -3617,14 +3852,19 @@ impl Query {
             .collect())
     }
 }
+```
+
+```rust
+// src/graphql/mutation.rs — mutaciones (§10.9)
+use rdd::graphql::{GraphqlContext, graphql_object};
+use rdd::prelude::*;
+use uuid::Uuid;
+
+use crate::modules::tasks::{CreateTaskInput, GraphqlTask, TaskResponse, TasksService};
+use crate::modules::users::Session;
 
 #[derive(Default)]
 pub struct Mutation;
-
-#[derive(GraphqlInput)]
-pub struct CreateTaskInput {
-    pub title: String,
-}
 
 #[graphql_object(mutation)]
 impl Mutation {
@@ -3646,6 +3886,16 @@ impl Mutation {
         Ok(TaskResponse::from(task).into())
     }
 }
+```
+
+```rust
+// src/graphql/subscription.rs — suscripciones (§10.9)
+use rdd::Payload;
+use rdd::graphql::{GraphqlContext, GraphqlStream, graphql_object};
+use rdd::prelude::*;
+
+use crate::modules::tasks::{GraphqlTask, TaskFeed, TaskResponse};
+use crate::modules::users::Session;
 
 #[derive(Default)]
 pub struct Subscription;
@@ -3690,12 +3940,20 @@ mientras que las operaciones siguen pidiendo el `Bearer` en la caja de cabeceras
 del explorer (RF-239, RF-241).
 
 ```rust
-// main.rs — modo `--graphql`
+// main.rs — los montajes opcionales se acumulan sobre el mismo router
+let mut platform = AxumPlatform::new();
+let mut mounted = false;
+
+if std::env::args().skip(1).any(|arg| arg == "--mcp-http") {
+    platform = platform.mcp(mcp);
+    mounted = true;
+}
+
 if std::env::args().skip(1).any(|arg| arg == "--graphql") {
     let schema = Schema::builder()
-        .query(app_graphql::Query)
-        .mutation(app_graphql::Mutation)
-        .subscription(app_graphql::Subscription)
+        .query(graphql::Query)
+        .mutation(graphql::Mutation)
+        .subscription(graphql::Subscription)
         .build()?;
     let gql = config::graphql_config::load();
     let graphql = GraphqlHttp::new(schema).config(
@@ -3706,10 +3964,30 @@ if std::env::args().skip(1).any(|arg| arg == "--graphql") {
             .max_depth(gql.max_depth)
             .authorize(require_session),
     );
-    return app
-        .run_on(AxumPlatform::new().graphql(graphql), &addr)
-        .await;
+    platform = platform.graphql(graphql);
+    mounted = true;
 }
+
+if std::env::args().skip(1).any(|arg| arg == "--openapi") {
+    let docs = config::openapi_config::load();
+    let openapi = OpenApiHttp::new(openapi::document()).config(
+        OpenApiHttpConfig::new()
+            .path(docs.path)
+            .docs(docs.docs)
+            .public_docs(docs.public_docs)
+            .aliases(docs.aliases)
+            .strict_routes(docs.strict_routes)
+            .authorize(require_session),
+    );
+    platform = platform.openapi(openapi);
+    mounted = true;
+}
+
+if mounted {
+    return app.run_on(platform, &addr).await;
+}
+
+app.run(&addr).await
 ```
 
 El montaje sale de `config/graphql_config.rs`, que centraliza las cuatro opciones
@@ -3748,10 +4026,13 @@ nuevo initializer `config/explorer_config.rs`, ajustable por
 explorer entre arranques. El token no se registra en la base y caduca con
 `JWT_TTL_SECS` (§26.3).
 
-El binario reconoce cuatro argumentos: `--mcp` (stdio, sin puerto), `--mcp-http`
-(`/mcp`), `--graphql` (`GRAPHQL_PATH`) y `--explorer-token` (imprime el Bearer y
-sigue). Los tres modos de servidor son excluyentes y se evalúan en ese orden; el
-README del demo mantiene el listado y los ejemplos de combinación.
+El binario reconoce cinco argumentos: `--mcp` (stdio, sin puerto),
+`--explorer-token` (imprime el Bearer y sigue), `--mcp-http` (`/mcp`),
+`--graphql` (`GRAPHQL_PATH`) y `--openapi` (`OPENAPI_PATH`, §26.10). `--mcp` sigue
+siendo excluyente porque no abre puerto; los tres montajes de servidor se
+**acumulan** sobre un solo `AxumPlatform`, así que `--graphql --openapi` sirve el
+explorer y la documentación a la vez. El README del demo mantiene el listado y los
+ejemplos de combinación.
 
 ```rust
 // config/explorer_config.rs — identidad del token de explorer (§26.9)
@@ -3778,3 +4059,97 @@ suyas, que completar una tarea ajena devuelve `errors` y no cambia nada, que
 activa `public_explorer`, que sin `Bearer` el POST y la suscripción responden 401,
 y que una suscripción `taskChanged` recibe el evento del propio usuario y no el
 del otro cuando ambos crean tareas mientras está abierta.
+
+### 26.10 OpenAPI del demo
+
+`example/todo-app --openapi` monta la documentación en `/api-docs`, con alias
+`/docs` y `/swagger`, sobre el mismo servidor REST y el mismo contenedor (§10.10).
+El documento no se deriva de los controllers: es una raíz de composición que
+declara las diez rutas que monta `main`, sus DTOs y sus respuestas, y la
+plataforma comprueba al arrancar que cubra exactamente las rutas montadas
+(RF-248). La feature se añade al `Cargo.toml` del demo:
+
+```toml
+rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi"] }
+```
+
+El documento vive en `src/openapi.rs` y usa los DTOs como esquemas con
+`$ref` a `components.schemas`; el dueño sale de la sesión y por eso
+`Task.owner_id` documenta la respuesta, no un cuerpo de entrada:
+
+```rust
+// src/openapi.rs — documento del demo (§10.10)
+pub fn document() -> OpenApi {
+    OpenApiBuilder::new("todo-app", env!("CARGO_PKG_VERSION"))
+        .description("Demo de rdd: TODO con JWT, roles, CORS, rate limit, GraphQL y MCP.")
+        .server(Server::new("/").description("Este servidor"))
+        .tag(Tag::new("app").description("Bienvenida y estado del servicio"))
+        .tag(Tag::new("auth").description("Registro, login y cuenta de la sesión"))
+        .tag(Tag::new("tasks").description("Tareas del dueño del token"))
+        .schema("Problem", /* Problem Details (RFC 9457) */)
+        .schema("Task", /* id, title, done, owner_id */)
+        // …
+        .operation(
+            "get",
+            "/tasks",
+            Operation::new("listTasks", "Lista las tareas del dueño")
+                .tag("tasks")
+                .bearer()
+                .parameter(
+                    Parameter::query("q", json!({ "type": "string" }))
+                        .description("Filtra por texto del título"),
+                )
+                .parameter(
+                    Parameter::query("done", json!({ "type": "boolean" }))
+                        .description("Filtra por estado"),
+                )
+                .json_response(200, "Tareas del dueño", array_of("Task"))
+                .json_response(401, "Falta el token o no es válido", reference("Problem")),
+        )
+        // GET /health, POST /auth/register, POST /auth/login, GET /users/me,
+        // POST /tasks, GET/PUT/DELETE /tasks/{id} …
+        .build()
+}
+```
+
+`GET /` y `/health` van sin `bearer()`; `/auth/register` y `/auth/login` no lo
+llevan porque crean la sesión; `/users/me` y todo `/tasks` sí. `DELETE
+/tasks/{id}` documenta 204 sin cuerpo, 401, 403 (`RequireRole` exige `admin`) y
+404. La ruta documentada es `{id}` y el documento normaliza a `:id` al comparar
+con las rutas montadas, así que no hay dos sintaxis que mantener.
+
+El montaje sale de `config/openapi_config.rs`:
+
+```rust
+// config/openapi_config.rs — política de `/api-docs` (§10.10, RF-250)
+pub fn load() -> OpenApiConfig {
+    OpenApiConfig {
+        path: super::env_or("OPENAPI_PATH", "/api-docs"),
+        docs: super::env_or("OPENAPI_DOCS", "true") == "true",
+        public_docs: super::env_or("OPENAPI_PUBLIC_DOCS", "true") == "true",
+        aliases: super::env_or("OPENAPI_ALIASES", "/docs,/swagger")
+            .split(',')
+            .map(str::trim)
+            .filter(|alias| !alias.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        strict_routes: super::env_or("OPENAPI_STRICT", "true") == "true",
+    }
+}
+```
+
+`public_docs(true)` es una decisión de demo: el documento se lee sin JWT para que
+quien evalúa el framework vea la API, mientras las operaciones que lance desde
+*Try it* siguen exigiendo el `Bearer` en la caja de cabeceras (el mismo token de
+`--explorer-token` sirve para las dos UIs). En producción se pone
+`OPENAPI_PUBLIC_DOCS=false` y `authorize` protege UI y JSON. `strict_routes(true)`
+es el valor recomendado: una ruta nueva sin documentar aborta el arranque en vez
+de publicarse sin contrato; `OPENAPI_STRICT=false` solo avisa.
+
+**Verificación.** La prueba unitaria `documenta_las_diez_rutas_del_demo` valida el
+documento y comprueba que declara diez operaciones; O-05 comprueba que el
+arranque rechaza un documento que no cubre las rutas montadas y una ruta
+documentada que no existe; O-06 que la UI no ocupa una ruta de la app. En vivo,
+`GET /api-docs`, `/docs` y `/swagger` sirven la misma UI sin red,
+`GET /api-docs/openapi.json` devuelve el documento y *Try it* ejecuta
+`listTasks` con el Bearer pegado en Cabeceras.

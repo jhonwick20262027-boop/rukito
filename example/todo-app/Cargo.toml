@@ -21,8 +21,9 @@ workspace = true
 # RA-013: el proyecto depende de la fachada, nunca de `rdd-core`.
 # La feature `socket` trae el hub de §10.5 y el transporte WS de `rdd-axum`; `mcp`
 # trae el servidor MCP por stdio de §10.6, `mcp-http` el montaje `/mcp` de §10.8 y
-# `graphql` el motor y el montaje `/graphql` de §10.9.
-rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql"] }
+# `graphql` el motor y el montaje `/graphql` de §10.9 y `openapi` la
+# documentación servida en `/api-docs` de §10.10.
+rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi"] }
 # Paquete externo que lee su propia sección de `rdd.toml` (§11.5, RF-151).
 rdd-cors.workspace = true
 # `Error::internal` recibe un `anyhow::Error`; lo usan los adaptadores (§10.3).

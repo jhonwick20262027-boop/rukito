@@ -124,9 +124,9 @@
 use rdd::graphql::{GraphqlHttp, GraphqlHttpConfig, Schema};
 
 let schema = Schema::builder()
-    .query(app_graphql::Query)
-    .mutation(app_graphql::Mutation)
-    .subscription(app_graphql::Subscription)
+    .query(graphql::Query)
+    .mutation(graphql::Mutation)
+    .subscription(graphql::Subscription)
     .build()?;
 let graphql = GraphqlHttp::new(schema).config(
     GraphqlHttpConfig::new()
@@ -211,6 +211,8 @@ impl Subscription {
     }
 }</code></pre>
         <ul>
+          <li>Cada raíz vive en su archivo (<code>src/graphql/query.rs</code>, <code>mutation.rs</code> y <code>subscription.rs</code>) y <code>mod.rs</code> solo reexporta: la macro emite un <code>impl GraphqlRoot</code> por bloque anotado, así que no puede haber dos sobre la misma raíz.</li>
+          <li>Los tipos viven en el módulo dueño: <code>Task</code> y <code>CreateTaskInput</code> salen de <code>modules/tasks/presentation/task_graphql.rs</code> y el módulo los reexporta (RA-004); la raíz solo orquesta el caso de uso.</li>
           <li>El tipo GraphQL vive en <code>presentation/</code> y se construye desde el DTO (<code>TaskResponse</code>); publicar el agregado directamente acoplaría el esquema al dominio.</li>
           <li>En un <code>impl</code> de raíz cada método es <code>async</code>, recibe <code>&amp;GraphqlContext</code> y devuelve <code>rdd::Result&lt;T&gt;</code>; en <code>subscription</code>, <code>GraphqlStream&lt;T&gt;</code>.</li>
           <li>Un tipo o una firma no soportada es el diagnóstico <strong>RDD0501</strong>; un nombre duplicado o reservado (<code>__</code>) es <strong>RDD0502</strong>.</li>

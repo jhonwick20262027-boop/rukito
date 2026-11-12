@@ -13,6 +13,7 @@ use std::time::Duration;
 use rdd::AxumPlatform;
 use rdd::graphql::{GraphqlHttp, GraphqlHttpConfig, Schema};
 use rdd::mcp::{Extensions, McpHttp, McpHttpConfig, McpServer};
+use rdd::openapi::{OpenApiHttp, OpenApiHttpConfig};
 use rdd::prelude::*;
 use rdd_cors::Cors;
 use uuid::Uuid;
@@ -22,13 +23,14 @@ use crate::modules::tasks::presentation::task_tools::{CompleteTask, CreateTask, 
 use crate::modules::users::{Role, Session, TokenCodec};
 
 mod app_controller;
-mod app_graphql;
 mod app_module;
 mod app_service;
 mod config;
 mod generated;
+mod graphql;
 mod middleware;
 mod modules;
+mod openapi;
 
 #[rdd::main]
 async fn main() -> Result<()> {
@@ -118,6 +120,12 @@ async fn main() -> Result<()> {
         return rdd::mcp::serve_stdio_with(server, ext).await;
     }
 
+    // Los tres montajes opcionales comparten router y contenedor; se acumulan
+    // para que `--graphql --openapi` sirva el explorer y la documentación a la
+    // vez sobre el mismo servidor REST.
+    let mut platform = AxumPlatform::new();
+    let mut mounted = false;
+
     // §26.8: `--mcp-http` monta `/mcp` en el mismo router y contenedor. La
     // identidad la pone el `JwtMiddleware` global y `require_session` la exige
     // después de la cadena global (RF-231).
@@ -127,7 +135,8 @@ async fn main() -> Result<()> {
                 .allowed_origins(config::mcp_config::allowed_origins())
                 .authorize(require_session),
         );
-        return app.run_on(AxumPlatform::new().mcp(mcp), &addr).await;
+        platform = platform.mcp(mcp);
+        mounted = true;
     }
 
     // §26.9: `--graphql` monta `/graphql` sobre el mismo servidor REST y el mismo
@@ -135,9 +144,9 @@ async fn main() -> Result<()> {
     // solo confirma la sesión que dejó `JwtMiddleware` (RF-239).
     if std::env::args().skip(1).any(|arg| arg == "--graphql") {
         let schema = Schema::builder()
-            .query(app_graphql::Query)
-            .mutation(app_graphql::Mutation)
-            .subscription(app_graphql::Subscription)
+            .query(graphql::Query)
+            .mutation(graphql::Mutation)
+            .subscription(graphql::Subscription)
             .build()?;
         let gql = config::graphql_config::load();
         let graphql = GraphqlHttp::new(schema).config(
@@ -148,9 +157,30 @@ async fn main() -> Result<()> {
                 .max_depth(gql.max_depth)
                 .authorize(require_session),
         );
-        return app
-            .run_on(AxumPlatform::new().graphql(graphql), &addr)
-            .await;
+        platform = platform.graphql(graphql);
+        mounted = true;
+    }
+
+    // §26.10: `--openapi` documenta las mismas rutas en `/api-docs` (más `/docs`
+    // y `/swagger`). El documento se compone en `openapi.rs` y la plataforma
+    // comprueba que cubra exactamente las rutas montadas (RF-248).
+    if std::env::args().skip(1).any(|arg| arg == "--openapi") {
+        let docs = config::openapi_config::load();
+        let openapi = OpenApiHttp::new(openapi::document()).config(
+            OpenApiHttpConfig::new()
+                .path(docs.path)
+                .docs(docs.docs)
+                .public_docs(docs.public_docs)
+                .aliases(docs.aliases)
+                .strict_routes(docs.strict_routes)
+                .authorize(require_session),
+        );
+        platform = platform.openapi(openapi);
+        mounted = true;
+    }
+
+    if mounted {
+        return app.run_on(platform, &addr).await;
     }
 
     app.run(&addr).await

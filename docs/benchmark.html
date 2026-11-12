@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmark de rdd: latencia y rendimiento HTTP y WebSocket</title>
+  <meta name="description" content="Resultados reproducibles del arnés de benchmarks de rdd: latencia p50/p95/p99 y peticiones por segundo en HTTP, y eco WebSocket sobre rdd-axum.">
+  <meta name="keywords" content="rdd benchmark, Rust HTTP benchmark, WebSocket benchmark, Axum, latencia, p99, rdd-axum">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/benchmark.html">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="assets/img/icon-192.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Benchmark de rdd: HTTP y WebSocket">
+  <meta property="og:description" content="Latencia p50/p95/p99 y tasas reproducibles del arnés rdd-bench.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/benchmark.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Benchmark de rdd: HTTP y WebSocket">
+  <meta name="twitter:description" content="Latencia p50/p95/p99 y tasas reproducibles del arnés rdd-bench.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <link rel="stylesheet" href="assets/css/main.css">
+  <style>
+    .bench-kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px;
+      margin: 26px 0 34px;
+    }
+    .bench-kpi {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: linear-gradient(160deg, var(--surface), var(--bg-2));
+      padding: 18px 18px 16px;
+    }
+    .bench-kpi span {
+      display: block;
+      color: var(--muted);
+      font-size: 11.5px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .bench-kpi strong {
+      display: block;
+      margin-top: 6px;
+      font-family: var(--font-display);
+      font-size: 27px;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .bench-kpi em {
+      display: block;
+      margin-top: 4px;
+      font-style: normal;
+      font-size: 12px;
+      color: var(--faint);
+    }
+    .bench-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      margin: 0 0 10px;
+      padding: 12px 16px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-sm);
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+    .bench-meta b { color: var(--text); font-weight: 600; }
+    .bench-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 22px 22px 16px;
+      margin: 0 0 22px;
+      overflow: hidden;
+    }
+    .bench-card h2 {
+      font-family: var(--font-display);
+      font-size: 18px;
+      margin: 0 0 4px;
+      color: var(--text);
+    }
+    .bench-card p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+    .bench-chart { width: 100%; height: auto; display: block; }
+    .bench-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .bench-legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: -1px;
+    }
+    .bench-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      margin-top: 8px;
+    }
+    .bench-table th {
+      text-align: left;
+      color: var(--faint);
+      font-weight: 600;
+      font-size: 10.5px;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .bench-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(43, 35, 24, .55);
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .bench-table td:first-child { color: var(--text); }
+    .bench-table tr:last-child td { border-bottom: none; }
+    .bench-table .num { text-align: right; font-family: var(--font-mono); font-size: 11.5px; }
+    .bench-note {
+      border-left: 3px solid var(--rust-500);
+      background: rgba(255, 90, 31, .06);
+      padding: 14px 16px;
+      border-radius: 0 10px 10px 0;
+      color: var(--muted);
+      font-size: 13.5px;
+      margin: 0 0 22px;
+    }
+    .bench-error {
+      border-left: 3px solid var(--danger);
+      background: rgba(255, 56, 96, .07);
+      padding: 14px 16px;
+      border-radius: 0 10px 10px 0;
+      color: #f0b3c1;
+    }
+  </style>
+</head>
+<body data-root="." data-nav="bench">
+  <div id="site-header-root"></div>
+
+  <script src="assets/js/highlight.js"></script>
+  <script src="assets/js/site.js"></script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="index.html">Inicio</a>
+        <a href="guide/graphql.html">GraphQL</a>
+        <a href="guide/tiempo-real.html">Tiempo real</a>
+        <a href="benchmark.html" class="active">Benchmark</a>
+        <a href="especificacion.html">Especificación</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="index.html">Inicio</a><span class="sep">/</span><span class="here">Benchmark</span>
+      </nav>
+
+      <h1>Benchmark</h1>
+      <p class="doc-lede">
+        El arnés <code>rdd-bench</code> levanta un <code>AxumPlatform</code> real
+        en un puerto efímero, con tres rutas HTTP y un canal WebSocket de eco, y
+        mide latencias y tasas desde clientes HTTP/1.1 keep-alive y
+        <code>tokio-tungstenite</code>. Los números de esta página los escribe el
+        propio arnés en <code>docs/assets/benchmarks.json</code>.
+      </p>
+
+      <div class="bench-meta" id="bench-meta"></div>
+      <div class="bench-kpis" id="bench-kpis"></div>
+
+      <section class="bench-card">
+        <h2>Rendimiento HTTP</h2>
+        <p>
+          Peticiones por segundo por escenario y nivel de concurrencia. Cada
+          worker mantiene su conexión; la ventana es la misma para todos los
+          niveles.
+        </p>
+        <div id="bench-http-rps"></div>
+      </section>
+
+      <section class="bench-card">
+        <h2>Latencia HTTP</h2>
+        <p>
+          Percentiles p50, p95 y p99 con concurrencia máxima
+          (<span id="bench-http-max"></span> conexiones). Se mide desde el envío
+          hasta que el cuerpo completo se consume.
+        </p>
+        <div id="bench-http-latency"></div>
+      </section>
+
+      <section class="bench-card">
+        <h2>WebSocket: ida y vuelta</h2>
+        <p>
+          Eco de mensajes de 64 B, 1 KB y 8 KB. El cliente envía y espera el eco
+          antes de medir el siguiente; el tiempo es el viaje completo.
+        </p>
+        <div id="bench-ws-rtt"></div>
+      </section>
+
+      <section class="bench-card">
+        <h2>WebSocket: rendimiento</h2>
+        <p>Mensajes por segundo con una y ocho conexiones simultáneas.</p>
+        <div id="bench-ws-msgs"></div>
+      </section>
+
+      <section class="bench-card">
+        <h2>Datos completos</h2>
+        <p>
+          Todo lo que dibujan los gráficos, sin redondear, para comparar entre
+          máquinas.
+        </p>
+        <div id="bench-tables"></div>
+      </section>
+
+      <section class="section">
+        <h2>Metodología</h2>
+        <div class="bench-note">
+          Los benchmarks dependen de la máquina. Compara siempre ejecuciones en el
+          mismo equipo, con el mismo perfil de compilación y el servidor en local.
+          No es un techo teórico: es el costo del enrutado, la cadena global, el
+          parseo de cuerpos y la traducción de respuestas de <code>rdd-axum</code>.
+        </div>
+        <pre data-lang="bash"><code>cargo run --release -p rdd-bench
+
+# Ventana y volumen configurables:
+RDD_BENCH_HTTP_MS=3000 RDD_BENCH_WS_MESSAGES=2000 cargo run --release -p rdd-bench
+
+# Escribir el informe en otra ruta:
+RDD_BENCH_OUT=/tmp/benchmarks.json cargo run --release -p rdd-bench</code></pre>
+        <p>
+          El informe se publica en <code>docs/assets/benchmarks.json</code> y esta
+          página lo embebe al regenerarse con
+          <code>node scripts/build-benchmark-page.mjs</code>. El código vive en
+          <code>crates/rdd-bench</code> y los escenarios HTTP son
+          <code>GET /bench/ping</code>, <code>GET /bench/items/:id</code> y
+          <code>POST /bench/echo</code>; el canal es <code>/ws/echo</code>.
+        </p>
+      </section>
+    </main>
+  </article>
+
+  <script id="bench-data" type="application/json">{"config":{"httpConcurrency":[1,8,32],"httpDurationMs":1500,"httpWarmup":20,"wsConcurrency":[1,8],"wsMessages":1200},"environment":{"arch":"x86_64","cpu":"Intel64 Family 6 Model 158 Stepping 13, GenuineIntel","os":"windows","profile":"release","rustc":"rustc 1.98.0 (88d9e12ae 2026-08-18)"},"generatedAt":1794486574251,"http":[{"id":"ping","method":"GET","name":"GET /bench/ping","path":"/bench/ping","results":[{"concurrency":1,"errors":0,"max_ms":0.7146,"p50_ms":0.0697,"p95_ms":0.0996,"p99_ms":0.1201,"requests":20657,"rps":13674.903384626305},{"concurrency":8,"errors":0,"max_ms":1.1548,"p50_ms":0.2688,"p95_ms":0.4207,"p99_ms":0.4999,"requests":42347,"rps":28086.860142134225},{"concurrency":32,"errors":0,"max_ms":9.9266,"p50_ms":1.0141,"p95_ms":1.7262,"p99_ms":2.8333,"requests":43572,"rps":28492.89011757339}]},{"id":"items","method":"GET","name":"GET /bench/items/:id","path":"/bench/items/42","results":[{"concurrency":1,"errors":0,"max_ms":0.7268,"p50_ms":0.0663,"p95_ms":0.0828,"p99_ms":0.114,"requests":21379,"rps":14227.061749400877},{"concurrency":8,"errors":0,"max_ms":12.1938,"p50_ms":0.2739,"p95_ms":0.4213,"p99_ms":0.5046,"requests":41498,"rps":27535.925497863573},{"concurrency":32,"errors":0,"max_ms":3.7296,"p50_ms":0.9559,"p95_ms":1.4088,"p99_ms":1.7162,"requests":48488,"rps":31733.380960455725}]},{"id":"echo","method":"POST","name":"POST /bench/echo","path":"/bench/echo","results":[{"concurrency":1,"errors":0,"max_ms":0.4176,"p50_ms":0.0852,"p95_ms":0.148,"p99_ms":0.1833,"requests":15923,"rps":10593.058955166338},{"concurrency":8,"errors":0,"max_ms":32.8165,"p50_ms":0.2764,"p95_ms":0.4288,"p99_ms":0.5852,"requests":38801,"rps":25737.29650067356},{"concurrency":32,"errors":0,"max_ms":2.6562,"p50_ms":0.9479,"p95_ms":1.3657,"p99_ms":1.593,"requests":49363,"rps":32333.119888323894}]}],"ws":[{"bytes":64,"id":"ws-64","name":"WS eco · 64 B","results":[{"concurrency":1,"errors":0,"max_ms":0.1527,"messages":1200,"messages_per_sec":15717.009996018358,"p50_ms":0.0605,"p95_ms":0.0803,"p99_ms":0.1077},{"concurrency":8,"errors":0,"max_ms":0.7833,"messages":9600,"messages_per_sec":27555.56320987867,"p50_ms":0.2784,"p95_ms":0.4041,"p99_ms":0.481}]},{"bytes":1024,"id":"ws-1024","name":"WS eco · 1 KB","results":[{"concurrency":1,"errors":0,"max_ms":0.2302,"messages":1200,"messages_per_sec":13984.46558947436,"p50_ms":0.0688,"p95_ms":0.0874,"p99_ms":0.1098},{"concurrency":8,"errors":0,"max_ms":0.9178,"messages":9600,"messages_per_sec":28845.581788341937,"p50_ms":0.271,"p95_ms":0.3856,"p99_ms":0.4583}]},{"bytes":8192,"id":"ws-8192","name":"WS eco · 8 KB","results":[{"concurrency":1,"errors":0,"max_ms":0.2013,"messages":1200,"messages_per_sec":14242.697946796401,"p50_ms":0.0671,"p95_ms":0.0855,"p99_ms":0.1117},{"concurrency":8,"errors":0,"max_ms":0.7669,"messages":9600,"messages_per_sec":26585.845695751585,"p50_ms":0.2952,"p95_ms":0.4168,"p99_ms":0.4878}]}]}</script>
+  <script>
+    (function () {
+      const PALETTE = {
+        accent: "#ff5a1f",
+        ember: "#ffb347",
+        acid: "#a3e635",
+        arc: "#4f9dff",
+        magenta: "#ff3d7f",
+        muted: "#afa28b",
+      };
+      const dataEl = document.getElementById("bench-data");
+      if (!dataEl) return;
+      let data = null;
+      try {
+        data = JSON.parse(dataEl.textContent || "null");
+      } catch (error) {
+        data = null;
+      }
+      if (!data || !Array.isArray(data.http) || !Array.isArray(data.ws)) {
+        document.getElementById("bench-kpis").innerHTML =
+          '<p class="bench-error">Todavía no hay datos: ejecuta <code>cargo run --release -p rdd-bench</code> y regenera esta página.</p>';
+        return;
+      }
+
+      const fmt = (value, digits) =>
+        Number(value).toLocaleString("es-CO", {
+          minimumFractionDigits: digits === undefined ? 0 : digits,
+          maximumFractionDigits: digits === undefined ? 0 : digits,
+        });
+      const ms = (value) => fmt(value, value >= 10 ? 1 : 2) + " ms";
+
+      function meta() {
+        const env = data.environment || {};
+        const cfg = data.config || {};
+        const when = data.generatedAt
+          ? new Date(data.generatedAt).toLocaleString("es-CO")
+          : "sin fecha";
+        document.getElementById("bench-meta").innerHTML = [
+          `<span><b>Generado</b> ${when}</span>`,
+          `<span><b>Plataforma</b> ${env.os || "—"} · ${env.arch || "—"}</span>`,
+          `<span><b>Perfil</b> ${env.profile || "—"}</span>`,
+          `<span><b>Compilador</b> ${env.rustc || "—"}</span>`,
+          `<span><b>HTTP</b> ${fmt(cfg.httpDurationMs)} ms · concurrencia ${(cfg.httpConcurrency || []).join(", ")}</span>`,
+          `<span><b>WS</b> ${fmt(cfg.wsMessages)} mensajes · concurrencia ${(cfg.wsConcurrency || []).join(", ")}</span>`,
+        ].join("");
+      }
+
+      function allHttp() {
+        return data.http.flatMap((scenario) =>
+          scenario.results.map((result) => Object.assign({ scenario: scenario.name }, result)),
+        );
+      }
+      function allWs() {
+        return data.ws.flatMap((scenario) =>
+          scenario.results.map((result) => Object.assign({ scenario: scenario.name }, result)),
+        );
+      }
+
+      function kpis() {
+        const http = allHttp();
+        const ws = allWs();
+        const bestRps = http.reduce((best, row) => (row.rps > best.rps ? row : best), http[0] || { rps: 0 });
+        const bestP50 = http.reduce((best, row) => (row.p50_ms < best.p50_ms ? row : best), http[0] || { p50_ms: 0 });
+        const bestWsRtt = ws.reduce((best, row) => (row.p50_ms < best.p50_ms ? row : best), ws[0] || { p50_ms: 0 });
+        const bestWsRate = ws.reduce(
+          (best, row) => (row.messages_per_sec > best.messages_per_sec ? row : best),
+          ws[0] || { messages_per_sec: 0 },
+        );
+        const cards = [
+          ["Mejor HTTP", fmt(bestRps.rps) + " req/s", `${bestRps.scenario} · c=${bestRps.concurrency}`],
+          ["p50 HTTP más bajo", ms(bestP50.p50_ms), `${bestP50.scenario} · c=${bestP50.concurrency}`],
+          ["p50 WebSocket", ms(bestWsRtt.p50_ms), `${bestWsRtt.scenario} · c=${bestWsRtt.concurrency}`],
+          ["Mejor WebSocket", fmt(bestWsRate.messages_per_sec) + " msg/s", `${bestWsRate.scenario} · c=${bestWsRate.concurrency}`],
+        ];
+        document.getElementById("bench-kpis").innerHTML = cards
+          .map(
+            (card) =>
+              `<div class="bench-kpi"><span>${card[0]}</span><strong>${card[1]}</strong><em>${card[2]}</em></div>`,
+          )
+          .join("");
+      }
+
+      function groupedBars(target, options) {
+        const categories = options.categories;
+        const series = options.series;
+        const width = 760;
+        const height = 300;
+        const pad = { top: 18, right: 18, bottom: 54, left: 56 };
+        const plotW = width - pad.left - pad.right;
+        const plotH = height - pad.top - pad.bottom;
+        const max = Math.max(1, ...series.flatMap((item) => item.values));
+        const ticks = 4;
+        const slot = plotW / categories.length;
+        const barW = Math.min(38, (slot - 18) / series.length);
+
+        let svg = `<svg class="bench-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${options.label}">`;
+        for (let tick = 0; tick <= ticks; tick += 1) {
+          const ratio = tick / ticks;
+          const y = pad.top + plotH - ratio * plotH;
+          svg += `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#2b2318" stroke-width="1" />`;
+          svg += `<text x="${pad.left - 10}" y="${y + 4}" text-anchor="end" fill="#7e7362" font-size="10">${options.format(max * ratio)}</text>`;
+        }
+        categories.forEach((category, index) => {
+          const base = pad.left + slot * index + slot / 2;
+          const groupW = barW * series.length + 4 * (series.length - 1);
+          series.forEach((item, seriesIndex) => {
+            const value = item.values[index] || 0;
+            const h = Math.max(2, (value / max) * plotH);
+            const x = base - groupW / 2 + seriesIndex * (barW + 4);
+            const y = pad.top + plotH - h;
+            svg += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="4" fill="${item.color}"><title>${item.name} · ${category}: ${options.format(value)}</title></rect>`;
+          });
+          svg += `<text x="${base}" y="${height - pad.bottom + 20}" text-anchor="middle" fill="#afa28b" font-size="11">${category}</text>`;
+        });
+        svg += "</svg>";
+        svg += `<div class="bench-legend">${series
+          .map((item) => `<span><i style="background:${item.color}"></i>${item.name}</span>`)
+          .join("")}</div>`;
+        target.innerHTML = svg;
+      }
+
+      function table(rows, columns) {
+        return `<table class="bench-table"><thead><tr>${columns
+          .map((column) => `<th>${column[0]}</th>`)
+          .join("")}</tr></thead><tbody>${rows
+          .map(
+            (row) =>
+              `<tr>${columns
+                .map((column) => `<td${column[2] ? ' class="num"' : ""}>${column[1](row)}</td>`)
+                .join("")}</tr>`,
+          )
+          .join("")}</tbody></table>`;
+      }
+
+      function render() {
+        meta();
+        kpis();
+        const httpConcurrency = (data.config && data.config.httpConcurrency) || [];
+        const httpColors = [PALETTE.acid, PALETTE.accent, PALETTE.arc, PALETTE.magenta];
+        groupedBars(document.getElementById("bench-http-rps"), {
+          label: "Peticiones por segundo",
+          categories: data.http.map((scenario) => scenario.name),
+          series: httpConcurrency.map((concurrency, index) => ({
+            name: `c=${concurrency}`,
+            color: httpColors[index % httpColors.length],
+            values: data.http.map((scenario) => {
+              const row = scenario.results.find((result) => result.concurrency === concurrency);
+              return row ? row.rps : 0;
+            }),
+          })),
+          format: (value) => fmt(value),
+        });
+
+        const maxConcurrency = httpConcurrency[httpConcurrency.length - 1];
+        document.getElementById("bench-http-max").textContent = String(maxConcurrency || "—");
+        groupedBars(document.getElementById("bench-http-latency"), {
+          label: "Latencia HTTP por percentil",
+          categories: data.http.map((scenario) => scenario.name),
+          series: [
+            ["p50", "p50_ms", PALETTE.acid],
+            ["p95", "p95_ms", PALETTE.ember],
+            ["p99", "p99_ms", PALETTE.magenta],
+          ].map((percentile) => ({
+            name: percentile[0],
+            color: percentile[2],
+            values: data.http.map((scenario) => {
+              const row = scenario.results.find((result) => result.concurrency === maxConcurrency);
+              return row ? row[percentile[1]] : 0;
+            }),
+          })),
+          format: (value) => fmt(value, value >= 10 ? 1 : 2),
+        });
+
+        const wsConcurrency = (data.config && data.config.wsConcurrency) || [];
+        groupedBars(document.getElementById("bench-ws-rtt"), {
+          label: "Latencia de eco WebSocket",
+          categories: data.ws.map((scenario) => scenario.name),
+          series: [
+            ["p50", "p50_ms", PALETTE.acid],
+            ["p95", "p95_ms", PALETTE.ember],
+            ["p99", "p99_ms", PALETTE.magenta],
+          ].map((percentile) => ({
+            name: percentile[0],
+            color: percentile[2],
+            values: data.ws.map((scenario) => {
+              const row = scenario.results.find(
+                (result) => result.concurrency === wsConcurrency[wsConcurrency.length - 1],
+              );
+              return row ? row[percentile[1]] : 0;
+            }),
+          })),
+          format: (value) => fmt(value, value >= 10 ? 1 : 2),
+        });
+
+        groupedBars(document.getElementById("bench-ws-msgs"), {
+          label: "Mensajes por segundo",
+          categories: data.ws.map((scenario) => scenario.name),
+          series: wsConcurrency.map((concurrency, index) => ({
+            name: `c=${concurrency}`,
+            color: [PALETTE.acid, PALETTE.arc][index % 2],
+            values: data.ws.map((scenario) => {
+              const row = scenario.results.find((result) => result.concurrency === concurrency);
+              return row ? row.messages_per_sec : 0;
+            }),
+          })),
+          format: (value) => fmt(value),
+        });
+
+        const httpTable = table(
+          data.http.flatMap((scenario) =>
+            scenario.results.map((row) =>
+              Object.assign({ name: scenario.name }, row),
+            ),
+          ),
+          [
+            ["Escenario", (row) => row.name],
+            ["c", (row) => fmt(row.concurrency), true],
+            ["req/s", (row) => fmt(row.rps), true],
+            ["p50", (row) => ms(row.p50_ms), true],
+            ["p95", (row) => ms(row.p95_ms), true],
+            ["p99", (row) => ms(row.p99_ms), true],
+            ["errores", (row) => fmt(row.errors), true],
+          ],
+        );
+        const wsTable = table(
+          data.ws.flatMap((scenario) =>
+            scenario.results.map((row) =>
+              Object.assign({ name: scenario.name }, row),
+            ),
+          ),
+          [
+            ["Escenario", (row) => row.name],
+            ["c", (row) => fmt(row.concurrency), true],
+            ["msg/s", (row) => fmt(row.messages_per_sec), true],
+            ["p50", (row) => ms(row.p50_ms), true],
+            ["p95", (row) => ms(row.p95_ms), true],
+            ["p99", (row) => ms(row.p99_ms), true],
+            ["errores", (row) => fmt(row.errors), true],
+          ],
+        );
+        document.getElementById("bench-tables").innerHTML = httpTable + wsTable;
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>

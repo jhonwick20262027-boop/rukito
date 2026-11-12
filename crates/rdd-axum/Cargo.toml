@@ -20,12 +20,16 @@ mcp-http = ["dep:rdd-mcp"]
 # Montaje de `/graphql` (§10.9, RP-030). El motor tampoco depende de la
 # plataforma (RA-021).
 graphql = ["dep:rdd-graphql"]
+# Montaje de `/api-docs` (§10.10, RP-032). La documentación es neutral; aquí
+# solo se traduce su respuesta al router (RA-022).
+openapi = ["dep:rdd-openapi"]
 
 [dependencies]
 # RA-012: esta plataforma no depende de `rdd-hyper` ni de ninguna otra plataforma.
 rdd-core.workspace = true
 rdd-graphql = { workspace = true, optional = true }
 rdd-mcp = { workspace = true, optional = true }
+rdd-openapi = { workspace = true, optional = true }
 axum.workspace = true
 tower.workspace = true
 

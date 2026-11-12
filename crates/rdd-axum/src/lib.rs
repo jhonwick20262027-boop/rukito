@@ -21,6 +21,8 @@
 mod graphql_http;
 #[cfg(feature = "mcp-http")]
 mod mcp_http;
+#[cfg(feature = "openapi")]
+mod openapi_http;
 mod platform;
 mod shim;
 #[cfg(feature = "ws")]

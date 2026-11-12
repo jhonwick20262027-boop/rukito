@@ -1,0 +1,223 @@
+{
+  "config": {
+    "httpConcurrency": [
+      1,
+      8,
+      32
+    ],
+    "httpDurationMs": 1500,
+    "httpWarmup": 20,
+    "wsConcurrency": [
+      1,
+      8
+    ],
+    "wsMessages": 1200
+  },
+  "environment": {
+    "arch": "x86_64",
+    "cpu": "Intel64 Family 6 Model 158 Stepping 13, GenuineIntel",
+    "os": "windows",
+    "profile": "release",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)"
+  },
+  "generatedAt": 1794486574251,
+  "http": [
+    {
+      "id": "ping",
+      "method": "GET",
+      "name": "GET /bench/ping",
+      "path": "/bench/ping",
+      "results": [
+        {
+          "concurrency": 1,
+          "errors": 0,
+          "max_ms": 0.7146,
+          "p50_ms": 0.0697,
+          "p95_ms": 0.0996,
+          "p99_ms": 0.1201,
+          "requests": 20657,
+          "rps": 13674.903384626305
+        },
+        {
+          "concurrency": 8,
+          "errors": 0,
+          "max_ms": 1.1548,
+          "p50_ms": 0.2688,
+          "p95_ms": 0.4207,
+          "p99_ms": 0.4999,
+          "requests": 42347,
+          "rps": 28086.860142134225
+        },
+        {
+          "concurrency": 32,
+          "errors": 0,
+          "max_ms": 9.9266,
+          "p50_ms": 1.0141,
+          "p95_ms": 1.7262,
+          "p99_ms": 2.8333,
+          "requests": 43572,
+          "rps": 28492.89011757339
+        }
+      ]
+    },
+    {
+      "id": "items",
+      "method": "GET",
+      "name": "GET /bench/items/:id",
+      "path": "/bench/items/42",
+      "results": [
+        {
+          "concurrency": 1,
+          "errors": 0,
+          "max_ms": 0.7268,
+          "p50_ms": 0.0663,
+          "p95_ms": 0.0828,
+          "p99_ms": 0.114,
+          "requests": 21379,
+          "rps": 14227.061749400877
+        },
+        {
+          "concurrency": 8,
+          "errors": 0,
+          "max_ms": 12.1938,
+          "p50_ms": 0.2739,
+          "p95_ms": 0.4213,
+          "p99_ms": 0.5046,
+          "requests": 41498,
+          "rps": 27535.925497863573
+        },
+        {
+          "concurrency": 32,
+          "errors": 0,
+          "max_ms": 3.7296,
+          "p50_ms": 0.9559,
+          "p95_ms": 1.4088,
+          "p99_ms": 1.7162,
+          "requests": 48488,
+          "rps": 31733.380960455725
+        }
+      ]
+    },
+    {
+      "id": "echo",
+      "method": "POST",
+      "name": "POST /bench/echo",
+      "path": "/bench/echo",
+      "results": [
+        {
+          "concurrency": 1,
+          "errors": 0,
+          "max_ms": 0.4176,
+          "p50_ms": 0.0852,
+          "p95_ms": 0.148,
+          "p99_ms": 0.1833,
+          "requests": 15923,
+          "rps": 10593.058955166338
+        },
+        {
+          "concurrency": 8,
+          "errors": 0,
+          "max_ms": 32.8165,
+          "p50_ms": 0.2764,
+          "p95_ms": 0.4288,
+          "p99_ms": 0.5852,
+          "requests": 38801,
+          "rps": 25737.29650067356
+        },
+        {
+          "concurrency": 32,
+          "errors": 0,
+          "max_ms": 2.6562,
+          "p50_ms": 0.9479,
+          "p95_ms": 1.3657,
+          "p99_ms": 1.593,
+          "requests": 49363,
+          "rps": 32333.119888323894
+        }
+      ]
+    }
+  ],
+  "ws": [
+    {
+      "bytes": 64,
+      "id": "ws-64",
+      "name": "WS eco · 64 B",
+      "results": [
+        {
+          "concurrency": 1,
+          "errors": 0,
+          "max_ms": 0.1527,
+          "messages": 1200,
+          "messages_per_sec": 15717.009996018358,
+          "p50_ms": 0.0605,
+          "p95_ms": 0.0803,
+          "p99_ms": 0.1077
+        },
+        {
+          "concurrency": 8,
+          "errors": 0,
+          "max_ms": 0.7833,
+          "messages": 9600,
+          "messages_per_sec": 27555.56320987867,
+          "p50_ms": 0.2784,
+          "p95_ms": 0.4041,
+          "p99_ms": 0.481
+        }
+      ]
+    },
+    {
+      "bytes": 1024,
+      "id": "ws-1024",
+      "name": "WS eco · 1 KB",
+      "results": [
+        {
+          "concurrency": 1,
+          "errors": 0,
+          "max_ms": 0.2302,
+          "messages": 1200,
+          "messages_per_sec": 13984.46558947436,
+          "p50_ms": 0.0688,
+          "p95_ms": 0.0874,
+          "p99_ms": 0.1098
+        },
+        {
+          "concurrency": 8,
+          "errors": 0,
+          "max_ms": 0.9178,
+          "messages": 9600,
+          "messages_per_sec": 28845.581788341937,
+          "p50_ms": 0.271,
+          "p95_ms": 0.3856,
+          "p99_ms": 0.4583
+        }
+      ]
+    },
+    {
+      "bytes": 8192,
+      "id": "ws-8192",
+      "name": "WS eco · 8 KB",
+      "results": [
+        {
+          "concurrency": 1,
+          "errors": 0,
+          "max_ms": 0.2013,
+          "messages": 1200,
+          "messages_per_sec": 14242.697946796401,
+          "p50_ms": 0.0671,
+          "p95_ms": 0.0855,
+          "p99_ms": 0.1117
+        },
+        {
+          "concurrency": 8,
+          "errors": 0,
+          "max_ms": 0.7669,
+          "messages": 9600,
+          "messages_per_sec": 26585.845695751585,
+          "p50_ms": 0.2952,
+          "p95_ms": 0.4168,
+          "p99_ms": 0.4878
+        }
+      ]
+    }
+  ]
+}

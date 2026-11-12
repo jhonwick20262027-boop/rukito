@@ -254,7 +254,7 @@ rdd --help</code></pre>
           <tr><td><code>arquitectura no soportada</code></td><td>Windows ARM64 y arquitecturas de 32 bits no tienen binario todavía. Usa <code>cargo install rdd-cli</code>.</td></tr>
           <tr><td><code>rdd: command not found</code></td><td>El directorio de instalación no está en el PATH. En Unix añade la línea <code>export</code> que imprime el instalador; en Windows abre una terminal nueva.</td></tr>
           <tr><td><code>checksum incorrecto</code></td><td>La descarga se corrompió o un proxy la alteró. Repite la descarga o usa el binario de la release con verificación manual.</td></tr>
-          <tr><td><code>no se pudo resolver la última versión</code></td><td>La API de GitHub no es accesible (red corporativa o límite de peticiones). Fija <code>RDD_VERSION</code> y descarga el archivo directamente.</td></tr>
+          <tr><td><code>no se pudo resolver la última versión</code></td><td>Todavía no hay una release publicada, o la API de GitHub no es accesible (red corporativa o límite de peticiones). Fija <code>RDD_VERSION</code> y descarga el archivo directamente.</td></tr>
           <tr><td>macOS bloquea el ejecutable descargado con el navegador</td><td>El instalador usa <code>curl</code> y no marca cuarentena. Si descargaste el zip con el navegador, ejecuta <code>xattr -d com.apple.quarantine "$(command -v rdd)"</code>.</td></tr>
           <tr><td>El binario de Linux no arranca en una distribución antigua</td><td>Se compila en Ubuntu 22.04 (glibc 2.35). En sistemas anteriores usa <code>cargo install rdd-cli</code>.</td></tr>
         </table>

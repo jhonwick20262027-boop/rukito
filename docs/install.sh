@@ -36,7 +36,7 @@ target="${arch}-${os}"
 if [ -z "$REQUESTED_VERSION" ]; then
   REQUESTED_VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
     | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
-  [ -n "$REQUESTED_VERSION" ] || err "no se pudo resolver la última versión"
+  [ -n "$REQUESTED_VERSION" ] || err "no se pudo resolver la última versión (¿hay alguna release publicada?); fija RDD_VERSION o usa 'cargo install rdd-cli'"
 fi
 
 version="${REQUESTED_VERSION#v}"

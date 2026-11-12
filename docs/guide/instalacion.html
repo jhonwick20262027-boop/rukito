@@ -204,7 +204,9 @@ $base = "https://github.com/jhonwick20262027-boop/rukito/releases/download/v$ver
 $asset = "rdd-$version-$target.zip"
 
 Invoke-WebRequest -UseBasicParsing "$base/$asset" -OutFile $asset
-$expected = ((Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS.txt").Content -split "`n" |
+$sums = (Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS.txt").Content
+if ($sums -is [byte[]]) { $sums = [System.Text.Encoding]::UTF8.GetString($sums) }
+$expected = ($sums -split "\r?\n" |
   Where-Object { $_ -match "\s\*?" + [regex]::Escape($asset) + "$" } |
   Select-Object -First 1) -split '\s+' | Select-Object -First 1
 if ((Get-FileHash -Algorithm SHA256 $asset).Hash -ne $expected) { throw 'checksum incorrecto' }

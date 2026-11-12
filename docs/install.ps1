@@ -48,9 +48,12 @@ if (-not $Version) {
 }
 if (-not $Version) { throw 'no se pudo resolver la ultima version' }
 
+# PowerShell no distingue mayusculas en los nombres de variable: $tag evita
+# que $version pise a $Version (la etiqueta conserva la "v" en la URL).
+$tag = $Version
 $version = $Version.TrimStart('v')
 $asset = "rdd-$version-$target.zip"
-$base = "https://github.com/$repo/releases/download/$Version"
+$base = "https://github.com/$repo/releases/download/$tag"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("rdd-" + [guid]::NewGuid().ToString('N'))
 
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -59,7 +62,10 @@ try {
     $zip = Join-Path $tmp $asset
     Invoke-WebRequest -UseBasicParsing -Uri "$base/$asset" -OutFile $zip
 
-    $sums = (Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS.txt").Content -split "`n"
+    # GitHub sirve SHA256SUMS.txt como octet-stream: .Content llega como byte[].
+    $sumsText = (Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS.txt").Content
+    if ($sumsText -is [byte[]]) { $sumsText = [System.Text.Encoding]::UTF8.GetString($sumsText) }
+    $sums = $sumsText -split "\r?\n"
     $pattern = "\s\*?" + [regex]::Escape($asset) + "$"
     $line = $sums | Where-Object { $_ -match $pattern } | Select-Object -First 1
     if (-not $line) { throw "el checksum de $asset no esta en SHA256SUMS.txt" }

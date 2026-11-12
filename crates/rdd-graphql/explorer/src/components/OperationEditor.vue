@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { basicSetup } from "codemirror";
-import { autocompletion } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, completionStatus } from "@codemirror/autocomplete";
+import { indentLess, indentMore } from "@codemirror/commands";
 import { EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { Braces, FileJson, KeyRound, LoaderCircle, Play, Square } from "@lucide/vue";
@@ -81,6 +82,15 @@ onMounted(() => {
       schemaHover(() => props.schema),
       Prec.high(
         keymap.of([
+          {
+            key: "Tab",
+            preventDefault: true,
+            run: (target) =>
+              completionStatus(target.state) === "active"
+                ? acceptCompletion(target)
+                : indentMore(target),
+            shift: (target) => indentLess(target),
+          },
           {
             key: "Mod-Enter",
             preventDefault: true,

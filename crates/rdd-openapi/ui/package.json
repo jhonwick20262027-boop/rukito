@@ -9,9 +9,15 @@
     "build": "npm run typecheck && vite build && node scripts/finalize.mjs"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
     "@lucide/vue": "^1.72.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "codemirror": "6.0.2",
     "tailwind-merge": "3.7.0",
     "vue": "3.5.45"
   },

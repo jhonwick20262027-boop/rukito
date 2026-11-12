@@ -2,6 +2,8 @@
 import { computed, ref, watch } from "vue";
 import { Check, Copy, Moon, Play, Search, ShieldCheck, Sun } from "@lucide/vue";
 
+import JsonEditor from "./components/JsonEditor.vue";
+import { sampleFromSchema } from "./lib/sample";
 import {
   operationEntries,
   type OpenApiDocument,
@@ -135,9 +137,14 @@ function serverPath(url: string): string {
 }
 
 function bodyTemplate(entry: OperationEntry | undefined): string {
-  const media = entry?.operation.requestBody?.content["application/json"];
-  if (media && media.example !== undefined) return pretty(media.example);
-  return "{}";
+  const content = entry?.operation.requestBody?.content;
+  if (!content) return "{}";
+  const media = content["application/json"] ?? Object.values(content)[0];
+  if (!media) return "{}";
+  if (media.example !== undefined) return pretty(media.example);
+  const sample = sampleFromSchema(media.schema, props.api.components.schemas);
+  if (sample === null) return "{}";
+  return pretty(sample);
 }
 
 function pretty(value: unknown): string {
@@ -448,11 +455,9 @@ async function send(): Promise<void> {
                 <h3 class="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">
                   Cuerpo · application/json
                 </h3>
-                <textarea
-                  v-model="bodyText"
-                  spellcheck="false"
-                  class="h-36 w-full resize-y rounded-lg border border-line bg-inset px-3 py-2 font-mono text-[11px] leading-relaxed outline-none focus:border-accent"
-                />
+                <div class="h-44 overflow-hidden rounded-lg border border-line focus-within:border-accent">
+                  <JsonEditor v-model="bodyText" label="Cuerpo JSON de la petición" />
+                </div>
               </div>
 
               <div>

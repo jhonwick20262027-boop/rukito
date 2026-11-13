@@ -15,8 +15,8 @@ fn array_of(name: &str) -> Value {
     json!({ "type": "array", "items": reference(name) })
 }
 
-pub fn document() -> OpenApi {
-    OpenApiBuilder::new("todo-app", env!("CARGO_PKG_VERSION"))
+pub fn document(upload: bool) -> OpenApi {
+    let builder = OpenApiBuilder::new("todo-app", env!("CARGO_PKG_VERSION"))
         .description(
             "Demo de rdd: TODO con JWT, roles, CORS, rate limit, GraphQL y MCP sobre \
              el mismo contenedor (§26).",
@@ -231,8 +231,93 @@ pub fn document() -> OpenApi {
                 .json_response(401, "Falta el token o no es válido", reference("Problem"))
                 .json_response(403, "La sesión no es `admin`", reference("Problem"))
                 .json_response(404, "No existe o es de otro dueño", reference("Problem")),
-        )
-        .build()
+        );
+
+    // §26.13: las tres rutas de `--upload` existen solo en ese modo, y con
+    // rutas estrictas el documento tiene que coincidir en las dos direcciones
+    // (RF-248).
+    let builder = if upload {
+        builder
+            .tag(Tag::new("files").description("Archivos de la sesión sobre rdd-upload"))
+            .schema(
+                "File",
+                json!({
+                    "type": "object",
+                    "required": ["id", "size"],
+                    "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "size": { "type": "integer", "format": "int64" },
+                        "content_type": { "type": ["string", "null"] }
+                    }
+                }),
+            )
+            .operation(
+                "post",
+                "/files",
+                Operation::new("uploadFile", "Sube un archivo")
+                    .tag("files")
+                    .bearer()
+                    .description(
+                        "El cuerpo es el archivo completo; el nombre viaja en \
+                         `X-File-Name`. La clave la construye el servidor con la \
+                         sesión, nunca el cliente.",
+                    )
+                    .parameter(
+                        Parameter::header("X-File-Name", json!({ "type": "string" }))
+                            .required()
+                            .description("Nombre original del archivo"),
+                    )
+                    .parameter(
+                        Parameter::header("Content-Type", json!({ "type": "string" }))
+                            .required()
+                            .description("Tipo de contenido del archivo"),
+                    )
+                    .json_response(201, "Archivo guardado", reference("File"))
+                    .json_response(
+                        400,
+                        "Falta una cabecera o el nombre no es válido",
+                        reference("Problem"),
+                    )
+                    .json_response(401, "Falta el token o no es válido", reference("Problem"))
+                    .json_response(
+                        413,
+                        "El cuerpo supera `UPLOAD_MAX_BYTES`",
+                        reference("Problem"),
+                    ),
+            )
+            .operation(
+                "get",
+                "/files/{id}",
+                Operation::new("getFileMeta", "Metadata de un archivo propio")
+                    .tag("files")
+                    .bearer()
+                    .parameter(
+                        Parameter::path("id", json!({ "type": "string", "format": "uuid" }))
+                            .description("Identificador del archivo"),
+                    )
+                    .json_response(200, "Metadata del archivo", reference("File"))
+                    .json_response(401, "Falta el token o no es válido", reference("Problem"))
+                    .json_response(404, "No existe o es de otro dueño", reference("Problem")),
+            )
+            .operation(
+                "delete",
+                "/files/{id}",
+                Operation::new("deleteFile", "Elimina un archivo propio")
+                    .tag("files")
+                    .bearer()
+                    .parameter(
+                        Parameter::path("id", json!({ "type": "string", "format": "uuid" }))
+                            .description("Identificador del archivo"),
+                    )
+                    .response(204, "Sin contenido")
+                    .json_response(401, "Falta el token o no es válido", reference("Problem"))
+                    .json_response(404, "No existe o es de otro dueño", reference("Problem")),
+            )
+    } else {
+        builder
+    };
+
+    builder.build()
 }
 
 #[cfg(test)]
@@ -240,9 +325,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn documenta_las_diez_rutas_del_demo() {
-        let doc = document();
-        doc.validate().expect("el documento debe ser válido");
-        assert_eq!(doc.documented_routes().len(), 10);
+    fn documenta_las_rutas_del_demo() {
+        let base = document(false);
+        base.validate().expect("el documento debe ser válido");
+        assert_eq!(base.documented_routes().len(), 10);
+
+        // `--upload` añade exactamente las tres rutas de §26.13.
+        let with_upload = document(true);
+        with_upload
+            .validate()
+            .expect("el documento debe ser válido");
+        assert_eq!(with_upload.documented_routes().len(), 13);
     }
 }

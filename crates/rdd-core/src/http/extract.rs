@@ -6,7 +6,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use bytes::Bytes;
+pub use bytes::Bytes;
 
 use crate::di::Container;
 use crate::error::{Error, Problem};
@@ -428,6 +428,20 @@ where
 }
 
 // ---------------------------------------------------------------------------
+// Bytes
+// ---------------------------------------------------------------------------
+
+/// Cuerpo completo en memoria (RF-278).
+///
+/// El límite de cuerpo de la app (RF-017) ya se aplicó al leer la petición;
+/// separar campos y archivos de un multiparte no es responsabilidad del núcleo.
+impl FromRequest for Bytes {
+    async fn from_request(ctx: &Ctx, _bind: Bind) -> Result<Self, Error> {
+        Ok(ctx.body())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Problemas sueltos
 // ---------------------------------------------------------------------------
 
@@ -560,12 +574,27 @@ mod tests {
         assert!(err.client_detail().contains("text/plain"));
     }
 
+    #[tokio::test]
+    async fn bytes_entrega_el_cuerpo_completo_y_admite_vacio() {
+        // RF-278: el cuerpo en memoria se entrega tal cual, sin multiparte.
+        let ctx = ctx_with("/files", &[], "contenido binario");
+        let body = extract::<Bytes>(&ctx, Bind::none()).await.unwrap();
+        assert_eq!(&body[..], b"contenido binario");
+
+        let vacio = ctx_with("/files", &[], "");
+        assert!(
+            extract::<Bytes>(&vacio, Bind::none())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
     #[derive(Debug, Deserialize, PartialEq)]
     struct Filtro {
         q: String,
         page: Option<u32>,
     }
-
     #[tokio::test]
     async fn query_deserializa_y_decodifica_porcentaje() {
         let ctx = ctx_with("/tasks?q=pan%20quemado&page=2", &[], "");

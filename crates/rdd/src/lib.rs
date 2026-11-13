@@ -125,6 +125,25 @@ compile_error!(
      features = [\"axum\", \"static-files\"] (RP-012)"
 );
 
+/// Storage de objetos sobre un puerto neutral (§10.13, RF-276).
+///
+/// No hay montaje ni registro: la capa de infraestructura de la app construye el
+/// adaptador y lo inyecta como cualquier otro servicio (RA-025).
+#[cfg(feature = "upload")]
+pub mod upload {
+    pub use rdd_upload::{
+        BoxFuture, Credentials, DEFAULT_MAX_OBJECT_BYTES, MemoryStorage, ObjectKey, ObjectKeyError,
+        ObjectMeta, ObjectStorage, PutOptions, Secret, StoredObject, UploadConfigError,
+    };
+
+    #[cfg(feature = "upload-azure")]
+    pub use rdd_upload::{AzureBlobConfig, AzureBlobStorage};
+    #[cfg(feature = "upload-gcs")]
+    pub use rdd_upload::{GcsConfig, GcsStorage};
+    #[cfg(feature = "upload-aws")]
+    pub use rdd_upload::{S3Config, S3Storage};
+}
+
 /// Puebla el registro de adaptadores del núcleo (RF-191).
 ///
 /// Los seis motores se declaran siempre, aunque su feature esté apagada: es lo

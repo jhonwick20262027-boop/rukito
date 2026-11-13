@@ -1,0 +1,81 @@
+[package]
+name        = "rdd-upload"
+description = "Storage de objetos para rdd: puerto neutral, MemoryStorage y adaptadores S3, Azure Blob y GCS con firmas propias."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# RA-025: el puerto y `MemoryStorage` no conocen ninguna nube; cada feature trae
+# solo el cliente HTTP y las primitivas de firma de su proveedor.
+aws = [
+    "dep:base64",
+    "dep:chrono",
+    "dep:hex",
+    "dep:hmac",
+    "dep:http",
+    "dep:http-body-util",
+    "dep:hyper",
+    "dep:hyper-rustls",
+    "dep:hyper-util",
+    "dep:rustls",
+    "dep:sha2",
+]
+azure = [
+    "dep:base64",
+    "dep:chrono",
+    "dep:hex",
+    "dep:hmac",
+    "dep:http",
+    "dep:http-body-util",
+    "dep:hyper",
+    "dep:hyper-rustls",
+    "dep:hyper-util",
+    "dep:rustls",
+    "dep:sha2",
+]
+gcp = [
+    "dep:base64",
+    "dep:chrono",
+    "dep:hex",
+    "dep:hmac",
+    "dep:http",
+    "dep:http-body-util",
+    "dep:hyper",
+    "dep:hyper-rustls",
+    "dep:hyper-util",
+    "dep:rustls",
+    "dep:sha2",
+]
+
+[dependencies]
+rdd-core.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+# La codificación por segmento de `ObjectKey` existe con o sin adaptadores.
+percent-encoding.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+# Solo con features de nube (RA-025): cliente HTTP y primitivas de firma.
+base64 = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
+http-body-util = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-rustls = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

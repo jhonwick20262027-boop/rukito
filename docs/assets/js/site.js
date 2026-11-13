@@ -4,7 +4,7 @@
   RDD.config = {
     repo: "https://github.com/jhonwick20262027-boop/rukito",
     version: "v0.1.0",
-    specVersion: "0.13.1-draft",
+    specVersion: "0.14.0-draft",
   };
   RDD.searchIndex = [
     { title: "Guía rápida", section: "Inicio", keywords: "rdd, rust, api, empezar", url: "guide/inicio-rapido.html" },
@@ -15,6 +15,7 @@
     { title: "Tiempo real (WebSocket)", section: "Guías", keywords: "websocket, socket.io, rdd-socket, hub, salas, presencia, ws", url: "guide/tiempo-real.html" },
     { title: "JWT en el explorer", section: "Guías", keywords: "jwt, bearer, token, explorer, graphql, cabeceras, login", url: "guide/jwt-explorer.html" },
     { title: "Archivos estáticos", section: "Guías", keywords: "static, archivos, assets, etag, cache, spa, traversal, rdd-static", url: "guide/static.html" },
+    { title: "Subida de archivos", section: "Guías", keywords: "upload, archivos, s3, aws, azure, gcs, objectstorage, memorystorage, rdd-upload", url: "guide/subida-archivos.html" },
     { title: "Benchmark", section: "Rendimiento", keywords: "benchmark, rendimiento, latencia, p99, rps, http, websocket, rdd-bench", url: "benchmark.html" },
     { title: "Especificación", section: "Referencia", keywords: "rdd, spec, requisitos, arquitectura", url: "especificacion.html" },
   ];

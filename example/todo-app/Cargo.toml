@@ -23,8 +23,9 @@ workspace = true
 # trae el servidor MCP por stdio de §10.6, `mcp-http` el montaje `/mcp` de §10.8 y
 # `graphql` el motor y el montaje `/graphql` de §10.9, `openapi` la
 # documentación servida en `/api-docs` de §10.10 y `static-files` los archivos de
-# `client/` montados en `/site` de §10.11.
-rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi", "static-files"] }
+# `client/` montados en `/site` de §10.11. Las tres features `upload-*` habilitan
+# las nubes para que `UPLOAD_DRIVER` elija en tiempo de ejecución (§26.13).
+rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi", "static-files", "upload-aws", "upload-azure", "upload-gcs"] }
 # Paquete externo que lee su propia sección de `rdd.toml` (§11.5, RF-151).
 rdd-cors.workspace = true
 # `Error::internal` recibe un `anyhow::Error`; lo usan los adaptadores (§10.3).

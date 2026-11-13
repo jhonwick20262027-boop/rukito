@@ -12,7 +12,7 @@ pub mod types;
 use std::sync::Arc;
 
 pub use extract::{
-    Bind, Ctx, Ext, FromContainer, FromRequest, Header, Json, Path, PathParams, Query,
+    Bind, Bytes, Ctx, Ext, FromContainer, FromRequest, Header, Json, Path, PathParams, Query,
 };
 pub use platform::{
     DefaultPlatformFn, Platform, PlatformFuture, ShutdownSignal, default_platform,

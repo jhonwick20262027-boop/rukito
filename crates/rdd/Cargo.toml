@@ -49,6 +49,9 @@ rdd-graphql = { workspace = true, optional = true }
 rdd-openapi = { workspace = true, optional = true }
 # Archivos estáticos (§10.11). El montaje lo aporta `AxumPlatform::static_files`.
 rdd-static = { workspace = true, optional = true }
+# Storage de objetos (§10.13). No se monta en el router: la app lo usa desde su
+# capa de infraestructura (RF-276, RA-025).
+rdd-upload = { workspace = true, optional = true }
 # Lo que genera la macro GraphQL habla JSON; se re-exporta para que el proyecto
 # del usuario no tenga que declararlo (RN-012).
 serde_json.workspace = true
@@ -79,6 +82,12 @@ openapi  = ["dep:rdd-openapi", "rdd-axum/openapi"]
 # §10.11, RF-255: archivos estáticos desde disco. Requiere `axum`, igual que
 # GraphQL y OpenAPI.
 static-files = ["dep:rdd-static", "rdd-axum/static-files"]
+# §10.13, RF-276: storage de objetos. `upload` trae el puerto y la memoria; cada
+# feature de nube añade su adaptador. No hay nada que registrar ni montar.
+upload       = ["dep:rdd-upload"]
+upload-aws   = ["upload", "rdd-upload/aws"]
+upload-azure = ["upload", "rdd-upload/azure"]
+upload-gcs   = ["upload", "rdd-upload/gcp"]
 
 [dev-dependencies]
 bytes.workspace = true

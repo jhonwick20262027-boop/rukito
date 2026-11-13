@@ -3,8 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Documento | `RDD-SPEC.md` — **única fuente de verdad** del proyecto |
-| Versión del documento | 0.13.1-draft |
-| Fecha | 2026-11-12 |
+| Versión del documento | 0.14.0-draft |
+| Fecha | 2026-11-13 |
 | Estado | Borrador para aprobación |
 | Nombre del framework | `rdd` (provisional; verificar disponibilidad de nombres de crates antes de publicar) |
 
@@ -40,7 +40,7 @@
 
 ## 2. Alcance
 
-### 2.1 Dentro del alcance (fases 0.1 a 0.14)
+### 2.1 Dentro del alcance (fases 0.1 a 0.15)
 
 - Servidor REST con controladores declarativos por macros, sobre una interfaz de plataforma (§4.4). **Axum es la plataforma por defecto** (`rdd-axum`).
 - Building blocks DDD mínimos: `Aggregate`, `Service`, `Repo<T>`, `Error` de dominio.
@@ -58,6 +58,7 @@
 - **Rendimiento medido** (fase 0.12): el crate interno `rdd-bench` mide HTTP con keep-alive y eco WebSocket contra un `AxumPlatform` real en un puerto efímero, calcula p50/p95/p99 y tasas, y publica un informe JSON versionado que alimenta la página `docs/benchmark.html` del sitio (ADR-31).
 - **Archivos estáticos** opcionales (fase 0.13, §10.11): el crate `rdd-static` sirve un directorio del disco con resolución segura de rutas, MIME, ETag, caché, índice y fallback de SPA; es neutral —solo depende de `rdd-core`— y el montaje lo hace `rdd-axum` con la feature `static-files` (ADR-32, RP-033). Los archivos se leen en tiempo de petición: no hay *hot reload*, vigilancia de archivos ni empaquetado de assets en el binario; los únicos artefactos embebidos siguen siendo el explorer (§10.9) y la UI de OpenAPI (§10.10).
 - **Trabajos en segundo plano** opcionales (fase 0.14, §10.12): el crate neutral `rdd-jobs` define el puerto `Queue`, el contrato `Job`, el `Worker` con concurrencia, reintentos con espera exponencial, *lease* de visibilidad, *dead-letter* e idempotencia de encolado; `InMemoryQueue` cubre pruebas y `SqliteQueue` vive en `rdd-sqlite` con la feature `jobs` (ADR-33). La entrega es **at-least-once**: un trabajo puede ejecutarse más de una vez y el handler debe ser idempotente. Redis, los brokers externos y el cron quedan fuera de esta fase.
+- **Subida de archivos** opcional (fase 0.15, §10.13): el crate neutral `rdd-upload` define el puerto `ObjectStorage` (`put`/`get`/`head`/`delete`), la política de claves `ObjectKey` y un `MemoryStorage` para pruebas y desarrollo, y trae adaptadores para **AWS S3**, **Azure Blob Storage** y **Google Cloud Storage** que firman sus peticiones REST a mano (SigV4, `SharedKey` y `GOOG4-HMAC-SHA256`) sobre un único cliente `hyper` + `hyper-rustls`, sin SDK de nube (ADR-34). Cada adaptador se configura por constructor o por variables de entorno (`AWS_*`, `AZURE_STORAGE_*`, `GCS_*`), con precedencia constructor > entorno > defecto no secreto. El framework no monta rutas ni conoce credenciales: la app usa el puerto desde sus services y controllers.
 
 ### 2.2 Fuera del alcance (explícito)
 
@@ -88,6 +89,10 @@
 | **Redis como backend de colas, brokers externos (NATS/Kafka/RabbitMQ) y colas entre servicios** | La fase 0.14 entrega el puerto `Queue` con `InMemoryQueue` y `SqliteQueue`; un adaptador Redis o un broker entran después sin tocar `Worker` ni los handlers (§10.12, ADR-33). La primera fila de esta tabla sigue excluyendo el bus de eventos. |
 | Entrega exactamente una vez | La cola garantiza **at-least-once**: un *lease* vencido o un proceso caído puede repetir el trabajo. `idempotency_key` deduplica el **encolado**, no la ejecución; el handler debe ser idempotente (§10.12, RF-263). |
 | Cron, tareas recurrentes, prioridades, cancelación y panel de administración | Solo hay trabajos de una ejecución con `run_at` (incluido el reintento); no hay calendario, prioridad, cancelación ni UI de colas en 0.x (§10.12, RF-264). |
+| **Subidas multiparte, reanudables y URLs prefirmadas** | La fase 0.15 hace **un `PUT` por objeto** con el cuerpo en memoria (ADR-12) y credenciales estáticas. Multiparte, reanudación, `Transfer-Encoding: chunked` de salida y URLs prefirmadas para subir desde el navegador quedan para una fase posterior; no se simulan (§10.13, ADR-34). |
+| **Administración de buckets/containers, listado y configuración del servicio** | El adaptador asume que el bucket o contenedor ya existe y opera por clave: no los crea, no lista ni busca por prefijo y no configura lifecycle, CORS, versionado, cifrado del lado del servidor ni políticas de acceso. Eso es del operador de la nube (§10.13). |
+| **Identidades de nube por metadatos y SDKs oficiales** | Solo se admiten **claves estáticas** por constructor o entorno (más `AWS_SESSION_TOKEN`). Quedan fuera IMDS, workload identity, managed identity, service-account JSON/OAuth2, ADC y los crates `aws-sdk-s3`, `azure_storage_*` y `google-cloud-*`: la firma y el protocolo viven en `rdd-upload` (ADR-34). GCS se autentica con **claves HMAC de interoperabilidad**, no con una cuenta de servicio. |
+| **Reintentos automáticos y *failover* entre nubes** | Un fallo del proveedor se devuelve a la app con su estado y su código; `rdd-upload` no reintenta, no cambia de región ni de proveedor y no oculta el error. La política de reintentos es de la app (§10.13, RF-275). |
 | Autenticación completa | Solo el mecanismo de middlewares; un crate `rdd-auth` es candidato futuro. §26 muestra cómo escribir JWT y roles **a nivel de aplicación** con ese mecanismo, que es lo único que el framework promete hoy. |
 | Motores sin adaptador publicado | El puerto `DbAdapter` (§12) es la vía de extensión. SQLite está implementado en `rdd-sqlite` y es el adaptador predeterminado; Oracle, Cassandra y DynamoDB no están previstos. |
 | Migraciones multi-motor | Prisma (§13) sigue siendo **solo PostgreSQL**. Los demás motores usan su herramienta nativa o esquema manual; unificar migraciones es fase aparte. |
@@ -142,6 +147,7 @@ rdd/                              # repositorio del framework
 │   ├── rdd-openapi/              # documento OpenAPI 3.1, validación de rutas y UI embebida (fase 0.12)
 │   ├── rdd-static/               # archivos estáticos: rutas seguras, MIME, caché y SPA (fase 0.13)
 │   ├── rdd-jobs/                 # puerto Queue, Job, Worker e InMemoryQueue (fase 0.14)
+│   ├── rdd-upload/               # storage de objetos: puerto ObjectStorage, MemoryStorage y adaptadores S3, Azure Blob y GCS (fase 0.15)
 │   ├── rdd-bench/                # arnés interno de rendimiento HTTP y WebSocket (fase 0.12, no se publica)
 │   ├── rdd-prisma/               # parser de schema.prisma + generador
 │   └── rdd-cli/                  # binario `rdd`
@@ -166,6 +172,9 @@ rdd-mcp  = "..."                          # opcional: servidor MCP por stdio (§
 # rdd = { package = "rdd-framework", version = "...", features = ["static-files"] }
 # o, con la cola SQLite de la fase 0.14:
 # rdd = { package = "rdd-framework", version = "...", features = ["jobs-sqlite"] }
+# o, con la subida de archivos de la fase 0.15 (un adaptador por nube):
+# rdd = { package = "rdd-framework", version = "...", features = ["upload-aws"] }
+# (`upload-azure` y `upload-gcs` para las otras dos; `upload` a secas da el puerto y MemoryStorage)
 uuid     = { version = "1", features = ["v4", "serde"] }   # el id del agregado (§7.2)
 # o, sin Axum:
 # rdd = { package = "rdd-framework", version = "...", default-features = false, features = ["hyper", "sqlite"] }
@@ -182,14 +191,15 @@ rdd-core ◄───┼── rdd (fachada) ──► [feature axum]   rdd-axum
      │       │                 ├─► [feature graphql] rdd-graphql
      │       │                 ├─► [feature openapi] rdd-openapi
      │       │                 ├─► [feature static-files] rdd-static
-     │       │                 └─► [feature jobs]   rdd-jobs
+     │       │                 ├─► [feature jobs]   rdd-jobs
+     │       │                 └─► [feature upload] rdd-upload
      ├── rdd-axum, rdd-hyper
      ├── rdd-axum ──► rdd-mcp (solo feature `mcp-http`, RA-020)
      ├── rdd-axum ──► rdd-graphql (solo feature `graphql`, RA-021)
      ├── rdd-axum ──► rdd-openapi (solo feature `openapi`, RA-022)
      ├── rdd-axum ──► rdd-static (solo feature `static-files`, RA-023)
      ├── rdd-sqlite ──► rdd-jobs (solo feature `jobs`, RA-024)
-     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql, rdd-openapi, rdd-static, rdd-jobs
+     ├── rdd-cors, rdd-logger, rdd-socket, rdd-mcp, rdd-graphql, rdd-openapi, rdd-static, rdd-jobs, rdd-upload
      ├── rdd-sqlite, rdd-postgres, rdd-mysql, rdd-mongodb, rdd-redis, rdd-mssql
      ├── rdd-platform-tests ──► (dev) cada plataforma
      └── rdd-db-tests ────────► (dev) cada adaptador
@@ -201,7 +211,7 @@ rdd-bench ──► rdd-axum (herramienta interna, nadie depende de ella)
 |---|---|---|
 | `rdd-core` | `http`, `bytes`, `futures`, `tokio`, `serde`, `serde_json`, `tracing`, `uuid`, `thiserror`, `anyhow` | `axum`, `hyper`, `tower-http`, cualquier plataforma, **cualquier driver de BD** (`sqlx`, `mongodb`, `redis`, `tiberius`), Prisma, Node |
 | `rdd-macros` | `syn`, `quote`, `proc-macro2`, crate de diagnósticos | `rdd-core` |
-| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp`, `rdd-graphql`, `rdd-openapi`, `rdd-static` y `rdd-jobs` (opcionales por feature) | — |
+| `rdd` | `rdd-core`, `rdd-macros`, plataformas, adaptadores, `rdd-socket`, `rdd-mcp`, `rdd-graphql`, `rdd-openapi`, `rdd-static`, `rdd-jobs` y `rdd-upload` (opcionales por feature) | — |
 | `rdd-sqlite` | `rdd-core`, `sqlx` (feature SQLite), `tokio`, `anyhow`; `rdd-jobs` solo con la feature `jobs` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-axum` | `rdd-core`, `axum` (con la feature `ws`), `tower`, `tower-http`; `rdd-mcp` solo con la feature `mcp-http`; `rdd-graphql` solo con la feature `graphql`; `rdd-openapi` solo con la feature `openapi`; `rdd-static` solo con la feature `static-files` | `rdd-hyper` |
 | `rdd-hyper` | `rdd-core`, `hyper`, `hyper-util` | `rdd-axum`, `axum` |
@@ -212,6 +222,7 @@ rdd-bench ──► rdd-axum (herramienta interna, nadie depende de ella)
 | `rdd-openapi` | `rdd-core`, `serde`, `serde_json`, `bytes`, `anyhow` | `axum`, `hyper`, `tower`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-static` | `rdd-core`, `anyhow`, `bytes`, `mime_guess`, `tokio` (feature `fs`) | `axum`, `hyper`, `tower`, `tower-http`, cualquier plataforma, cualquier driver de BD, `rdd-cli` |
 | `rdd-jobs` | `rdd-core`, `serde`, `serde_json`, `tokio`, `tracing`, `anyhow` | `axum`, `hyper`, `tower`, cualquier plataforma, cualquier driver de BD (`sqlx`, `mongodb`, `redis`, `tiberius`), `rdd-sqlite`, `rdd-cli` |
+| `rdd-upload` | `rdd-core`, `bytes`, `tokio`, `tracing`, `anyhow`, `thiserror`, `percent-encoding` (codificación de `ObjectKey`, con o sin adaptadores); con las features `aws`/`azure`/`gcp`, además `hyper` y `hyper-util` (cliente), `hyper-rustls` con `rustls` y `webpki-roots`, `http`, `http-body-util`, `hmac`, `sha2`, `hex`, `base64` y `chrono` | `axum`, `tower`, `tower-http`, cualquier plataforma, cualquier driver de BD (`sqlx`, `mongodb`, `redis`, `tiberius`), los SDK de nube (`aws-sdk-s3`, `azure_storage_*`, `google-cloud-*`), `rdd-cli` |
 | `rdd-bench` | `rdd-core`, `rdd-axum` (con `ws`), `hyper`, `hyper-util`, `http`, `http-body-util`, `tokio-tungstenite`, `serde`, `serde_json`, `tokio`, `bytes`, `futures`, `anyhow`, `tracing` | cualquier crate del framework (es una herramienta interna; no se publica ni lo usa ningún otro crate) |
 | `rdd-postgres`, `rdd-mysql` | `rdd-core`, `sqlx` (feature del motor), `tokio`, `anyhow` | cualquier otro adaptador, cualquier plataforma |
 | `rdd-mongodb` | `rdd-core`, `mongodb`, `tokio`, `anyhow` | `sqlx`, cualquier otro adaptador |
@@ -276,6 +287,23 @@ handlers y lo ejecuta junto al servidor; ni el router ni `HttpApp` saben que
 existe una cola. `rdd-hyper` no arrastra `rdd-jobs` y un adaptador Redis futuro
 entra por el mismo puerto sin tocar `Worker` ni los handlers (RA-024, ADR-33).
 
+El storage de objetos cierra la misma secuencia (RA-025): `rdd-upload` define el
+puerto `ObjectStorage`, la política de claves y un `MemoryStorage`, y sus tres
+adaptadores traducen ese puerto a la API REST de cada nube. La diferencia con los
+crates anteriores es que aquí hace falta salir a la red, y eso **no** convierte a
+`rdd-upload` en una plataforma: `hyper` se usa como **cliente** HTTP/1.1 con TLS
+de `rustls`, nunca como servidor, y ninguna plataforma depende de él. Las firmas
+se construyen con `hmac` y `sha2` —no hay criptografía propia— y las tres nubes
+comparten el mismo modelo de objeto, el mismo transporte y la misma política de
+claves, así que viven en un solo crate con una feature por proveedor en vez de
+tres crates que triplicarían lo común (ADR-34). GCS se firma con una clave HMAC
+de interoperabilidad y el algoritmo V4 (`GOOG4-HMAC-SHA256`), que reutiliza el
+firmador de S3; una cuenta de servicio JSON exigiría firmar JWT RS256 y canjear
+un token OAuth2, y eso queda fuera (§2.2). Los SDK oficiales se descartaron: no
+estaban en la caché offline al planificar la fase, arrastran su propio stack
+HTTP/TLS y sus tres modelos de error, y el subconjunto que necesita el puerto son
+cuatro operaciones sobre REST (⚠️ V29, V30).
+
 | ID | Requisito |
 |---|---|
 | RA-011 | `rdd-core`, `rdd-cors` y `rdd-logger` NO DEBEN tener a `axum` ni `hyper` en su árbol de dependencias. CI DEBE verificarlo (`cargo tree -p rdd-core` y regla `bans` de `cargo-deny`). |
@@ -291,6 +319,7 @@ entra por el mismo puerto sin tocar `Worker` ni los handlers (RA-024, ADR-33).
 | RA-022 | La dependencia entre `rdd-axum` y `rdd-openapi` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-openapi` con la feature `openapi`, y `rdd-openapi` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower ni de un driver de BD: solo de `rdd-core` y crates neutrales. El documento, el builder, la validación de rutas y el HTML de la UI no tocan el router; `OpenApiHttp` (§10.10) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `openapi = ["dep:rdd-openapi", "rdd-axum/openapi"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-openapi` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-openapi`). `rdd-bench` es una herramienta interna que ningún crate del framework usa (ADR-31). |
 | RA-023 | La dependencia entre `rdd-axum` y `rdd-static` va en una sola dirección: `rdd-axum` PUEDE depender de `rdd-static` con la feature `static-files`, y `rdd-static` NO DEBE depender de `rdd-axum`, de `rdd-hyper` ni de ningún crate de plataforma, de Tower, de `tower-http` ni de un driver de BD: solo de `rdd-core` y crates neutrales (`anyhow`, `bytes`, `mime_guess`, `tokio` con `fs`). La resolución de rutas, el MIME, la caché y el SPA no tocan el router; `StaticFiles::handle` (§10.11) solo consume y produce los tipos de `rdd_core::http`. La fachada declara `static-files = ["dep:rdd-static", "rdd-axum/static-files"]`, así que activarla sin `axum` es un error de compilación claro (RP-012). CI DEBE verificar `cargo tree -p rdd-static` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-static`). |
 | RA-024 | `rdd-jobs` NO DEBE depender de ninguna plataforma, de Tower, de un driver de BD ni de `rdd-sqlite`: solo de `rdd-core` y crates neutrales (`serde`, `serde_json`, `tokio`, `tracing`, `anyhow`). El puerto `Queue`, el `Worker` y la `InMemoryQueue` no tocan SQL ni el router. La dependencia con el motor va en una sola dirección: `rdd-sqlite` PUEDE depender de `rdd-jobs` con la feature `jobs` y NO al revés; ningún otro adaptador lo arrastra. La fachada declara `jobs = ["dep:rdd-jobs"]` y `jobs-sqlite = ["jobs", "sqlite", "rdd-sqlite/jobs"]`; `jobs-sqlite` sin `sqlite` es imposible por construcción y `rdd-hyper` no arrastra `rdd-jobs`. CI DEBE verificar `cargo tree -p rdd-jobs` (sin plataformas ni drivers), `cargo tree -p rdd-sqlite -e features` (sin plataformas) y `cargo tree -p rdd-hyper -e features` (sin `rdd-jobs`). |
+| RA-025 | `rdd-upload` NO DEBE depender de ninguna plataforma, de Tower, de `tower-http`, de un driver de BD ni de un SDK de nube: el puerto, `MemoryStorage` y los tres adaptadores solo usan crates neutrales y, con las features `aws`/`azure`/`gcp`, el **cliente** HTTP `hyper` + `hyper-rustls` (nunca un servidor). Ninguna plataforma DEBE depender de `rdd-upload`: solo la fachada lo reexporta. La fachada declara `upload = ["dep:rdd-upload"]`, `upload-aws = ["upload", "rdd-upload/aws"]`, `upload-azure = ["upload", "rdd-upload/azure"]` y `upload-gcs = ["upload", "rdd-upload/gcp"]`. CI DEBE verificar `cargo tree -p rdd-upload` (sin plataformas, drivers ni SDKs), `cargo tree -p rdd-axum -e features` y `cargo tree -p rdd-hyper -e features` (sin `rdd-upload`). |
 
 ### 4.3 Stack tecnológico
 
@@ -324,6 +353,9 @@ entra por el mismo puerto sin tocar `Worker` ni los handlers (RA-024, ADR-33).
 | Arnés de rendimiento | `hyper` con keep-alive y `tokio-tungstenite` contra un `AxumPlatform` real en puerto efímero | `rdd-bench` | Mide el camino HTTP y el canal completos —router, cadena de middlewares y transporte—, no funciones aisladas; el informe es reproducible y versionado (§20, ADR-31). |
 | Archivos estáticos | `tokio::fs` para leer el archivo pedido y `mime_guess` para el `Content-Type` por extensión | `rdd-static` | Lectura en tiempo de petición, sin empaquetar ni vigilar el directorio; la tabla MIME es una dependencia pequeña y evita que la plataforma elija tipos (§10.11, ADR-32). |
 | Cola de trabajos | puerto `Queue` + `Worker` sobre `tokio`; `SqliteQueue` con `sqlx` (una sentencia `UPDATE … RETURNING` por reserva), WAL y `busy_timeout` | `rdd-jobs`, `rdd-sqlite` (feature `jobs`) | La semántica vive en un crate neutral y el motor solo persiste; SQLite da durabilidad local sin infraestructura nueva y deja Redis como adaptador posterior (§10.12, ADR-33). |
+| Storage de objetos | puerto `ObjectStorage` propio + REST firmado a mano (`AWS4-HMAC-SHA256` para S3, `SharedKey` para Azure Blob y `GOOG4-HMAC-SHA256` para GCS) | `rdd-upload` | Los SDK oficiales de las tres nubes no estaban en la caché offline y arrastran su propio stack HTTP/TLS y su modelo de error; las tres APIs son REST y cuatro operaciones caben en un crate neutral (§10.13, ADR-34). |
+| Primitivas de firma | `hmac`, `sha2`, `hex`, `base64` y `chrono`; la codificación por segmento de `ObjectKey` usa `percent-encoding` como dependencia base | `rdd-upload` (firma, con features de nube) | HMAC-SHA256, codificación canónica y sellos UTC son todo lo que piden las tres firmas; no se implementa criptografía propia. |
+| Cliente HTTP saliente | `hyper` 1.x (cliente legacy de `hyper-util`) + `hyper-rustls` con `rustls` (proveedor `ring`) y raíces de `webpki-roots` | `rdd-upload` (features de nube) | Un solo cliente HTTP/1.1 con TLS para las tres nubes y `http://` para emuladores, sin OpenSSL ni `reqwest` (⚠️ V29). |
 | Errores | `thiserror` + `anyhow` (interno) | núcleo | Errores tipados en el borde, contexto interno. |
 | Trazas | `tracing`, `tracing-subscriber` | núcleo | Estándar. |
 | IDs | `uuid` | núcleo | Estándar. |
@@ -853,10 +885,11 @@ impl TaskController {
 | RF-051 | La ruta final es `prefijo + ruta`, normalizando barras: `"/tasks"` + `"/"` → `/tasks`; `"/tasks"` + `"/:id"` → `/tasks/:id`. |
 | RF-052 | `Result<T>` donde `T: Serialize` DEBE convertirse a respuesta JSON. |
 | RF-053 | Código de estado por defecto: `POST` → **201**, `()` → **204**, resto → **200**. Se sobrescribe con `#[post("/", status = 202)]`. |
-| RF-054 | Extractores disponibles: `Json<T>`, `Path<T>`, `Query<T>`, `Header<T>`, `Ext<T>` (extensiones puestas por middlewares), cualquier `#[service]`, y `Config<T>`. `Json`, `Path` y `Query` implementan `Deref` hacia su contenido. |
+| RF-054 | Extractores disponibles: `Json<T>`, `Path<T>`, `Query<T>`, `Header<T>`, `Ext<T>` (extensiones puestas por middlewares), `Bytes` (cuerpo en memoria, RF-278), cualquier `#[service]`, y `Config<T>`. `Json`, `Path` y `Query` implementan `Deref` hacia su contenido. |
 | RF-055 | Si un extractor falla (JSON inválido, UUID inválido), la respuesta DEBE ser `400` con el formato de §10.3. |
 | RF-056 | El método `routes()` generado (`TaskController::routes()`) DEBE devolver `Vec<RouteDef>` (§4.4); es el único código público que genera la macro además de los handlers. |
 | RF-057 | Los extractores implementan `rdd::http::FromRequest` (`async fn from_request(ctx: &Ctx, bind: Bind) -> Result<Self>`): [`Ctx`](§4.4) envuelve la petición ya leída (RP-002) y `Bind` es la pista de enlace que pasa la macro —qué parámetro de ruta o qué cabecera—, necesaria porque la firma es única para todos los extractores. Como el cuerpo está en memoria, varios extractores pueden leerlo en la misma petición. La macro desenrolla la llamada a cada extractor en el cuerpo generado, sin límite de parámetros impuesto por el sistema de tipos. |
+| RF-278 | `Bytes` DEBE ser un extractor de los handlers que entrega el cuerpo completo en memoria (`bytes::Bytes`) y se combina con `Header<T>` para el nombre o el tipo de contenido. El límite de RF-017 se aplica antes de invocarlo y NO DEBE existir multiparte en el núcleo: separar campos y archivos es responsabilidad de la app o de una extensión posterior (§10.13, RF-277). |
 
 ### 8.3 Cambio respecto a borradores previos
 
@@ -2037,6 +2070,114 @@ RETURNING id, kind, payload, attempt, max_attempts;
 
 ---
 
+### 10.13 Subida de archivos (`rdd-upload`)
+
+Guardar archivos no es una entrada HTTP ni una tabla: es una **dependencia de
+salida** que la app usa desde sus services. `rdd-upload` define el puerto, la
+política de claves y un `MemoryStorage`, y trae tres adaptadores REST sobre un
+mismo cliente HTTP con TLS. La app decide qué controlador recibe el archivo y qué
+clave le asigna; el framework no monta ninguna ruta ni conoce credenciales
+(ADR-34).
+
+```rust
+// rdd-upload — puerto neutral (§10.13)
+pub struct ObjectKey(String);
+pub struct ObjectMeta { /* key, size, content_type, etag, last_modified */ }
+pub struct PutOptions { /* content_type, cache_control, metadata */ }
+pub struct StoredObject { /* meta, body: Bytes */ }
+pub struct Secret(String);       // Debug y Display redactados
+pub struct Credentials { /* access_key, secret: Secret, session_token: Option<Secret> */ }
+pub type BoxFuture<'a, T> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
+pub trait ObjectStorage: Send + Sync + 'static {
+    fn put(&self, key: &ObjectKey, body: Bytes, opts: PutOptions)
+        -> BoxFuture<'_, rdd_core::Result<ObjectMeta>>;
+    fn get(&self, key: &ObjectKey)
+        -> BoxFuture<'_, rdd_core::Result<Option<StoredObject>>>;
+    fn head(&self, key: &ObjectKey)
+        -> BoxFuture<'_, rdd_core::Result<Option<ObjectMeta>>>;
+    fn delete(&self, key: &ObjectKey) -> BoxFuture<'_, rdd_core::Result<()>>;
+}
+```
+
+`get` y `head` devuelven `None` cuando la clave no existe y `delete` es
+idempotente —un 404 del proveedor no es error—, así que los tres adaptadores y
+`MemoryStorage` comparten la misma semántica. Los cuerpos viajan en memoria
+(ADR-12): el adaptador rechaza un objeto mayor que `max_object_bytes` (64 MiB por
+defecto) antes de enviarlo, y en HTTP el límite de cuerpo de la app corre primero
+(RF-017). No hay multiparte, reanudación, listado, URLs prefirmadas ni streaming
+saliente en esta fase (§2.2).
+
+**Claves.** `ObjectKey::parse` acepta de 1 a 1024 bytes UTF-8 sin `/` inicial, sin
+segmentos vacíos, `.` o `..`, sin `\` y sin caracteres de control; cada segmento
+se codifica con `percent-encoding` y `/` se conserva como separador. Un adaptador
+solo recibe un `ObjectKey` ya validado, así que la ruta firmada nunca interpola
+texto del cliente sin codificar.
+
+**Configuración por constructor o por entorno.** Cada adaptador tiene su
+`*Config` y su `from_env()`. Un valor fijado en el constructor gana sobre su
+variable; una variable ausente con defecto no secreto usa el defecto; un secreto
+ausente es error de arranque que **nombra la variable**. Los secretos, las firmas
+y la cabecera `Authorization` nunca se registran ni aparecen en `Debug`.
+
+```rust
+// rdd-upload — uso típico (§10.13)
+use rdd::upload::{Credentials, ObjectStorage, S3Config, S3Storage};
+
+let storage: std::sync::Arc<dyn ObjectStorage> = std::sync::Arc::new(
+    S3Storage::new(
+        S3Config::new("mi-bucket", Credentials::new(access_key, secret_key))
+            .region("eu-west-1")
+            .endpoint("http://127.0.0.1:9000") // MinIO; ausente = AWS
+            .force_path_style(true),
+    )?,
+);
+// O todo desde el entorno:
+let storage = S3Storage::from_env()?;
+```
+
+| Proveedor | Tipo | Variables |
+|---|---|---|
+| AWS S3 | `S3Storage` / `S3Config` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (opcional), `AWS_REGION` (`us-east-1`), `AWS_S3_BUCKET`, `AWS_ENDPOINT_URL` (AWS), `AWS_S3_FORCE_PATH_STYLE` (`true` con endpoint, `false` sin él), `AWS_MAX_OBJECT_BYTES` (`67108864`) |
+| Azure Blob | `AzureBlobStorage` / `AzureBlobConfig` | `AZURE_STORAGE_ACCOUNT`, `AZURE_STORAGE_ACCESS_KEY`, `AZURE_STORAGE_CONTAINER`, `AZURE_STORAGE_ENDPOINT` (`https://{account}.blob.core.windows.net`), `AZURE_STORAGE_MAX_OBJECT_BYTES` (`67108864`) |
+| Google Cloud Storage | `GcsStorage` / `GcsConfig` | `GCS_HMAC_ACCESS_ID`, `GCS_HMAC_SECRET`, `GCS_BUCKET`, `GCS_ENDPOINT` (`https://storage.googleapis.com`), `GCS_MAX_OBJECT_BYTES` (`67108864`) |
+
+**Protocolo.** S3 usa SigV4 con la región configurada, `x-amz-content-sha256`
+con el SHA-256 del cuerpo y `x-amz-security-token` cuando hay token; por defecto
+usa estilo virtual-host y, con `endpoint` o `force_path_style(true)`, usa
+`/{bucket}/{key}`. Azure firma con `SharedKey`: la firma canónica cubre verbo,
+`Content-Length`, `Content-Type`, `x-ms-date`, `x-ms-version` y la parte
+canonicalizada del recurso, y `put` envía `x-ms-blob-type: BlockBlob`. GCS usa la
+API XML con una clave HMAC de interoperabilidad y V4: algoritmo
+`GOOG4-HMAC-SHA256`, ámbito `{fecha}/auto/storage/goog4_request`, cabeceras
+`x-goog-date` y `x-goog-content-sha256`, y estilo path `/{bucket}/{key}` para que
+el mismo código sirva contra `storage.googleapis.com` y un emulador. Ninguno de
+los tres reintenta, cambia de región ni de proveedor; un fallo se devuelve como
+`Error::internal` con el estado y el código del proveedor, sin secretos
+(RF-275).
+
+| Operación | S3 | Azure Blob | GCS |
+|---|---|---|---|
+| `put` | `PUT /{key}` firmado | `PUT /{container}/{key}` + `BlockBlob` | `PUT /{bucket}/{key}` firmado V4 |
+| `get` | `GET`; 404 → `None` | `GET`; 404 → `None` | `GET`; 404 → `None` |
+| `head` | `HEAD`; 404 → `None` | `HEAD`; 404 → `None` | `HEAD`; 404 → `None` |
+| `delete` | `DELETE`; 404/204 → `Ok` | `DELETE`; 404 → `Ok` | `DELETE`; 404 → `Ok` |
+
+| ID | Requisito |
+|---|---|
+| RF-269 | El crate `rdd-upload` DEBE exponer `ObjectStorage`, `ObjectKey`, `ObjectMeta`, `PutOptions`, `StoredObject`, `Secret`, `Credentials`, `BoxFuture`, `MemoryStorage` y `UploadConfigError`, y NO DEBE depender de plataformas, Tower, drivers de BD ni SDK de nube (RA-025). `ObjectStorage` DEBE ser object-safe con las cuatro operaciones de §10.13 y devolver `BoxFuture`; `Secret` NO DEBE revelar su valor en `Debug` ni en `Display`. |
+| RF-270 | `ObjectKey::parse` DEBE aceptar solo claves de 1 a 1024 bytes UTF-8 sin `/` inicial, sin segmentos vacíos, `.` o `..`, sin `\` y sin caracteres de control, y DEBE codificar cada segmento con `percent-encoding` conservando `/`. Un adaptador NO DEBE aceptar una clave construida fuera de esa validación, y la ruta firmada NO DEBE interpolar texto sin codificar. |
+| RF-271 | `MemoryStorage` DEBE implementar la misma semántica que los adaptadores: `put` guarda y sobrescribe devolviendo `ObjectMeta`, `get` devuelve una copia del cuerpo y las opciones, `head` devuelve solo la metadata, `delete` es idempotente y el acceso concurrente DEBE ser seguro. `with_max_bytes(n)` DEBE rechazar un cuerpo mayor antes de guardarlo y el `etag` es opaco: el framework NO DEBE prometer un formato común entre proveedores. |
+| RF-272 | `S3Storage` DEBE firmar con SigV4 (`AWS4-HMAC-SHA256`) incluyendo el SHA-256 del cuerpo, `x-amz-date`, la región, el `host` y `x-amz-security-token` cuando haya token; DEBE usar `/{bucket}/{key}` con `endpoint` o `force_path_style(true)` y estilo virtual-host en caso contrario; 404 en `get`/`head` DEBE ser `None` y 404 en `delete` DEBE ser `Ok`. NO DEBE implementar multiparte ni reintentos. |
+| RF-273 | `AzureBlobStorage` DEBE firmar con `SharedKey` sobre la cadena canónica de §10.13, enviar `x-ms-date` y `x-ms-version` y usar `x-ms-blob-type: BlockBlob` en `put`; DEBE resolver el endpoint por defecto `https://{account}.blob.core.windows.net` o el configurado (Azurite admite `http://127.0.0.1:10000/{account}`). 404 en `get`/`head` DEBE ser `None` y en `delete` DEBE ser `Ok`. |
+| RF-274 | `GcsStorage` DEBE usar la API XML de GCS con clave HMAC de interoperabilidad y V4 (`GOOG4-HMAC-SHA256`, ámbito `{fecha}/auto/storage/goog4_request`, `x-goog-date` y `x-goog-content-sha256`) y estilo path `/{bucket}/{key}`; DEBE aceptar un endpoint alternativo y 404 en `get`/`head` DEBE ser `None` y en `delete` DEBE ser `Ok`. NO DEBE implementar OAuth2, cuenta de servicio JSON ni ADC. |
+| RF-275 | Cada `*Config` DEBE poder construirse por constructor o por `from_env()`, con precedencia **constructor > entorno > defecto no secreto**; un secreto ausente DEBE fallar el arranque nombrando la variable y un endpoint DEBE validarse (solo `https`, salvo `http` explícito para un emulador). Los adaptadores NO DEBEN registrar credenciales, firmas ni `Authorization`, y NO DEBEN reintentar ni ocultar el estado o el código del proveedor en el error. |
+| RF-276 | La fachada DEBE declarar `upload = ["dep:rdd-upload"]`, `upload-aws = ["upload", "rdd-upload/aws"]`, `upload-azure = ["upload", "rdd-upload/azure"]` y `upload-gcs = ["upload", "rdd-upload/gcp"]`, y reexportar el puerto, `ObjectKey`, `ObjectMeta`, `PutOptions`, `StoredObject`, `Secret`, `Credentials`, `BoxFuture`, `MemoryStorage` y `UploadConfigError` como `rdd::upload`; cada feature de nube añade su `*Storage` y su `*Config`. `rdd-upload` NO DEBE montarse en el router ni registrarse en `run_main` (RA-025). |
+| RF-277 | `example/todo-app --upload` DEBE montar `POST /files`, `GET /files/:id` y `DELETE /files/:id` sobre el puerto, usando `UPLOAD_DRIVER` (`memory` por defecto, o `aws`/`azure`/`gcs`) y `UPLOAD_MAX_BYTES` (8 MiB por defecto); `POST` recibe el cuerpo con el extractor `Bytes` y un nombre por cabecera, `GET` devuelve la **metadata** en JSON (no los bytes: la respuesta binaria queda fuera de esta fase) y `DELETE` responde 204. La clave DEBE ser `files/{owner_id}/{id}` construida desde la sesión, de modo que un usuario no lea ni borre archivos ajenos (404) y una clave del cliente no llegue nunca al adaptador. La suite U-01 a U-08 (§20) DEBE cubrirlo. |
+
+---
+
 ## 11. Sistema de middlewares
 
 ### 11.1 Modelo
@@ -2429,7 +2570,13 @@ registrar; `jobs` activa `rdd-jobs` y reexporta el puerto, `Job`, `JobId`,
 `rdd::jobs`; `jobs-sqlite` activa `jobs`, `sqlite` y `rdd-sqlite/jobs` y añade
 `SqliteQueue` al mismo reexport (RF-267). La cola no se monta en el router ni se
 registra en `run_main`: la app compone el `Worker` y lo ejecuta junto al servidor
-(§10.12). Es `run_main` —el código que expande `#[rdd::main]`— y no un
+(§10.12). `upload` activa `rdd-upload` y reexporta el puerto, `ObjectKey`,
+`ObjectMeta`, `PutOptions`, `StoredObject`, `Secret`, `MemoryStorage` y
+`UploadConfigError` como `rdd::upload`; `upload-aws`, `upload-azure` y
+`upload-gcs` activan la feature homónima del crate y añaden `S3Storage`,
+`AzureBlobStorage` y `GcsStorage` con sus configuraciones (RF-276, RA-025). El
+storage tampoco se monta ni se registra: la app lo usa desde sus services. Es
+`run_main` —el código que expande `#[rdd::main]`— y no un
 inicializador global, porque la fachada solo puede ejecutar código en el camino
 que ella misma genera, igual que RP-012 con la plataforma.
 `register()` es idempotente y hace ambas cosas: `declare` para sus esquemas e
@@ -3068,6 +3215,28 @@ la cola no es una entrada HTTP (§4.5).
 | J-07 | `SqliteQueue::connect` con la migración aplicada persiste el trabajo y lo recupera tras reconectar; dos colas sobre el mismo archivo reservan trabajos distintos en paralelo; una clave repetida choca en el índice único; sin la tabla, `connect` falla al arrancar nombrando la migración | RF-262, RF-263, RF-266 |
 | J-08 | `example/todo-app --worker`: `PUT /tasks/:id/complete` responde 202 con el `JobId` y la tarea queda completada por el worker; repetir la petición con la misma clave no duplica el trabajo; un usuario no completa la tarea de otro; sin `--worker` la ruta sigue siendo síncrona | RF-264, RF-265, RF-268, §26.12 |
 
+### Suite de subida de archivos (`rdd-upload`)
+
+Los casos U-01 a U-06 corren en proceso y sin red: usan `MemoryStorage` y los
+vectores de firma publicados por cada proveedor con credenciales, fechas y
+región fijas, de modo que la firma es determinista. U-07 solo se ejecuta si
+existe `RDD_TEST_S3_URL`, `RDD_TEST_AZURE_URL` o `RDD_TEST_GCS_URL` contra
+MinIO, Azurite o `fake-gcs-server` y el bucket o contenedor ya creado; se salta
+por defecto, igual que la suite de adaptadores (RF-181), porque CI no tiene
+credenciales de nube. U-08 lanza el demo. No añaden casos C: el storage no es
+una entrada HTTP (§4.5).
+
+| Caso | Verifica | Requisitos |
+|---|---|---|
+| U-01 | `MemoryStorage`: `put` devuelve metadata y sobrescribe, `get` devuelve una copia con el `content_type` y la metadata, `head` coincide con `get`, `delete` es idempotente y dos tareas concurrentes no corrompen el mapa; `with_max_bytes` rechaza el cuerpo grande antes de guardarlo | RF-269, RF-271 |
+| U-02 | `ObjectKey::parse` acepta claves anidadas seguras y rechaza vacías, `/` inicial, `..`, `.`, `//`, `\`, controles y más de 1024 bytes; una clave con espacios y acentos se codifica por segmento conservando `/` | RF-270 |
+| U-03 | S3: el vector de SigV4 de la documentación de AWS reproduce la firma byte a byte con fecha y credenciales fijas; el token de sesión entra como `x-amz-security-token`; `endpoint` fuerza path-style y sin él se usa virtual-host; 404 se traduce a `None` | RF-272 |
+| U-04 | Azure: el vector de `SharedKey` de la documentación reproduce la firma con `x-ms-date` y `x-ms-version` fijos; `put` lleva `x-ms-blob-type: BlockBlob`; el endpoint con `{account}` y el de Azurite generan la ruta esperada; 404 se traduce a `None`/`Ok` | RF-273 |
+| U-05 | GCS: el vector V4 reproduce `GOOG4-HMAC-SHA256` con ámbito `{fecha}/auto/storage/goog4_request` y las cabeceras `x-goog-*`; la ruta es `/{bucket}/{key}` y el endpoint alternativo cambia el `host` firmado | RF-274 |
+| U-06 | Precedencia constructor > entorno > defecto: un valor del constructor pisa la variable, una variable ausente con defecto no secreto usa el defecto y una variable secreta ausente falla nombrando la variable; `Secret` no muestra el valor en `Debug`; un endpoint `ftp://` se rechaza y `http://` solo se acepta de forma explícita | RF-275 |
+| U-07 | Round-trip contra emulador cuando `RDD_TEST_<PROVEEDOR>_URL` está definido: `put`, `head`, `get`, `delete` y `get` posterior devuelve `None`; sin la variable el caso se salta sin fallar | RF-272, RF-273, RF-274 |
+| U-08 | `example/todo-app --upload` con `UPLOAD_DRIVER=memory`: `POST /files` responde 201 con el id y conserva el tamaño y el tipo, `GET /files/:id` devuelve la metadata y `DELETE` responde 204 seguido de 404; el usuario B no lee ni borra el archivo de A; un cuerpo mayor que `UPLOAD_MAX_BYTES` responde 413; sin `--upload` las rutas no existen | RF-271, RF-275, RF-277, §26.13 |
+
 ### Suite de rendimiento (`rdd-bench`)
 
 El arnés `rdd-bench` no es una prueba de corrección: mide un binario `--release` en
@@ -3473,6 +3642,52 @@ carrera; el demo completa una tarea por el worker y responde 202 con el `JobId`;
 no hay Redis, broker, cron ni exactly-once; la suite J pasa completa y
 `cargo tree -p rdd-jobs` cumple RA-024.
 
+### Fase 0.15 — Subida de archivos (`rdd-upload`)
+
+**Entrega:** crate neutral `rdd-upload` (puerto `ObjectStorage`, `ObjectKey`,
+`MemoryStorage` y configuraciones), adaptadores S3, Azure Blob y GCS, features
+`upload`, `upload-aws`, `upload-azure` y `upload-gcs` de la fachada, demo
+`--upload` y casos U-01 a U-08. Multiparte, URLs prefirmadas, listado e
+identidades de nube quedan explícitamente fuera (§2.2, ADR-34).
+
+- [ ] Extractor `Bytes` en `rdd-core` para el cuerpo binario en memoria, junto a
+      `Json`/`Path`/`Query`/`Header`/`Ext` (RF-278, RF-054)
+- [ ] `rdd-upload`: `ObjectStorage`, `ObjectKey`, `ObjectMeta`, `PutOptions`,
+      `StoredObject`, `Secret`, `MemoryStorage` y `UploadConfigError`; sin
+      plataformas, drivers ni SDKs (RF-269, RA-025)
+- [ ] Política de clave única para el puerto y los adaptadores, con
+      `percent-encoding` por segmento y rechazo de traversal (RF-270)
+- [ ] `MemoryStorage` con `with_max_bytes`, concurrencia segura y la misma
+      semántica de `get`/`head`/`delete` (RF-271)
+- [ ] `S3Storage` con SigV4, token de sesión, path-style y endpoint alternativo
+      (RF-272)
+- [ ] `AzureBlobStorage` con `SharedKey`, `x-ms-version`, `BlockBlob` y endpoint
+      de Azurite (RF-273)
+- [ ] `GcsStorage` con API XML, clave HMAC, `GOOG4-HMAC-SHA256` y endpoint
+      alternativo (RF-274)
+- [ ] Constructor y `from_env()` en los tres adaptadores, con precedencia,
+      validación de endpoint, errores que nombran variables y secretos
+      redactados (RF-275)
+- [ ] Features de la fachada con re-export como `rdd::upload` y sin montaje en
+      el router ni en `run_main` (RF-276, RA-025)
+- [ ] Demo `--upload`: módulo `files`, `config/upload_config.rs`, `UPLOAD_DRIVER`
+      y `UPLOAD_MAX_BYTES`, clave por dueño y endpoints de §26.13 (RF-277)
+- [ ] Casos U-01 a U-07 en `crates/rdd/tests/upload.rs` y U-08 en
+      `example/todo-app/tests/upload.rs` (RF-269 a RF-277)
+- [ ] RA-025 verificada: `cargo tree -p rdd-upload` sin plataformas, drivers ni
+      SDKs, y `cargo tree -p rdd-axum -e features` / `-p rdd-hyper -e features`
+      sin `rdd-upload`
+- [ ] Docs regenerados y `specVersion` a `0.14.0-draft`
+
+**Aceptación:** el vector de firma de cada proveedor coincide byte a byte con el
+publicado; `MemoryStorage` y los tres adaptadores comparten la semántica de
+`None` y borrado idempotente; un secreto ausente falla nombrando su variable y
+nunca aparece en `Debug` ni en los logs; el demo sube, lee y borra un archivo con
+`--upload`, aísla a los dueños y responde 413 por encima del límite; un emulador
+configurado completa el round-trip (U-07) y sin él el caso se salta; no hay
+multiparte, URLs prefirmadas ni SDKs de nube; la suite U pasa completa y
+`cargo tree -p rdd-upload` cumple RA-025.
+
 ### Criterios transversales (todas las fases)
 
 - [ ] `cargo clippy -- -D warnings`, `cargo fmt --check` y `cargo test` en CI
@@ -3486,6 +3701,7 @@ no hay Redis, broker, cron ni exactly-once; la suite J pasa completa y
 - [ ] RA-022 verificada en CI (`rdd-openapi` no arrastra plataformas ni drivers y `rdd-hyper` no arrastra `rdd-openapi`)
 - [ ] RA-023 verificada en CI (`rdd-static` no arrastra plataformas, Tower ni drivers y `rdd-hyper` no arrastra `rdd-static`)
 - [ ] RA-024 verificada en CI (`rdd-jobs` no arrastra plataformas ni drivers, `rdd-sqlite` no arrastra plataformas y `rdd-hyper` no arrastra `rdd-jobs`)
+- [ ] RA-025 verificada en CI (`rdd-upload` no arrastra plataformas, drivers ni SDKs; `rdd-axum` y `rdd-hyper` no arrastran `rdd-upload`)
 - [ ] Cobertura de pruebas de integración para cada requisito `RF-` marcado como DEBE
 - [ ] Cada diagnóstico de macro tiene un test `trybuild` con su mensaje esperado
 - [ ] Documentación con ejemplo ejecutable (`cargo test --doc`) por cada API pública
@@ -3526,6 +3742,8 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | V26 | Estabilidad de los percentiles del arnés: cuántas muestras y qué ventana hacen que p99 no oscile más de un 10 % entre ejecuciones en la misma máquina; confirmar que el keep-alive de `hyper` y el eco WebSocket de `tokio-tungstenite` no acumulan memoria ni conexiones y que el informe con `errors` 0 es reproducible. | 0.12 | §20, RF-253, ADR-31 |
 | V27 | Archivos estáticos en los sistemas objetivo: si leer un archivo mientras otro proceso lo reescribe (editor, despliegue) devuelve contenido parcial en Windows, si la resolución del `ETag` por fecha de modificación basta en todos los sistemas de archivos usados y si `mime_guess` cubre las extensiones del sitio. Verificar también que la canonicalización detecta enlaces simbólicos que escapan a la raíz en Windows. Un watcher de desarrollo se evaluó y queda fuera por decisión (§2.2, ADR-32); no se implementa. | 0.13 | §10.11, RF-258, RF-259 |
 | V28 | SQLite como cola durable: confirmar que la versión de SQLite empaquetada por `sqlx` 0.9 soporta `UPDATE … RETURNING` (3.35+), que WAL y `busy_timeout` se comportan igual en Windows y Linux con dos procesos, que la resolución del reloj basta para `run_at`/`lease_until` en milisegundos y que un trabajo sobrevive a un cierre abrupto (kill, no apagado ordenado). Verificar además que el índice único con `idempotency_key` nula permite varias filas y que `SqliteQueue` detecta la tabla ausente sin crear nada. | 0.14 | §10.12, RF-262, RF-263, RF-266 |
+| V29 | Cliente HTTP saliente con TLS: `hyper-rustls` 0.27 y `rustls` 0.23 con el proveedor `ring` y `webpki-roots` no están en el `Cargo.lock` actual (solo `rustls` por `sqlx`), así que hay que confirmar que se resuelven con la caché offline o descargarlos una vez antes de empezar la fase; comprobar el MSRV, que en Windows MSVC compila sin CMake/NASM (por eso `ring` y no `aws-lc-rs`), que el cliente legacy de `hyper-util` habla HTTP/1.1 con `http://` para MinIO y que no añade `Expect: 100-continue` ni bufferiza el cuerpo de forma inesperada. | 0.15 | §4.3, RF-272 a RF-274, ADR-34 |
+| V30 | Detalles de protocolo de las tres nubes: confirmar con los vectores oficiales la canonicalización exacta de GCS V4 (ámbito `auto`, cabeceras `x-goog-date`/`x-goog-content-sha256` y estilo path), la cadena `SharedKey` de Azure con la versión `x-ms-version` elegida y el tratamiento de `Content-Length: 0`, y el path-style de S3 contra MinIO/LocalStack. Verificar el formato de `ETag` y `Last-Modified` de cada proveedor, que un objeto de un solo `PUT` cubre el demo sin multiparte y que los emuladores (`minio`, `azurite`, `fake-gcs-server`) aceptan las firmas antes de publicar el crate. | 0.15 | §10.13, RF-272 a RF-274, ADR-34 |
 
 ---
 
@@ -3566,6 +3784,7 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | ADR-31 | **El benchmark es una herramienta interna reproducible, no una compuerta de CI.** `rdd-bench` mide `AxumPlatform` real en un puerto efímero, publica `docs/assets/benchmarks.json` y la página lo embebe de forma idempotente. | (a) Umbral de rendimiento en CI que rompa el build; (b) publicación automática en cada release; (c) `criterion` en proceso sobre `dispatch`. | (a) es frágil: la varianza de una máquina de CI haría fallar cambios correctos y el número no representa el despliegue. (b) exige infraestructura y un runner estable que §2.2 mantiene fuera. (c) mide el núcleo en proceso, no la pila HTTP ni WebSocket completa, y no describe la latencia que ve un cliente. El arnés se ejecuta a mano, registra el entorno para que la comparación sea honesta y su informe es un dato, no un contrato. |
 | ADR-32 | **Los archivos estáticos se sirven desde el disco con un crate neutral y montaje en la plataforma; sin *hot reload* ni empaquetado.** `rdd-static` resuelve la ruta, valida el traversal, elige MIME y caché, aplica índice y SPA y devuelve una respuesta de `rdd_core::http`; `AxumPlatform::static_files` (feature `static-files`) lee el cuerpo, ejecuta `prepare` y traduce la respuesta. El archivo se lee en cada petición: el servidor sirve siempre lo que hay en disco y el navegador recarga, sin vigilar directorios ni reiniciar el proceso. | (a) `tower_http::services::ServeDir` en `rdd-axum`; (b) embeber el directorio en el binario (`include_dir`/`rust-embed`); (c) un watcher/HMR de desarrollo en el framework; (d) un bundler propio que minifique y huellé los assets. | (a) ata la funcionalidad a una plataforma y a Tower, rompe RA-023/ADR-11 y no cubre `rdd-hyper`; además deja la seguridad de rutas y la política de caché fuera del contrato. (b) obliga a recompilar para cambiar un CSS y contradice la petición de servir archivos del proyecto; los únicos embebidos siguen siendo las dos UIs del framework. (c) es una herramienta de desarrollo que §2.2 mantiene fuera: añade un watcher, un canal de recarga y más superficie sin mejorar el contrato de servir archivos. (d) convierte al framework en un bundler ajeno a su alcance. La lectura en tiempo de petición hace que el cambio en disco se vea sin reiniciar, que es el único «recargar» que se promete. |
 | ADR-33 | **Colas durables sobre SQLite con un puerto neutral; Redis después.** `rdd-jobs` define `Queue`, `Job`, `Worker` y `InMemoryQueue` con entrega at-least-once, *lease* de visibilidad, reintentos con espera exponencial, *dead-letter* e idempotencia de encolado; `SqliteQueue` (feature `jobs` de `rdd-sqlite`) persiste en una tabla versionada por migración y reserva con una sola sentencia atómica. La app compone el worker y lo ejecuta con el mismo `ShutdownSignal` del servidor; Redis o un broker entran después por el mismo puerto sin tocar la app. | (a) Redis como backend de colas desde el inicio; (b) solo `InMemoryQueue`, sin durabilidad; (c) un broker externo (NATS/Kafka/RabbitMQ); (d) un crate de colas de terceros atado a `sqlx` o a un motor. | El usuario pidió empezar por SQLite sin perder el foco de Redis: SQLite ya es el adaptador local por defecto, no añade infraestructura y da durabilidad real, mientras el puerto deja Redis como siguiente adaptador. (b) pierde los trabajos al reiniciar y no sirve para el demo. (c) contradice §2.2 y P1: un broker es la primera fila del fuera de alcance y no hace falta para una app de un proceso. (d) ata la semántica al driver elegido, repite el problema que RA-014 evita con `DbAdapter` y deja la idempotencia, el lease y el dead-letter fuera del contrato. La entrega es at-least-once porque prometer exactly-once sobre un lease sería mentir: el handler idempotente y la `idempotency_key` son la mitigación honesta. |
+| ADR-34 | **Storage de objetos con un puerto neutral y firmas propias; sin SDKs de nube.** `rdd-upload` define `ObjectStorage` (`put`/`get`/`head`/`delete`), `ObjectKey`, `Secret` y `MemoryStorage`, y tres adaptadores REST sobre un único cliente `hyper` + `hyper-rustls`: S3 con SigV4, Azure Blob con `SharedKey` y GCS XML con claves HMAC de interoperabilidad y V4. Cada adaptador se configura por constructor o por entorno, con precedencia constructor > entorno > defecto no secreto. La app usa el puerto desde sus services; el framework no monta rutas, no conoce credenciales y no monta multiparte ni URLs prefirmadas. | (a) SDKs oficiales (`aws-sdk-s3`, `azure_storage_blobs`, `google-cloud-storage`); (b) un crate por proveedor; (c) `reqwest` u `object_store` como transporte; (d) montar `/upload` en `rdd-axum`; (e) URLs prefirmadas y multiparte desde el inicio. | (a) no estaban en la caché offline al planificar la fase, arrastran tres stacks HTTP/TLS, tres modelos de error y versiones que el workspace no controla; el puerto solo necesita cuatro operaciones REST. (b) triplicaría el transporte, la política de claves y los errores, que son la mayor parte del crate; las tres nubes comparten el modelo de objeto y dos de ellas la firma V4. (c) ataría el TLS y el cliente a una dependencia ajena y no ahorra el firmado, que es lo específico. (d) rompería RA-025/ADR-11: el storage es una dependencia de salida, no una entrada HTTP, y la app decide el controlador, la clave y los permisos; además `rdd-hyper` no podría usarlo. (e) exige multiparte, reanudación y una superficie de autorización que no cabe en la fase; el `PUT` único con el cuerpo en memoria cubre el caso de la app y deja la puerta abierta sin prometerlo. GCS se limita a claves HMAC porque una cuenta de servicio exigiría firmar JWT RS256 y canjear un token OAuth2, otro protocolo que no aporta al puerto. |
 
 ---
 
@@ -3606,6 +3825,7 @@ Puntos que este documento **no puede afirmar** sin comprobarlos contra las versi
 | 0.10.4-draft | 2026-11-11 | **Las raíces GraphQL del demo se separan por archivo.** Petición del usuario: mutaciones, consultas y tipos estaban mezclados en `app_graphql.rs`. (1) **§26.9**: las raíces viven en `src/graphql/{query,mutation,subscription}.rs` y `mod.rs` solo reexporta; la macro emite un `impl GraphqlRoot` por bloque anotado, así que no puede haber dos sobre la misma raíz y publicar raíces por módulo exigiría cambiar la macro y enmendar RF-240. (2) `CreateTaskInput` baja a `modules/tasks/presentation/task_graphql.rs` junto a `Task` y el módulo lo reexporta (RA-004): el contrato GraphQL lo publica el módulo dueño. (3) El demo pasa a `mod graphql;` y `.query(graphql::Query)`, sin cambios de comportamiento. El documento sube a `0.10.4-draft`. |
 | 0.10.3-draft | 2026-11-11 | **El montaje de `/graphql` se configura por entorno.** Petición del usuario: ver dónde se configuran `path`, `explorer`, `public_explorer` y `max_depth`. (1) **§26.9**: el bloque `--graphql` de `main.rs` consume `config/graphql_config.rs`, que expone `GRAPHQL_PATH`, `GRAPHQL_EXPLORER`, `GRAPHQL_PUBLIC_EXPLORER` y `GRAPHQL_MAX_DEPTH` con los valores que antes estaban fijos; el demo mantiene el explorer público para G-09 y en producción se desactiva con `GRAPHQL_EXPLORER=false` o se protege con `GRAPHQL_PUBLIC_EXPLORER=false`. (2) El README del demo documenta las cuatro variables y el listado de argumentos del binario (`--mcp`, `--mcp-http`, `--graphql` y `--explorer-token`), y la guía de la CLI documenta `rdd run --memory` y el reenvío tras `--`. El documento sube a `0.10.3-draft`. |
 | 0.9.0-draft | 2026-11-11 | **GraphQL opcional (`/graphql`): consultas, mutaciones, suscripciones y explorer.** Petición del usuario. Se resuelve con un motor propio, macros y SSE, por las mismas razones de portabilidad que MCP. (1) **§2.1/§2.2**: GraphQL sale de la lista de exclusiones y entra como fase 0.10 opcional, sobre el mismo `HttpApp` y el mismo contenedor; siguen fuera SDL, directivas propias, interfaces, uniones, enums, `@defer`/`@stream`, batching, consultas persistidas y el subprotocolo `graphql-transport-ws`. (2) **§4.1/§4.2/§4.3**: entra `rdd-graphql` con dependencias neutrales (`rdd-core`, `serde`, `serde_json`, `bytes`, `tokio`, `tokio-util`, `tracing`, `thiserror`, `anyhow`); `rdd-axum` gana la feature `graphql`; nueva **RA-021** (la dependencia va en una sola dirección, el motor no arrastra plataformas ni WebSocket y `rdd-hyper` no arrastra `rdd-graphql`). (3) **§4.4**: nuevas **RP-030** (el montaje `/graphql` ejecuta `prepare`, no interpreta el documento y se prueba con G-01 a G-09) y **RP-031** (el stream SSE sale del motor y la plataforma solo lo vuelca; desconectar cancela; sin reintento ni WebSocket). **§4.5**: la suite G no añade casos C. (4) **§8.7**: diagnósticos **RDD0501** (tipo o firma no soportada) y **RDD0502** (nombre duplicado o reservado). (5) **§10.9 nuevo**: `Schema`, `SchemaBuilder`, `GraphqlContext`, `GraphqlRequest`, `GraphqlStream`, `GraphqlHttp`, `GraphqlHttpConfig`, `GraphqlHttpResponse`, `SseStream` y `AxumPlatform::graphql`, con el subconjunto del documento, la forma de `errors`, la introspección, el formato `graphql-sse` y **RF-233 a RF-244** (montaje y choque de rutas; POST/GET con su tabla de estados; subconjunto del documento con `max_depth`; validación, ejecución y burbujeo de `null`; introspección; SSE con `next`/`complete` y cancelación; `authorize` e identidad por `ext`/`get`/`resolve`; macros con RDD0501/RDD0502; explorer embebido con CSP; configuración; feature de la fachada; validación del esquema y errores internos). (6) **§12.6**: feature `graphql = ["dep:rdd-graphql", "rdd-axum/graphql"]` y re-export como `rdd::graphql`. (7) **§20**: suite G-01 a G-09 contra el motor y un servidor real. (8) **§21**: fase 0.10 con aceptación de dos usuarios, 401 en explorer y suscripción, explorer sin red, SSE y errores con `locations`/`path`. (9) **§22**: **V22** (clientes GraphQL reales e introspección/GET/SSE) y **V23** (expansión de macros y coste de `max_depth`). (10) **§23**: **ADR-26** (motor propio), **ADR-27** (macros en vez de SDL), **ADR-28** (suscripciones solo por SSE) y **ADR-29** (explorer propio embebido). (11) **§26.9**: el demo monta `/graphql` con JWT, un esquema sobre los casos de uso, una suscripción sobre `TaskFeed` filtrada por dueño y el explorer. |
+| 0.14.0-draft | 2026-11-13 | **Subida de archivos (`rdd-upload`) para AWS S3, Azure Blob y GCS.** Petición del usuario: un módulo de subida con los tres adaptadores, configurable por constructor o por entorno. (1) **§2.1/§2.2**: la subida entra como fase 0.15 opcional; se excluyen multiparte, reanudación, URLs prefirmadas, listado y administración de buckets, identidades de nube (IMDS, managed identity, OAuth2/ADC), SDKs oficiales y reintentos automáticos. (2) **§4.1/§4.2/§4.3**: entra `rdd-upload` (neutral: `rdd-core`, `bytes`, `tokio`, `tracing`, `anyhow`, `thiserror` y `percent-encoding` para codificar `ObjectKey`; con las features de nube, `hyper`/`hyper-util` como **cliente**, `hyper-rustls` con `rustls` y `webpki-roots`, `http`, `http-body-util`, `hmac`, `sha2`, `hex`, `base64` y `chrono`); nueva **RA-025** (sin plataformas, Tower, drivers ni SDKs, y ninguna plataforma arrastra `rdd-upload`). (3) **§10.13 nuevo**: puerto `ObjectStorage` (`put`/`get`/`head`/`delete`), `ObjectKey` con traversal bloqueado, `ObjectMeta`, `PutOptions`, `StoredObject`, `Secret` redactado, `MemoryStorage`, `S3Storage`/`S3Config`, `AzureBlobStorage`/`AzureBlobConfig` y `GcsStorage`/`GcsConfig`, las tablas de variables `AWS_*`/`AZURE_STORAGE_*`/`GCS_*`, la precedencia constructor > entorno > defecto no secreto y el protocolo de firma de cada nube; **RF-269 a RF-277**. (4) **§12.6**: features `upload`, `upload-aws`, `upload-azure` y `upload-gcs` con re-export como `rdd::upload`, sin montaje en el router ni en `run_main`. (5) **§20**: suite U-01 a U-08 (memoria, claves, vectores de firma, configuración, emuladores opcionales y demo). (6) **§21**: fase 0.15 con aceptación de vectores, precedencia, secretos, demo y RA-025. (7) **§22**: **V29** (cliente `hyper-rustls`/`rustls` con `ring` fuera del lockfile actual) y **V30** (canonicalización exacta de las tres firmas y validación con emuladores). (8) **§23**: **ADR-34** (puerto neutral y firmas propias, sin SDKs; se descartan SDKs, un crate por proveedor, `reqwest`/`object_store`, montar `/upload` y prefirmadas/multiparte desde el inicio). (9) **§26.2/§26.13**: el demo gana `--upload`, el módulo `files`, `config/upload_config.rs`, `UPLOAD_DRIVER`/`UPLOAD_MAX_BYTES` y las rutas `POST/GET/DELETE /files` con aislamiento por dueño. (10) **RF-054/RF-278**: la lista de extractores gana `Bytes` para el cuerpo binario en memoria, que es lo que necesita `POST /files`; la respuesta binaria no entra en esta fase. El documento sube a `0.14.0-draft`. |
 
 ---
 
@@ -3799,10 +4019,11 @@ este ejemplo es el punto de partida, no al revés.
 
 ### 26.2 Estructura
 
-El árbol de §5 con dos módulos: `tasks`, el que genera el CLI, y `users`, añadido
-con `rdd g module users` y completado a mano. El nombre es `users` para que el
-agregado salga `User` por la regla de singularización (RF-005); su controller
-publica `/auth/register`, `/auth/login` y `/users/me`.
+El árbol de §5 con tres módulos: `tasks`, el que genera el CLI, `users`, añadido
+con `rdd g module users` y completado a mano, y `files`, añadido para `--upload`
+(§26.13). El nombre es `users` para que el agregado salga `User` por la regla de
+singularización (RF-005); su controller publica `/auth/register`, `/auth/login` y
+`/users/me`.
 
 ```
 example/todo-app/
@@ -3823,7 +4044,8 @@ example/todo-app/
 │   │   ├── jwt_config.rs       # secreto, expiración y ADMIN_EMAIL, solo del entorno
 │   │   ├── mcp_config.rs       # MCP_ALLOWED_ORIGINS para el montaje /mcp (§26.8)
 │   │   ├── openapi_config.rs   # ruta, UI y políticas de /api-docs (§26.10)
-│   │   └── static_config.rs    # directorio, prefijo y políticas de --static (§26.11)
+│   │   ├── static_config.rs    # directorio, prefijo y políticas de --static (§26.11)
+│   │   └── upload_config.rs    # driver, bucket y límite de --upload (§26.13)
 │   ├── graphql/                # raíces del esquema, una por archivo (§26.9)
 │   │   ├── mod.rs
 │   │   ├── mutation.rs
@@ -3838,6 +4060,7 @@ example/todo-app/
 │   │   └── task_events.rs      # difunde los cambios de tareas al hub
 │   ├── modules/
 │   │   ├── users/              # las cuatro capas de §5
+│   │   ├── files/              # las cuatro capas de §5, para --upload (§26.13)
 │   │   └── tasks/              # el del CLI, con los guards puestos
 │   │       └── presentation/
 │   │           ├── task_feed.rs     # canal /ws/tasks (§26.7)
@@ -3855,7 +4078,8 @@ example/todo-app/
     ├── jobs.rs                 # J-08: el binario con --worker
     ├── mcp_stdio.rs            # M-09: el binario con --mcp
     ├── mcp_http.rs             # M-16: el binario con --mcp-http
-    └── static_files.rs         # S-08: el binario con --static
+    ├── static_files.rs         # S-08: el binario con --static
+    └── upload.rs               # U-08: el binario con --upload
 ```
 
 `src/middleware/` y `config/jwt_config.rs` los añade el demo, no el CLI: no todos
@@ -4815,3 +5039,112 @@ crea un trabajo nuevo y que el usuario B no completa la tarea de A. Con el mismo
 binario sin `--worker`, `PUT /tasks/:id/complete` sigue respondiendo 200 de forma
 síncrona. Al apagar con la señal de siempre, el worker termina lo que tenía en
 curso dentro de `WORKER_SHUTDOWN_GRACE_SECS`.
+
+### 26.13 Subida de archivos del demo
+
+`example/todo-app --upload` monta el puerto de §10.13 en un módulo `files` y
+expone la subida por HTTP. El modo se acumula con `--graphql`, `--openapi`,
+`--static` y `--worker`; el binario habilita las tres nubes para que
+`UPLOAD_DRIVER` elija en tiempo de ejecución:
+
+```toml
+rdd = { workspace = true, features = ["socket", "mcp", "mcp-http", "graphql", "openapi", "static-files", "jobs-sqlite", "upload-aws", "upload-azure", "upload-gcs"] }
+```
+
+El demo no guarda metadata en la base: el objeto y sus cabeceras son la única
+fuente. La clave es `files/{owner_id}/{id}`, donde `id` es un `Uuid` generado por
+el servidor; el controller **nunca** acepta una clave del cliente, así que no hay
+traversal ni acceso cruzado. Como el endpoint necesita el cuerpo binario y
+`IntoResponse` cubre `Serialize`, `GET /files/:id` devuelve **metadata** en JSON y
+no los bytes; descargar el objeto queda como extensión posterior (RF-277,
+RF-278).
+
+La política sale de `config/upload_config.rs`:
+
+```rust
+// config/upload_config.rs — driver y límite de `--upload` (§10.13, RF-277)
+use rdd::upload::{AzureBlobStorage, GcsStorage, MemoryStorage, ObjectStorage, S3Storage};
+use rdd::{Error, Result};
+use std::sync::Arc;
+
+pub fn max_bytes() -> usize {
+    super::env_or("UPLOAD_MAX_BYTES", "8388608").parse().unwrap_or(8 * 1024 * 1024)
+}
+
+pub fn storage() -> Result<Arc<dyn ObjectStorage>> {
+    let driver = super::env_or("UPLOAD_DRIVER", "memory");
+    let config_err = |err| Error::Internal(err.into()); // fallo del operador (RF-041)
+    match driver.as_str() {
+        "memory" => Ok(Arc::new(MemoryStorage::with_max_bytes(max_bytes()))),
+        "aws" => S3Storage::from_env().map(|s| Arc::new(s) as Arc<dyn ObjectStorage>)
+            .map_err(config_err),
+        "azure" => AzureBlobStorage::from_env().map(|s| Arc::new(s) as Arc<dyn ObjectStorage>)
+            .map_err(config_err),
+        "gcs" => GcsStorage::from_env().map(|s| Arc::new(s) as Arc<dyn ObjectStorage>)
+            .map_err(config_err),
+        other => Err(Error::internal(anyhow::anyhow!("UPLOAD_DRIVER desconocido: {other}"))),
+    }
+}
+```
+
+| Variable | Por defecto | Efecto |
+|---|---|---|
+| `UPLOAD_DRIVER` | `memory` | `memory`, `aws`, `azure` o `gcs`; con una nube se leen sus variables de §10.13 |
+| `UPLOAD_MAX_BYTES` | `8388608` | Límite del objeto y del cuerpo de la petición mientras `--upload` está activo |
+
+```rust
+// main.rs — `--upload` (§10.13, §26.13)
+if std::env::args().skip(1).any(|arg| arg == "--upload") {
+    let storage = config::upload_config::storage()?;
+    app = app
+        .body_limit(config::upload_config::max_bytes())
+        .module(modules::files::module(storage));
+}
+```
+
+El módulo sigue las cuatro capas de §5 aunque no tenga tabla: `domain/file.rs`
+valida el nombre original como value object (sin `/`, `\` ni controles y hasta
+255 bytes), `application/files_use_cases.rs` construye la clave y llama al
+puerto, `infrastructure/file_store.rs` envuelve el `Arc<dyn ObjectStorage>` para
+resolverlo del contenedor y `presentation/files_controller.rs` publica las rutas.
+El handler lee el nombre y el tipo por cabecera y el cuerpo con el extractor
+`Bytes`:
+
+```rust
+// modules/files/presentation/files_controller.rs (§26.13)
+#[controller("/files")]
+pub struct FilesController;
+
+#[post("", status = 201)]
+async fn upload(
+    svc: FilesService,
+    session: Session,
+    x_file_name: Header<String>,
+    content_type: Header<String>,
+    body: Bytes,
+) -> Result<Json<FileMeta>> {
+    svc.upload_of(session.id, FileName::parse(&x_file_name)?, content_type.clone(), body)
+        .await
+        .map(Json)
+}
+
+#[get("/:id")]
+async fn meta(svc: FilesService, session: Session, id: Path<Uuid>) -> Result<Json<FileMeta>> {
+    svc.meta_of(session.id, *id).await
+}
+
+#[delete("/:id", status = 204)]
+async fn remove(svc: FilesService, session: Session, id: Path<Uuid>) -> Result<()> {
+    svc.remove_of(session.id, *id).await
+}
+```
+
+**Verificación (U-08).** `tests/upload.rs` levanta el binario con `--upload` y
+`UPLOAD_DRIVER=memory` en un puerto efímero, registra dos usuarios y sube un
+archivo con `POST /files` (`Content-Type: application/octet-stream`,
+`X-File-Name: notas.txt`). Comprueba que responde 201 con `id`, `size` y
+`content_type`, que `GET /files/:id` devuelve la misma metadata, que el usuario B
+recibe 404 al leer o borrar el archivo de A, que `DELETE` responde 204 y el
+`GET` posterior 404, que un cuerpo mayor que `UPLOAD_MAX_BYTES` responde 413 y
+que sin `--upload` las tres rutas no existen. La lectura y el borrado reales del
+objeto se cubren en U-01 y, con emulador, en U-07.

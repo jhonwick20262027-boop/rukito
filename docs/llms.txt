@@ -25,6 +25,7 @@ Datos canónicos del proyecto:
 - [Tiempo real](https://jhonwick20262027-boop.github.io/rukito/guide/tiempo-real.html): canal WebSocket con `.socket`, `SocketHandler`, hub de salas y presencia de `rdd-socket`; no es Socket.IO.
 - [JWT en el explorer](https://jhonwick20262027-boop.github.io/rukito/guide/jwt-explorer.html): obtener un Bearer, pegarlo en la pestaña Cabeceras y ejecutar operaciones autenticadas.
 - [Archivos estáticos](https://jhonwick20262027-boop.github.io/rukito/guide/static.html): montar un directorio con `rdd-static`, defensa contra traversal, MIME, ETag, caché inmutable y fallback de SPA.
+- [Subida de archivos](https://jhonwick20262027-boop.github.io/rukito/guide/subida-archivos.html): puerto `ObjectStorage`, `MemoryStorage` y adaptadores para S3, Azure Blob y GCS configurados por constructor o por entorno.
 - [Benchmark](https://jhonwick20262027-boop.github.io/rukito/benchmark.html): latencia p50/p95/p99 y tasas de HTTP y WebSocket del arnés `rdd-bench`.
 - [Especificación completa](https://jhonwick20262027-boop.github.io/rukito/especificacion.html): principios, requisitos RF/RA/RP, decisiones de arquitectura y criterios de aceptación.
 

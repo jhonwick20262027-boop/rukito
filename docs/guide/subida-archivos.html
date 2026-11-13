@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subida de archivos en rdd: S3, Azure Blob y GCS con rdd-upload</title>
+  <meta name="description" content="Guarda archivos con un puerto neutral: MemoryStorage para desarrollo y adaptadores S3, Azure Blob y GCS configurados por constructor o por variables de entorno.">
+  <meta name="keywords" content="rdd subida de archivos, rdd-upload, Rust upload, S3 SigV4, Azure Blob SharedKey, GCS HMAC, ObjectStorage, MemoryStorage">
+  <meta name="author" content="rdd">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="theme-color" content="#0d0b08">
+  <link rel="canonical" href="https://jhonwick20262027-boop.github.io/rukito/guide/subida-archivos.html">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-192.png">
+  <link rel="manifest" href="../site.webmanifest">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="rdd">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="Subida de archivos en rdd: S3, Azure Blob y GCS con rdd-upload">
+  <meta property="og:description" content="Un puerto neutral, MemoryStorage para desarrollo y adaptadores S3, Azure Blob y GCS configurados por constructor o por entorno.">
+  <meta property="og:url" content="https://jhonwick20262027-boop.github.io/rukito/guide/subida-archivos.html">
+  <meta property="og:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Subida de archivos en rdd: S3, Azure Blob y GCS con rdd-upload">
+  <meta name="twitter:description" content="Puerto neutral, MemoryStorage y adaptadores S3, Azure Blob y GCS por constructor o por entorno.">
+  <meta name="twitter:image" content="https://jhonwick20262027-boop.github.io/rukito/assets/img/og-cover.png">
+  <meta name="twitter:image:alt" content="rdd: framework REST con dominio claro para Rust">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "@id": "https://jhonwick20262027-boop.github.io/rukito/guide/subida-archivos.html#article",
+        "headline": "Subida de archivos en rdd: S3, Azure Blob y GCS con rdd-upload",
+        "description": "Guarda archivos con un puerto neutral: MemoryStorage para desarrollo y adaptadores S3, Azure Blob y GCS configurados por constructor o por variables de entorno.",
+        "url": "https://jhonwick20262027-boop.github.io/rukito/guide/subida-archivos.html",
+        "mainEntityOfPage": "https://jhonwick20262027-boop.github.io/rukito/guide/subida-archivos.html",
+        "inLanguage": "es",
+        "proficiencyLevel": "Intermediate",
+        "isPartOf": {
+          "@type": "WebSite",
+          "@id": "https://jhonwick20262027-boop.github.io/rukito/#website",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "name": "rdd"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "rdd",
+          "url": "https://jhonwick20262027-boop.github.io/rukito/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://jhonwick20262027-boop.github.io/rukito/assets/img/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "dateModified": "2026-11-13",
+        "about": [
+          { "@type": "Thing", "name": "Subida de archivos" },
+          { "@type": "Thing", "name": "Rust" },
+          { "@type": "Thing", "name": "Almacenamiento de objetos" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Inicio", "item": "https://jhonwick20262027-boop.github.io/rukito/" },
+          { "@type": "ListItem", "position": 2, "name": "Subida de archivos", "item": "https://jhonwick20262027-boop.github.io/rukito/guide/subida-archivos.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body data-root=".." data-nav="guide">
+  <div id="site-header-root"></div>
+
+  <script src="../assets/js/highlight.js"></script>
+  <script src="../assets/js/site.js"></script>
+
+  <article class="docs-layout">
+    <aside class="sidebar">
+      <div class="sidebar-group">
+        <h4>Secciones</h4>
+        <a href="instalacion.html">Instalación</a>
+        <a href="inicio-rapido.html">Guía rápida</a>
+        <a href="cli.html">CLI</a>
+        <a href="graphql.html">GraphQL</a>
+        <a href="tiempo-real.html">Tiempo real</a>
+        <a href="jwt-explorer.html">JWT en el explorer</a>
+        <a href="static.html">Archivos estáticos</a>
+        <a href="subida-archivos.html" class="active">Subida de archivos</a>
+      </div>
+    </aside>
+
+    <main class="doc-content">
+      <nav class="breadcrumb">
+        <a href="../index.html">Inicio</a><span class="sep">/</span><span class="here">Subida de archivos</span>
+      </nav>
+
+      <h1>Subida de archivos en rdd</h1>
+      <p>Guardar archivos es una <strong>dependencia de salida</strong>, no una ruta
+      ni una tabla. <code>rdd-upload</code> define el puerto
+      <code>ObjectStorage</code>, la política de claves y un
+      <code>MemoryStorage</code>; las features de nube añaden un adaptador REST por
+      proveedor. La app decide qué controlador recibe el archivo y qué clave le
+      asigna: el framework no monta ninguna ruta ni lee credenciales por su cuenta.</p>
+
+      <section class="section">
+        <h2>Activar la feature</h2>
+        <p>El puerto y el storage en memoria vienen con <code>upload</code>; cada
+        nube es una feature independiente:</p>
+        <pre data-lang="toml"><code># Solo el puerto y MemoryStorage
+rdd = { package = "rdd-framework", version = "0.1", features = ["upload"] }
+
+# Con AWS S3, Azure Blob o Google Cloud Storage
+rdd = { package = "rdd-framework", version = "0.1", features = ["upload-aws"] }
+rdd = { package = "rdd-framework", version = "0.1", features = ["upload-azure"] }
+rdd = { package = "rdd-framework", version = "0.1", features = ["upload-gcs"] }</code></pre>
+        <p>Todo se importa desde <code>rdd::upload</code>. No hay SDK de nube, ni
+        Tower, ni drivers: cada adaptador firma sus peticiones a mano sobre un
+        cliente HTTP con TLS.</p>
+      </section>
+
+      <section class="section">
+        <h2>El puerto</h2>
+        <table>
+          <tr><th>Operación</th><th>Qué hace</th></tr>
+          <tr><td><code>put(key, body, options)</code></td><td>Guarda o sobrescribe y devuelve la metadata; <code>PutOptions</code> lleva <code>content_type</code>, <code>cache_control</code> y metadatos de usuario.</td></tr>
+          <tr><td><code>get(key)</code></td><td>Devuelve el objeto completo, o <code>None</code> si la clave no existe.</td></tr>
+          <tr><td><code>head(key)</code></td><td>Solo la metadata, o <code>None</code> si no existe.</td></tr>
+          <tr><td><code>delete(key)</code></td><td>Borra; es idempotente y un 404 del proveedor no es error.</td></tr>
+        </table>
+        <p>Una clave se valida con <code>ObjectKey::parse</code>: de 1 a 1024 bytes,
+        sin <code>/</code> inicial, sin segmentos vacíos, <code>.</code> ni
+        <code>..</code>, sin <code>\</code> ni controles. Cada segmento se codifica
+        al firmar, así que un adaptador nunca interpola texto del cliente en la
+        ruta. Para empezar sin infraestructura:</p>
+        <pre data-lang="rust"><code>use std::sync::Arc;
+use rdd::upload::{MemoryStorage, ObjectStorage};
+
+let storage: Arc&lt;dyn ObjectStorage&gt; = Arc::new(MemoryStorage::with_max_bytes(8 * 1024 * 1024));</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Recibir el archivo en un controller</h2>
+        <p>El cuerpo llega completo con el extractor <code>Bytes</code> y el nombre
+        va por cabecera. La clave la construye el caso de uso con la sesión y un
+        <code>Uuid</code> del servidor, nunca el cliente:</p>
+        <pre data-lang="rust"><code>use rdd::prelude::*;
+use rdd::upload::PutOptions;
+
+#[controller("/files")]
+#[middleware(RequireAuth)]
+impl FilesController {
+    #[post("/", status = 201)]
+    async fn upload(
+        svc: FilesService,
+        session: Ext&lt;Session&gt;,
+        x_file_name: Header&lt;String&gt;,
+        content_type: Header&lt;String&gt;,
+        body: Bytes,
+    ) -&gt; Result&lt;FileResponse&gt; {
+        svc.upload_of(session.id, x_file_name.into_inner(), content_type.into_inner(), body)
+            .await
+    }
+}</code></pre>
+        <p>El límite de cuerpo de la app corre antes del handler: un archivo mayor
+        que <code>App::body_limit</code> es 413 y no llega al storage. El adaptador
+        también rechaza un objeto mayor que su <code>max_object_bytes</code> (64 MiB
+        por defecto).</p>
+      </section>
+
+      <section class="section">
+        <h2>AWS S3</h2>
+        <p>Firma SigV4 con el SHA-256 del cuerpo, la región y
+        <code>x-amz-security-token</code> si hay token de sesión. Sin endpoint usa
+        estilo virtual-host; con <code>endpoint</code> o
+        <code>force_path_style(true)</code> usa <code>/{bucket}/{key}</code>.</p>
+        <table>
+          <tr><th>Variable</th><th>Por defecto</th></tr>
+          <tr><td><code>AWS_S3_BUCKET</code></td><td>obligatoria</td></tr>
+          <tr><td><code>AWS_ACCESS_KEY_ID</code></td><td>obligatoria</td></tr>
+          <tr><td><code>AWS_SECRET_ACCESS_KEY</code></td><td>obligatoria</td></tr>
+          <tr><td><code>AWS_SESSION_TOKEN</code></td><td>opcional</td></tr>
+          <tr><td><code>AWS_REGION</code></td><td><code>us-east-1</code></td></tr>
+          <tr><td><code>AWS_ENDPOINT_URL</code></td><td>AWS; con valor fuerza path-style</td></tr>
+          <tr><td><code>AWS_S3_FORCE_PATH_STYLE</code></td><td><code>true</code> con endpoint, <code>false</code> sin él</td></tr>
+          <tr><td><code>AWS_MAX_OBJECT_BYTES</code></td><td><code>67108864</code></td></tr>
+        </table>
+        <pre data-lang="rust"><code>use rdd::upload::{Credentials, ObjectStorage, S3Config, S3Storage};
+
+let storage: std::sync::Arc&lt;dyn ObjectStorage&gt; = std::sync::Arc::new(
+    S3Storage::new(
+        S3Config::new("mi-bucket", Credentials::new(access_key, secret_key))
+            .region("eu-west-1")
+            .endpoint("http://127.0.0.1:9000") // MinIO; ausente = AWS
+            .force_path_style(true),
+    )?,
+);
+
+// O todo desde el entorno:
+let storage = S3Storage::from_env()?;</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Azure Blob</h2>
+        <p>Firma <code>SharedKey</code> sobre la cadena canónica, envía
+        <code>x-ms-date</code> y <code>x-ms-version</code>, y en <code>put</code>
+        usa <code>x-ms-blob-type: BlockBlob</code>. El endpoint por defecto es
+        <code>https://{cuenta}.blob.core.windows.net</code>; Azurite se configura
+        con <code>http://127.0.0.1:10000/{cuenta}</code>.</p>
+        <table>
+          <tr><th>Variable</th><th>Por defecto</th></tr>
+          <tr><td><code>AZURE_STORAGE_ACCOUNT</code></td><td>obligatoria</td></tr>
+          <tr><td><code>AZURE_STORAGE_ACCESS_KEY</code></td><td>obligatoria</td></tr>
+          <tr><td><code>AZURE_STORAGE_CONTAINER</code></td><td>obligatoria</td></tr>
+          <tr><td><code>AZURE_STORAGE_ENDPOINT</code></td><td><code>https://{cuenta}.blob.core.windows.net</code></td></tr>
+          <tr><td><code>AZURE_STORAGE_MAX_OBJECT_BYTES</code></td><td><code>67108864</code></td></tr>
+        </table>
+        <pre data-lang="rust"><code>use rdd::upload::{AzureBlobConfig, AzureBlobStorage};
+
+let storage = AzureBlobStorage::new(
+    AzureBlobConfig::new(account, access_key, "mi-contenedor")
+        .endpoint("http://127.0.0.1:10000/devstoreaccount1"),
+)?;
+
+// O todo desde el entorno:
+let storage = AzureBlobStorage::from_env()?;</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Google Cloud Storage</h2>
+        <p>Usa la API XML con una <strong>clave HMAC de interoperabilidad</strong>
+        (no OAuth2, ni cuenta de servicio JSON, ni ADC) y firma V4:
+        <code>GOOG4-HMAC-SHA256</code>, ámbito
+        <code>{fecha}/auto/storage/goog4_request</code> y cabeceras
+        <code>x-goog-date</code> y <code>x-goog-content-sha256</code>. La ruta es
+        <code>/{bucket}/{key}</code>, así que el mismo código sirve contra
+        <code>storage.googleapis.com</code> o un emulador.</p>
+        <table>
+          <tr><th>Variable</th><th>Por defecto</th></tr>
+          <tr><td><code>GCS_BUCKET</code></td><td>obligatoria</td></tr>
+          <tr><td><code>GCS_HMAC_ACCESS_ID</code></td><td>obligatoria</td></tr>
+          <tr><td><code>GCS_HMAC_SECRET</code></td><td>obligatoria</td></tr>
+          <tr><td><code>GCS_ENDPOINT</code></td><td><code>https://storage.googleapis.com</code></td></tr>
+          <tr><td><code>GCS_MAX_OBJECT_BYTES</code></td><td><code>67108864</code></td></tr>
+        </table>
+        <pre data-lang="rust"><code>use rdd::upload::{GcsConfig, GcsStorage};
+
+let storage = GcsStorage::new(
+    GcsConfig::new("mi-bucket", access_id, secret),
+)?;
+
+// O todo desde el entorno:
+let storage = GcsStorage::from_env()?;</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Precedencia y errores</h2>
+        <ul>
+          <li>Un valor fijado en el constructor gana sobre su variable; una variable ausente con defecto no secreto usa el defecto.</li>
+          <li>Un secreto ausente es un error de arranque que <strong>nombra la variable</strong>. <code>Secret</code> no revela su valor en <code>Debug</code> ni en <code>Display</code>.</li>
+          <li>Un endpoint que no sea <code>https</code> se rechaza; <code>http</code> solo se acepta de forma explícita para un emulador.</li>
+          <li>Ningún adaptador registra credenciales, firmas ni <code>Authorization</code>.</li>
+          <li>No hay reintentos ni <em>failover</em>: un fallo del proveedor vuelve como <code>Error::internal</code> con su estado y su código. La política de reintentos es de la app.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>El demo: <code>--upload</code></h2>
+        <p><code>example/todo-app --upload</code> monta <code>POST /files</code>,
+        <code>GET /files/:id</code> y <code>DELETE /files/:id</code>. Solo la
+        metadata viaja en JSON; la descarga binaria queda fuera de esta fase. La
+        política sale del entorno:</p>
+        <table>
+          <tr><th>Variable</th><th>Por defecto</th><th>Efecto</th></tr>
+          <tr><td><code>UPLOAD_DRIVER</code></td><td><code>memory</code></td><td><code>memory</code>, <code>aws</code>, <code>azure</code> o <code>gcs</code></td></tr>
+          <tr><td><code>UPLOAD_MAX_BYTES</code></td><td><code>8388608</code></td><td>Límite del objeto y del cuerpo de la petición</td></tr>
+        </table>
+        <pre data-lang="bash"><code>cargo run -p todo-app -- --upload
+
+TOKEN=... # JWT de /auth/login
+curl -s -X POST localhost:3000/files \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-File-Name: notas.txt" \
+  -H "Content-Type: text/plain" \
+  --data-binary @notas.txt            # 201 {"id":"...","size":123,"content_type":"text/plain"}
+
+curl -s localhost:3000/files/&lt;id&gt; -H "Authorization: Bearer $TOKEN"   # metadata
+curl -s -X DELETE localhost:3000/files/&lt;id&gt; -H "Authorization: Bearer $TOKEN"  # 204</code></pre>
+        <p>La clave es <code>files/{owner_id}/{id}</code> y sale de la sesión, así
+        que el usuario B recibe 404 al leer o borrar el archivo de A. Sin
+        <code>--upload</code> las tres rutas no existen.</p>
+      </section>
+
+      <section class="section">
+        <h2>Límites de esta fase</h2>
+        <ul>
+          <li>Los cuerpos viajan en memoria: no hay multiparte, reanudación ni streaming saliente.</li>
+          <li>No hay URLs prefirmadas, listado de objetos ni administración de buckets o contenedores.</li>
+          <li>No hay identidades de nube (IMDS, managed identity, OAuth2/ADC) ni SDKs oficiales.</li>
+        </ul>
+        <p>Requisitos completos: RF-269 a RF-278 en la
+        <a href="../especificacion.html">especificación</a> (§10.13).</p>
+      </section>
+
+      <nav class="doc-pager" aria-label="Navegación de la guía">
+        <a class="pager-link prev" href="static.html"><span class="dir">← Anterior</span><span class="title">Archivos estáticos</span></a>
+        <a class="pager-link next disabled" aria-disabled="true"><span class="dir">Siguiente →</span><span class="title">Fin de la guía</span></a>
+      </nav>
+    </main>
+  </article>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      RDD.enhanceCode(document);
+    });
+  </script>
+</body>
+</html>

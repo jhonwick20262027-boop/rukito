@@ -38,6 +38,11 @@ async fn main() -> Result<()> {
     let config = config::app_config::load();
     let addr = format!("{}:{}", config.host, config.port);
 
+    // §26.13: el modo `--upload` monta el puerto de §10.13 y condiciona el
+    // documento OpenAPI, que con rutas estrictas debe cubrir exactamente lo
+    // montado (RF-248).
+    let upload = std::env::args().skip(1).any(|arg| arg == "--upload");
+
     // El codec se construye aquí, no dentro del módulo: `users::module` recibe el
     // token codec como parámetro para que las pruebas puedan pasar el suyo sin
     // tocar el entorno (§26.3).
@@ -91,6 +96,17 @@ async fn main() -> Result<()> {
     // sin base de datos (§14.1, RF-015).
     let app = if std::env::var("RDD_MEMORY").is_ok() {
         app.in_memory()
+    } else {
+        app
+    };
+
+    // §10.13, §26.13: `--upload` monta `POST/GET/DELETE /files` sobre el puerto.
+    // El límite de cuerpo se aplica antes del handler, así que un archivo mayor
+    // que `UPLOAD_MAX_BYTES` es 413 sin llegar al storage (RF-017, RF-277).
+    let app = if upload {
+        let storage = config::upload_config::storage()?;
+        app.body_limit(config::upload_config::max_bytes())
+            .module(modules::files::module(storage))
     } else {
         app
     };
@@ -167,7 +183,7 @@ async fn main() -> Result<()> {
     // comprueba que cubra exactamente las rutas montadas (RF-248).
     if std::env::args().skip(1).any(|arg| arg == "--openapi") {
         let docs = config::openapi_config::load();
-        let openapi = OpenApiHttp::new(openapi::document()).config(
+        let openapi = OpenApiHttp::new(openapi::document(upload)).config(
             OpenApiHttpConfig::new()
                 .path(docs.path)
                 .docs(docs.docs)

@@ -17,6 +17,7 @@ members = [
     "crates/rdd-socket",
     "crates/rdd-sqlite",
     "crates/rdd-static",
+    "crates/rdd-upload",
     # RF-193: el demo de §26 pasa la misma puerta que los crates del framework.
     "example/todo-app",
 ]
@@ -52,8 +53,17 @@ rdd-graphql        = { path = "crates/rdd-graphql",        version = "0.1.0" }
 rdd-openapi        = { path = "crates/rdd-openapi",        version = "0.1.0" }
 rdd-socket         = { path = "crates/rdd-socket",         version = "0.1.0" }
 rdd-static         = { path = "crates/rdd-static",         version = "0.1.0" }
+rdd-upload         = { path = "crates/rdd-upload",         version = "0.1.0" }
 
 anyhow             = "1.0"
+# Firma de los adaptadores de `rdd-upload` (§10.13). `hmac` 0.12 y `sha2` 0.10
+# son la pareja estable que ya trae el árbol por SQLx.
+base64             = "0.22"
+chrono             = { version = "0.4", default-features = false, features = ["clock", "std"] }
+hex                = "0.4"
+hmac               = "0.12"
+sha2               = "0.10"
+percent-encoding   = "2.3"
 # Solo las usa el demo de §26: ni el núcleo ni rdd-cors las arrastran (RA-011, RA-014).
 argon2             = "0.5"
 axum               = "0.8"
@@ -65,6 +75,10 @@ http               = "1.5"
 http-body-util     = "0.1"
 hyper              = { version = "1.6", features = ["full"] }
 hyper-util         = { version = "0.1", features = ["full"] }
+# Cliente HTTPS de `rdd-upload` (§10.13, V29): rustls con el proveedor `ring`
+# —el que ya usa SQLx— y raíces webpki, sin CMake ni NASM en Windows MSVC.
+hyper-rustls       = { version = "0.27", default-features = false, features = ["http1", "ring", "tls12", "logging", "webpki-tokio"] }
+rustls             = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 # HS256 con secreto: sin PEM no hacen falta `pem` ni `simple_asn1` (§26.3).
 jsonwebtoken       = { version = "9.3", default-features = false }
 matchit            = "0.9"

@@ -39,9 +39,10 @@ pub mod prelude {
     pub use crate::domain::Aggregate;
     pub use crate::error::{Error, Problem, Result};
     pub use crate::http::{
-        AllowedMethods, Bind, Ctx, Ext, FromContainer, FromRequest, Header, HttpApp, Json, Limits,
-        Middleware, Path, PathParams, Platform, Query, RateLimit, RateLimitConfigError, Request,
-        RequestExt, Response, RouteDef, ShutdownSignal, StatusCode, compose, fn_middleware, header,
+        AllowedMethods, Bind, Bytes, Ctx, Ext, FromContainer, FromRequest, Header, HttpApp, Json,
+        Limits, Middleware, Path, PathParams, Platform, Query, RateLimit, RateLimitConfigError,
+        Request, RequestExt, Response, RouteDef, ShutdownSignal, StatusCode, compose,
+        fn_middleware, header,
     };
     pub use crate::module::{Controller, Module, ModuleBuilder, ModuleMember, ProviderMarker};
     pub use crate::socket::{

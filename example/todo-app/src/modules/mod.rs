@@ -4,5 +4,6 @@
 //! (§14.3). Un módulo nunca importa archivos internos de otro (RA-004).
 
 // rdd:mods
+pub mod files;
 pub mod tasks;
 pub mod users;
